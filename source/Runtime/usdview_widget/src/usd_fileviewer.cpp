@@ -311,7 +311,7 @@ void UsdFileViewer::select_file()
 
         is_selecting_file = false;
 
-        stage->import_usd(selected, selecting_file_base);
+        stage->import_usd_as_payload(selected, selecting_file_base);
     }
 }
 

@@ -9,7 +9,11 @@
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdGeom/sphere.h>
 #include <pxr/usd/usdGeom/xform.h>
+#include <pxr/usd/usdMtlx/reader.h>
+#include <pxr/usd/usdMtlx/utils.h>
 
+#include "MaterialXFormat/File.h"
+#include "MaterialXFormat/Util.h"
 #include "animation.h"
 
 USTC_CG_NAMESPACE_OPEN_SCOPE
@@ -195,7 +199,7 @@ std::string Stage::load_string_from_usd(const pxr::SdfPath& path)
     return data;
 }
 
-void Stage::import_usd(
+void Stage::import_usd_as_payload(
     const std::string& path_string,
     const pxr::SdfPath& sdf_path)
 {
@@ -211,6 +215,28 @@ void Stage::import_usd(
 #if SAVE_ALL_THE_TIME
     stage->Save();
 #endif
+}
+
+void Stage::import_usd_as_reference(
+    const std::string& path_string,
+    const pxr::SdfPath& sdf_path)
+{
+    auto prim = stage->GetPrimAtPath(sdf_path);
+    if (!prim) {
+        return;
+    }
+
+    // bring the usd file into the stage with reference
+
+    auto references = prim.GetReferences();
+    references.AddReference(pxr::SdfReference(path_string));
+}
+
+void Stage::import_materialx(
+    const std::string& path_string,
+    const pxr::SdfPath& sdf_path)
+{
+    MaterialX::FilePath path(path_string);
 }
 
 std::unique_ptr<Stage> create_global_stage()

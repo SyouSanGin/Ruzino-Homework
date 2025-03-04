@@ -1,5 +1,8 @@
 #pragma once
 
+#include <pxr/usd/usdMtlx/materialXConfigAPI.h>
+#include <pxr/usd/usdShade/material.h>
+
 #include <string>
 
 #include "GCore/Components.h"
@@ -30,7 +33,18 @@ struct GEOMETRY_API MaterialComponent : public GeometryComponent {
         return {};
     }
 
+    pxr::UsdShadeMaterial define_material(
+        pxr::UsdStageRefPtr stage,
+        pxr::SdfPath path);
+
+    void set_material_path(pxr::SdfPath path)
+    {
+        material_path = path;
+    }
+
     std::vector<std::string> textures;
+
+    pxr::SdfPath material_path;
 };
 
 USTC_CG_NAMESPACE_CLOSE_SCOPE

@@ -50,7 +50,15 @@ class STAGE_API Stage {
         bool fully_consume = true);
     void save_string_to_usd(const pxr::SdfPath& path, const std::string& data);
     std::string load_string_from_usd(const pxr::SdfPath& path);
-    void import_usd(
+    void import_usd_as_payload(
+        const std::string& path_string,
+        const pxr::SdfPath& sdf_path);
+
+    void import_usd_as_reference(
+        const std::string& path_string,
+        const pxr::SdfPath& sdf_path);
+
+    void import_materialx(
         const std::string& path_string,
         const pxr::SdfPath& sdf_path);
 
