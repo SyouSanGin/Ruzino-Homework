@@ -98,13 +98,13 @@ class MenuItem {
 
 class Graph : public NodeEditorWidgetBase {
    public:
-    Graph(
-        const std::string& materialFilename,
-        const std::string& meshFilename,
-        const mx::FileSearchPath& searchPath,
-        const mx::FilePathVec& libraryFolders,
-        int viewWidth,
-        int viewHeight);
+    // Graph(
+    //     const std::string& materialFilename,
+    //     const std::string& meshFilename,
+    //     const mx::FileSearchPath& searchPath,
+    //     const mx::FilePathVec& libraryFolders,
+    //     int viewWidth,
+    //     int viewHeight);
 
     void drawGraph(ImVec2 mousePos);
 

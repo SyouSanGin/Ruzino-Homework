@@ -1,21 +1,14 @@
 #pragma once
 
-#include <GUI/widget.h>
 #include <MCore/Graph.h>
 #include <MaterialXFormat/Util.h>
-#include <imgui_node_editor_internal.h>
-#include <imgui_stdlib.h>
 
-#include <iostream>
-#include <nodes/core/node_link.hpp>
-
-#include "MCore/api.h"
 namespace mx = MaterialX;
 
 USTC_CG_NAMESPACE_OPEN_SCOPE
-class MaterialXNodeTreeDescriptor : public NodeTreeDescriptor { };
+class MCORE_API MaterialXNodeTreeDescriptor : public NodeTreeDescriptor { };
 
-class MaterialXNodeTree : public NodeTree {
+class MCORE_API MaterialXNodeTree : public NodeTree {
    public:
     explicit MaterialXNodeTree(
         const std::string& materialFilename,
@@ -101,12 +94,7 @@ class MaterialXNodeTree : public NodeTree {
     mx::DocumentPtr _stdLib;
 };
 
-std::shared_ptr<MaterialXNodeTree> createMaterialXNodeTree(
-    const std::string& materialFilename)
-{
-    std::shared_ptr<NodeTreeDescriptor> descriptor =
-        std::make_shared<MaterialXNodeTreeDescriptor>();
-    return std::make_shared<MaterialXNodeTree>(materialFilename, descriptor);
-}
+MCORE_API std::shared_ptr<MaterialXNodeTree> createMaterialXNodeTree(
+    const std::string& materialFilename);
 
 USTC_CG_NAMESPACE_CLOSE_SCOPE

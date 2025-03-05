@@ -79,8 +79,8 @@ static bool Splitter(
 }
 
 NodeWidget::NodeWidget(const NodeWidgetSettings& desc)
-    : storage_(desc.create_storage()),
-      tree_(desc.system->get_node_tree()),
+    : NodeEditorWidgetBase(desc),
+      storage_(desc.create_storage()),
       system_(desc.system),
       widget_name(desc.WidgetName())
 {

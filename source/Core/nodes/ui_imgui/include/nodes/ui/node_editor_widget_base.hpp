@@ -1,23 +1,22 @@
 #pragma once
-#include <string>
+#define IMGUI_DEFINE_MATH_OPERATORS
 
 #include "GUI/widget.h"
-#include "RHI/rhi.hpp"
-#include "api.h"
 #include "imgui.h"
-#include "imgui/blueprint-utilities/builders.h"
-#include "imgui/blueprint-utilities/images.inl"
-#include "imgui/blueprint-utilities/widgets.h"
-#include "imgui/imgui-node-editor/imgui_node_editor.h"
 #include "nodes/core/node_link.hpp"
 #include "nodes/core/node_tree.hpp"
 #include "nodes/core/socket.hpp"
 #include "nodes/system/node_system.hpp"
 #include "nodes/ui/imgui.hpp"
-#include "nodes/ui/node_editor_widget_base.hpp"
 
 USTC_CG_NAMESPACE_OPEN_SCOPE
 class NodeEditorWidgetBase : public IWidget {
+   public:
+    NodeEditorWidgetBase(const NodeWidgetSettings& desc)
+        : tree_(desc.system->get_node_tree())
+    {
+    }
+
    protected:
     void connectLinks();
     static ImColor GetIconColor(SocketType type);

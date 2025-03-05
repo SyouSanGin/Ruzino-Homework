@@ -13,7 +13,7 @@
 #include <iostream>
 #include <nodes/core/node_link.hpp>
 
-#include "MaterialXNodeTree.hpp"
+#include "MCore/MaterialXNodeTree.hpp"
 namespace mx = MaterialX;
 
 USTC_CG_NAMESPACE_OPEN_SCOPE
@@ -112,226 +112,230 @@ std::string getUserNodeDefName(const std::string& val)
 //
 // Graph methods
 //
-
-Graph::Graph(
-    const std::string& materialFilename,
-    const std::string& meshFilename,
-    const mx::FileSearchPath& searchPath,
-    const mx::FilePathVec& libraryFolders,
-    int viewWidth,
-    int viewHeight)
-    : _searchPath(searchPath),
-      _libraryFolders(libraryFolders),
-      _initial(false),
-      _delete(false),
-      _fileDialogSave(IGFD::FileDialog::EnterNewFilename),
-      _isNodeGraph(false),
-      _graphTotalSize(0),
-      _popup(false),
-      _shaderPopup(false),
-      _searchNodeId(-1),
-      _addNewNode(false),
-      _ctrlClick(false),
-      _isCut(false),
-      _autoLayout(false),
-      _frameCount(INT_MIN),
-      _fontScale(1.0f),
-      _saveNodePositions(true)
-{
-    auto mtlx_tree = static_cast<MaterialXNodeTree*>(tree_);
-
-    setPinColor();
-
-    // Set up filters load and save
-    _mtlxFilter.push_back(".mtlx");
-
-    _initial = true;
-    createNodeUIList(mtlx_tree->get_mtlx_stdlib());
-
-    // Create a renderer using the initial startup document.
-    // mx::FilePath captureFilename =
-    // "resources/Materials/Examples/example.png"; std::string
-    // envRadianceFilename =
-    //    "resources/Lights/san_giuseppe_bridge_split.hdr";
-    //_renderer = std::make_shared<RenderView>(
-    //    _graphDoc,
-    //    _stdLib,
-    //    meshFilename,
-    //    envRadianceFilename,
-    //    _searchPath,
-    //    viewWidth,
-    //    viewHeight);
-    //_renderer->initialize();
-    // for (const std::string& ext :
-    //     _renderer->getImageHandler()->supportedExtensions()) {
-    //    _imageFilter.push_back("." + ext);
-    //}
-    //_renderer->updateMaterials(nullptr);
-    // for (const std::string& incl : _renderer->getXincludeFiles()) {
-    //    _xincludeFiles.insert(incl);
-    //}
-}
-
-void Graph::addExtraNodes()
-{
-    if (!_graphDoc) {
-        return;
-    }
-
-    // Get all types from the doc
-    std::vector<std::string> types;
-    std::vector<mx::TypeDefPtr> typeDefs = _graphDoc->getTypeDefs();
-    types.reserve(typeDefs.size());
-    for (auto typeDef : typeDefs) {
-        types.push_back(typeDef->getName());
-    }
-
-    // Add input and output nodes for all types
-    for (const std::string& type : types) {
-        std::string nodeName = "ND_input_" + type;
-        _nodesToAdd.emplace_back(nodeName, type, "input", "Input Nodes");
-        nodeName = "ND_output_" + type;
-        _nodesToAdd.emplace_back(nodeName, type, "output", "Output Nodes");
-    }
-
-    // Add group node
-    _nodesToAdd.emplace_back("ND_group", "", "group", "Group Nodes");
-
-    // Add nodegraph node
-    _nodesToAdd.emplace_back("ND_nodegraph", "", "nodegraph", "Node Graph");
-}
+//
+// Graph::Graph(
+//    const std::string& materialFilename,
+//    const std::string& meshFilename,
+//    const mx::FileSearchPath& searchPath,
+//    const mx::FilePathVec& libraryFolders,
+//    int viewWidth,
+//    int viewHeight)
+//    :
+//_searchPath(searchPath),
+//      _libraryFolders(libraryFolders),
+//      _initial(false),
+//      _delete(false),
+//      _fileDialogSave(IGFD::FileDialog::EnterNewFilename),
+//      _isNodeGraph(false),
+//      _graphTotalSize(0),
+//      _popup(false),
+//      _shaderPopup(false),
+//      _searchNodeId(-1),
+//      _addNewNode(false),
+//      _ctrlClick(false),
+//      _isCut(false),
+//      _autoLayout(false),
+//      _frameCount(INT_MIN),
+//      _fontScale(1.0f),
+//      _saveNodePositions(true)
+//{
+////    auto mtlx_tree = static_cast<MaterialXNodeTree*>(tree_);
+////
+////    setPinColor();
+////
+////    // Set up filters load and save
+////    _mtlxFilter.push_back(".mtlx");
+////
+////    _initial = true;
+////    createNodeUIList(mtlx_tree->get_mtlx_stdlib());
+////
+////    // Create a renderer using the initial startup document.
+////    // mx::FilePath captureFilename =
+////    // "resources/Materials/Examples/example.png"; std::string
+////    // envRadianceFilename =
+////    //    "resources/Lights/san_giuseppe_bridge_split.hdr";
+////    //_renderer = std::make_shared<RenderView>(
+////    //    _graphDoc,
+////    //    _stdLib,
+////    //    meshFilename,
+////    //    envRadianceFilename,
+////    //    _searchPath,
+////    //    viewWidth,
+////    //    viewHeight);
+////    //_renderer->initialize();
+////    // for (const std::string& ext :
+////    //     _renderer->getImageHandler()->supportedExtensions()) {
+////    //    _imageFilter.push_back("." + ext);
+////    //}
+////    //_renderer->updateMaterials(nullptr);
+////    // for (const std::string& incl : _renderer->getXincludeFiles()) {
+////    //    _xincludeFiles.insert(incl);
+////    //}
+////}
+////
+////void Graph::addExtraNodes()
+////{
+////    if (!_graphDoc) {
+////        return;
+////    }
+////
+////    // Get all types from the doc
+////    std::vector<std::string> types;
+////    std::vector<mx::TypeDefPtr> typeDefs = _graphDoc->getTypeDefs();
+////    types.reserve(typeDefs.size());
+////    for (auto typeDef : typeDefs) {
+////        types.push_back(typeDef->getName());
+////    }
+////
+////    // Add input and output nodes for all types
+////    for (const std::string& type : types) {
+////        std::string nodeName = "ND_input_" + type;
+////        _nodesToAdd.emplace_back(nodeName, type, "input", "Input Nodes");
+////        nodeName = "ND_output_" + type;
+////        _nodesToAdd.emplace_back(nodeName, type, "output", "Output Nodes");
+////    }
+////
+////    // Add group node
+////    _nodesToAdd.emplace_back("ND_group", "", "group", "Group Nodes");
+////
+////    // Add nodegraph node
+////    _nodesToAdd.emplace_back("ND_nodegraph", "", "nodegraph", "Node Graph");
+//}
 
 SocketID Graph::getOutputPin(UiNodePtr node, UiNodePtr upNode, UiPinPtr input)
 {
-    if (upNode->getNodeGraph() != nullptr) {
-        // For nodegraph need to get the correct output pin according to the
-        // names of the output nodes
-        mx::OutputPtr output;
-        if (input->_pinNode->getNode()) {
-            output =
-                input->_pinNode->getNode()->getConnectedOutput(input->_name);
-        }
-        else if (input->_pinNode->getNodeGraph()) {
-            output = input->_pinNode->getNodeGraph()->getConnectedOutput(
-                input->_name);
-        }
+    // if (upNode->getNodeGraph() != nullptr) {
+    //     // For nodegraph need to get the correct output pin according to the
+    //     // names of the output nodes
+    //     mx::OutputPtr output;
+    //     if (input->_pinNode->getNode()) {
+    //         output =
+    //             input->_pinNode->getNode()->getConnectedOutput(input->_name);
+    //     }
+    //     else if (input->_pinNode->getNodeGraph()) {
+    //         output = input->_pinNode->getNodeGraph()->getConnectedOutput(
+    //             input->_name);
+    //     }
 
-        if (output) {
-            std::string outName = output->getName();
-            for (UiPinPtr outputs : upNode->outputPins) {
-                if (outputs->_name == outName) {
-                    return outputs->_pinId;
-                }
-            }
-        }
-        return SocketID();
-    }
-    else {
-        // For node need to get the correct output pin based on the output
-        // attribute
-        if (!upNode->outputPins.empty()) {
-            std::string outputName = mx::EMPTY_STRING;
-            if (input->_input) {
-                outputName = input->_input->getOutputString();
-            }
-            else if (input->_output) {
-                outputName = input->_output->getOutputString();
-            }
+    //    if (output) {
+    //        std::string outName = output->getName();
+    //        for (UiPinPtr outputs : upNode->outputPins) {
+    //            if (outputs->_name == outName) {
+    //                return outputs->_pinId;
+    //            }
+    //        }
+    //    }
+    //    return SocketID();
+    //}
+    // else {
+    //    // For node need to get the correct output pin based on the output
+    //    // attribute
+    //    if (!upNode->outputPins.empty()) {
+    //        std::string outputName = mx::EMPTY_STRING;
+    //        if (input->_input) {
+    //            outputName = input->_input->getOutputString();
+    //        }
+    //        else if (input->_output) {
+    //            outputName = input->_output->getOutputString();
+    //        }
 
-            size_t pinIndex = 0;
-            if (!outputName.empty()) {
-                for (size_t i = 0; i < upNode->outputPins.size(); i++) {
-                    if (upNode->outputPins[i]->_name == outputName) {
-                        pinIndex = i;
-                        break;
-                    }
-                }
-            }
-            return (upNode->outputPins[pinIndex]->_pinId);
-        }
-        return SocketID();
-    }
+    //        size_t pinIndex = 0;
+    //        if (!outputName.empty()) {
+    //            for (size_t i = 0; i < upNode->outputPins.size(); i++) {
+    //                if (upNode->outputPins[i]->_name == outputName) {
+    //                    pinIndex = i;
+    //                    break;
+    //                }
+    //            }
+    //        }
+    //        return (upNode->outputPins[pinIndex]->_pinId);
+    //    }
+    //    return SocketID();
+    //}
+
+    return {};
 }
 
 void Graph::linkGraph()
 {
-    _currLinks.clear();
+    //_currLinks.clear();
 
-    // Start with bottom of graph
-    for (UiNodePtr node : _graphNodes) {
-        std::vector<UiPinPtr> inputs = node->inputPins;
-        if (node->getInput() == nullptr) {
-            for (size_t i = 0; i < inputs.size(); i++) {
-                // Get upstream node for all inputs
-                std::string inputName = inputs[i]->_name;
+    //// Start with bottom of graph
+    // for (UiNodePtr node : _graphNodes) {
+    //     std::vector<UiPinPtr> inputs = node->inputPins;
+    //     if (node->getInput() == nullptr) {
+    //         for (size_t i = 0; i < inputs.size(); i++) {
+    //             // Get upstream node for all inputs
+    //             std::string inputName = inputs[i]->_name;
 
-                UiNodePtr inputNode = node->getConnectedNode(inputName);
-                if (inputNode != nullptr) {
-                    Link link;
+    //            UiNodePtr inputNode = node->getConnectedNode(inputName);
+    //            if (inputNode != nullptr) {
+    //                Link link;
 
-                    // Get the input connections for the current UiNode
-                    ax::NodeEditor::PinId id = inputs[i]->_pinId;
-                    inputs[i]->setConnected(true);
-                    int end = int(id.Get());
-                    link._endAttr = end;
+    //                // Get the input connections for the current UiNode
+    //                ax::NodeEditor::PinId id = inputs[i]->_pinId;
+    //                inputs[i]->setConnected(true);
+    //                int end = int(id.Get());
+    //                link._endAttr = end;
 
-                    // Get id number of output of node
-                    SocketID outputId =
-                        getOutputPin(node, inputNode, inputs[i]);
-                    int start = int(outputId.Get());
+    //                // Get id number of output of node
+    //                SocketID outputId =
+    //                    getOutputPin(node, inputNode, inputs[i]);
+    //                int start = int(outputId.Get());
 
-                    if (start >= 0) {
-                        // Connect the correct output pin to this input
-                        for (UiPinPtr outPin : inputNode->outputPins) {
-                            if (outPin->_pinId == outputId) {
-                                outPin->setConnected(true);
-                                outPin->addConnection(inputs[i]);
-                            }
-                        }
+    //                if (start >= 0) {
+    //                    // Connect the correct output pin to this input
+    //                    for (UiPinPtr outPin : inputNode->outputPins) {
+    //                        if (outPin->_pinId == outputId) {
+    //                            outPin->setConnected(true);
+    //                            outPin->addConnection(inputs[i]);
+    //                        }
+    //                    }
 
-                        link._startAttr = start;
+    //                    link._startAttr = start;
 
-                        if (!linkExists(link)) {
-                            _currLinks.push_back(link);
-                        }
-                    }
-                }
-                else if (inputs[i]->_input) {
-                    if (inputs[i]->_input->getInterfaceInput()) {
-                        inputs[i]->setConnected(true);
-                    }
-                }
-                else {
-                    inputs[i]->setConnected(false);
-                }
-            }
-        }
-    }
+    //                    if (!linkExists(link)) {
+    //                        _currLinks.push_back(link);
+    //                    }
+    //                }
+    //            }
+    //            else if (inputs[i]->_input) {
+    //                if (inputs[i]->_input->getInterfaceInput()) {
+    //                    inputs[i]->setConnected(true);
+    //                }
+    //            }
+    //            else {
+    //                inputs[i]->setConnected(false);
+    //            }
+    //        }
+    //    }
+    //}
 }
 
 void Graph::connectLinks()
 {
-    for (Link const& link : _currLinks) {
-        ed::Link(link._id, link._startAttr, link._endAttr);
-    }
+    // for (Link const& link : _currLinks) {
+    //     ed::Link(link._id, link._startAttr, link._endAttr);
+    // }
 }
 
 int Graph::findLinkPosition(int id)
 {
-    int count = 0;
-    for (size_t i = 0; i < _currLinks.size(); i++) {
-        if (_currLinks[i]._id == id) {
-            return count;
-        }
-        count++;
-    }
+    // int count = 0;
+    // for (size_t i = 0; i < _currLinks.size(); i++) {
+    //     if (_currLinks[i]._id == id) {
+    //         return count;
+    //     }
+    //     count++;
+    // }
     return -1;
 }
 
 bool Graph::checkPosition(UiNodePtr node)
 {
-    mx::ElementPtr elem = node->getElement();
-    return elem && !elem->getAttribute(mx::Element::XPOS_ATTRIBUTE).empty();
+    // mx::ElementPtr elem = node->getElement();
+    // return elem && !elem->getAttribute(mx::Element::XPOS_ATTRIBUTE).empty();
+    return false;
 }
 
 // Calculate the total vertical space the node level takes up
@@ -375,29 +379,31 @@ float Graph::findAvgY(const std::vector<UiNodePtr>& nodes)
 
 void Graph::findYSpacing(float startY)
 {
-    // Assume level 0 is set
-    // For each level find the average y position of the previous level to use
-    // as a spacing guide
-    int i = 0;
-    for (std::pair<int, std::vector<UiNodePtr>> levelChunk : _levelMap) {
-        if (_levelMap[i].size() > 0) {
-            if (_levelMap[i][0]->_level > 0) {
-                int prevLevel = _levelMap[i].front()->_level - 1;
-                float avgY = findAvgY(_levelMap[prevLevel]);
-                float height = totalHeight(_levelMap[i].front()->_level);
-                // calculate the starting position to be above the previous
-                // level's center so that it is evenly spaced on either side of
-                // the center
-                float startingPos =
-                    avgY - ((height + (_levelMap[i].size() * 20)) / 2) + startY;
-                setYSpacing(_levelMap[i].front()->_level, startingPos);
-            }
-            else {
-                setYSpacing(_levelMap[i].front()->_level, startY);
-            }
-        }
-        ++i;
-    }
+    //// Assume level 0 is set
+    //// For each level find the average y position of the previous level to use
+    //// as a spacing guide
+    // int i = 0;
+    // for (std::pair<int, std::vector<UiNodePtr>> levelChunk : _levelMap) {
+    //     if (_levelMap[i].size() > 0) {
+    //         if (_levelMap[i][0]->_level > 0) {
+    //             int prevLevel = _levelMap[i].front()->_level - 1;
+    //             float avgY = findAvgY(_levelMap[prevLevel]);
+    //             float height = totalHeight(_levelMap[i].front()->_level);
+    //             // calculate the starting position to be above the previous
+    //             // level's center so that it is evenly spaced on either side
+    //             of
+    //             // the center
+    //             float startingPos =
+    //                 avgY - ((height + (_levelMap[i].size() * 20)) / 2) +
+    //                 startY;
+    //             setYSpacing(_levelMap[i].front()->_level, startingPos);
+    //         }
+    //         else {
+    //             setYSpacing(_levelMap[i].front()->_level, startY);
+    //         }
+    //     }
+    //     ++i;
+    // }
 }
 
 ImVec2 Graph::layoutPosition(
@@ -406,159 +412,163 @@ ImVec2 Graph::layoutPosition(
     bool initialLayout,
     int level)
 {
-    if (checkPosition(layoutNode) && !_autoLayout) {
-        for (UiNodePtr node : _graphNodes) {
-            // Since nodegraph nodes do not have MaterialX info they are placed
-            // based on their connected node
-            if (node->getNodeGraph() != nullptr) {
-                std::vector<UiNodePtr> outputCon = node->getOutputConnections();
-                if (outputCon.size() > 0) {
-                    ImVec2 outputPos = ed::GetNodePosition(outputCon[0]->ID);
-                    ed::SetNodePosition(
-                        node->ID, ImVec2(outputPos.x - 400, outputPos.y));
-                    node->setPos(ImVec2(outputPos.x - 400, outputPos.y));
-                }
-            }
-            else {
-                // Don't set position of group nodes
-                if (node->getMessage().empty()) {
-                    mx::ElementPtr elem = node->getElement();
-                    if (elem &&
-                        elem->hasAttribute(mx::Element::XPOS_ATTRIBUTE)) {
-                        float x = std::stof(
-                            elem->getAttribute(mx::Element::XPOS_ATTRIBUTE));
-                        if (elem->hasAttribute(mx::Element::YPOS_ATTRIBUTE)) {
-                            float y = std::stof(elem->getAttribute(
-                                mx::Element::YPOS_ATTRIBUTE));
-                            x *= DEFAULT_NODE_SIZE.x;
-                            y *= DEFAULT_NODE_SIZE.y;
-                            ed::SetNodePosition(node->ID, ImVec2(x, y));
-                            node->setPos(ImVec2(x, y));
-                        }
-                    }
-                }
-            }
-        }
-        return ImVec2(0.f, 0.f);
-    }
-    else {
-        ImVec2 currPos = startingPos;
-        ImVec2 newPos = currPos;
-        if (layoutNode->_level != -1) {
-            if (layoutNode->_level < level) {
-                // Remove the old instance of the node from the map
-                int levelNum = 0;
-                int removeNum = -1;
-                for (UiNodePtr levelNode : _levelMap[layoutNode->_level]) {
-                    if (levelNode->getName() == layoutNode->getName()) {
-                        removeNum = levelNum;
-                    }
-                    levelNum++;
-                }
-                if (removeNum > -1) {
-                    _levelMap[layoutNode->_level].erase(
-                        _levelMap[layoutNode->_level].begin() + removeNum);
-                }
+    // if (checkPosition(layoutNode) && !_autoLayout) {
+    //     for (UiNodePtr node : _graphNodes) {
+    //         // Since nodegraph nodes do not have MaterialX info they are
+    //         placed
+    //         // based on their connected node
+    //         if (node->getNodeGraph() != nullptr) {
+    //             std::vector<UiNodePtr> outputCon =
+    //             node->getOutputConnections(); if (outputCon.size() > 0) {
+    //                 ImVec2 outputPos = ed::GetNodePosition(outputCon[0]->ID);
+    //                 ed::SetNodePosition(
+    //                     node->ID, ImVec2(outputPos.x - 400, outputPos.y));
+    //                 node->setPos(ImVec2(outputPos.x - 400, outputPos.y));
+    //             }
+    //         }
+    //         else {
+    //             // Don't set position of group nodes
+    //             if (node->getMessage().empty()) {
+    //                 mx::ElementPtr elem = node->getElement();
+    //                 if (elem &&
+    //                     elem->hasAttribute(mx::Element::XPOS_ATTRIBUTE)) {
+    //                     float x = std::stof(
+    //                         elem->getAttribute(mx::Element::XPOS_ATTRIBUTE));
+    //                     if (elem->hasAttribute(mx::Element::YPOS_ATTRIBUTE))
+    //                     {
+    //                         float y = std::stof(elem->getAttribute(
+    //                             mx::Element::YPOS_ATTRIBUTE));
+    //                         x *= DEFAULT_NODE_SIZE.x;
+    //                         y *= DEFAULT_NODE_SIZE.y;
+    //                         ed::SetNodePosition(node->ID, ImVec2(x, y));
+    //                         node->setPos(ImVec2(x, y));
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     return ImVec2(0.f, 0.f);
+    // }
+    // else {
+    //     ImVec2 currPos = startingPos;
+    //     ImVec2 newPos = currPos;
+    //     if (layoutNode->_level != -1) {
+    //         if (layoutNode->_level < level) {
+    //             // Remove the old instance of the node from the map
+    //             int levelNum = 0;
+    //             int removeNum = -1;
+    //             for (UiNodePtr levelNode : _levelMap[layoutNode->_level]) {
+    //                 if (levelNode->getName() == layoutNode->getName()) {
+    //                     removeNum = levelNum;
+    //                 }
+    //                 levelNum++;
+    //             }
+    //             if (removeNum > -1) {
+    //                 _levelMap[layoutNode->_level].erase(
+    //                     _levelMap[layoutNode->_level].begin() + removeNum);
+    //             }
 
-                layoutNode->_level = level;
-            }
-        }
-        else {
-            layoutNode->_level = level;
-        }
+    //            layoutNode->_level = level;
+    //        }
+    //    }
+    //    else {
+    //        layoutNode->_level = level;
+    //    }
 
-        auto it = _levelMap.find(layoutNode->_level);
-        if (it != _levelMap.end()) {
-            // Key already exists so add to it
-            bool nodeFound = false;
-            for (UiNodePtr node : it->second) {
-                if (node && node->getName() == layoutNode->getName()) {
-                    nodeFound = true;
-                    break;
-                }
-            }
-            if (!nodeFound) {
-                _levelMap[layoutNode->_level].push_back(layoutNode);
-            }
-        }
-        else {
-            // Insert new vector into key
-            std::vector<UiNodePtr> newValue = { layoutNode };
-            _levelMap.insert({ layoutNode->_level, newValue });
-        }
-        std::vector<UiPinPtr> pins = layoutNode->inputPins;
-        if (initialLayout) {
-            // Check number of inputs that are connected to node
-            if (layoutNode->getInputConnect() > 0) {
-                // Not top of node graph so stop recursion
-                if (pins.size() != 0 && layoutNode->getInput() == nullptr) {
-                    for (size_t i = 0; i < pins.size(); i++) {
-                        // Get upstream node for all inputs
-                        newPos = startingPos;
-                        UiNodePtr nextNode =
-                            layoutNode->getConnectedNode(pins[i]->_name);
-                        if (nextNode) {
-                            startingPos.x =
-                                (1200.f - ((layoutNode->_level) * 250)) *
-                                _fontScale;
-                            ed::SetNodePosition(layoutNode->ID, startingPos);
-                            layoutNode->setPos(ImVec2(startingPos));
+    //    auto it = _levelMap.find(layoutNode->_level);
+    //    if (it != _levelMap.end()) {
+    //        // Key already exists so add to it
+    //        bool nodeFound = false;
+    //        for (UiNodePtr node : it->second) {
+    //            if (node && node->getName() == layoutNode->getName()) {
+    //                nodeFound = true;
+    //                break;
+    //            }
+    //        }
+    //        if (!nodeFound) {
+    //            _levelMap[layoutNode->_level].push_back(layoutNode);
+    //        }
+    //    }
+    //    else {
+    //        // Insert new vector into key
+    //        std::vector<UiNodePtr> newValue = { layoutNode };
+    //        _levelMap.insert({ layoutNode->_level, newValue });
+    //    }
+    //    std::vector<UiPinPtr> pins = layoutNode->inputPins;
+    //    if (initialLayout) {
+    //        // Check number of inputs that are connected to node
+    //        if (layoutNode->getInputConnect() > 0) {
+    //            // Not top of node graph so stop recursion
+    //            if (pins.size() != 0 && layoutNode->getInput() == nullptr) {
+    //                for (size_t i = 0; i < pins.size(); i++) {
+    //                    // Get upstream node for all inputs
+    //                    newPos = startingPos;
+    //                    UiNodePtr nextNode =
+    //                        layoutNode->getConnectedNode(pins[i]->_name);
+    //                    if (nextNode) {
+    //                        startingPos.x =
+    //                            (1200.f - ((layoutNode->_level) * 250)) *
+    //                            _fontScale;
+    //                        ed::SetNodePosition(layoutNode->ID, startingPos);
+    //                        layoutNode->setPos(ImVec2(startingPos));
 
-                            // Call layout position on upstream node with newPos
-                            // to the left of current node
-                            layoutPosition(
-                                nextNode,
-                                ImVec2(newPos.x, startingPos.y),
-                                initialLayout,
-                                layoutNode->_level + 1);
-                        }
-                    }
-                }
-            }
-            else {
-                startingPos.x =
-                    (1200.f - ((layoutNode->_level) * 250)) * _fontScale;
-                layoutNode->setPos(ImVec2(startingPos));
+    //                        // Call layout position on upstream node with
+    //                        newPos
+    //                        // to the left of current node
+    //                        layoutPosition(
+    //                            nextNode,
+    //                            ImVec2(newPos.x, startingPos.y),
+    //                            initialLayout,
+    //                            layoutNode->_level + 1);
+    //                    }
+    //                }
+    //            }
+    //        }
+    //        else {
+    //            startingPos.x =
+    //                (1200.f - ((layoutNode->_level) * 250)) * _fontScale;
+    //            layoutNode->setPos(ImVec2(startingPos));
 
-                // Set current node position
-                ed::SetNodePosition(layoutNode->ID, ImVec2(startingPos));
-            }
-        }
-        return ImVec2(0.f, 0.f);
-    }
+    //            // Set current node position
+    //            ed::SetNodePosition(layoutNode->ID, ImVec2(startingPos));
+    //        }
+    //    }
+    //    return ImVec2(0.f, 0.f);
+    //}
+    return {};
 }
 
 void Graph::layoutInputs()
 {
-    // Layout inputs after other nodes so that they can be all in a line on far
-    // left side of node graph
-    if (_levelMap.begin() != _levelMap.end()) {
-        int levelCount = -1;
-        for (std::pair<int, std::vector<UiNodePtr>> nodes : _levelMap) {
-            ++levelCount;
-        }
-        ImVec2 startingPos =
-            ed::GetNodePosition(_levelMap[levelCount].back()->ID);
-        startingPos.y +=
-            ed::GetNodeSize(_levelMap[levelCount].back()->ID).y + 20;
+    //// Layout inputs after other nodes so that they can be all in a line on
+    /// far / left side of node graph
+    // if (_levelMap.begin() != _levelMap.end()) {
+    //     int levelCount = -1;
+    //     for (std::pair<int, std::vector<UiNodePtr>> nodes : _levelMap) {
+    //         ++levelCount;
+    //     }
+    //     ImVec2 startingPos =
+    //         ed::GetNodePosition(_levelMap[levelCount].back()->ID);
+    //     startingPos.y +=
+    //         ed::GetNodeSize(_levelMap[levelCount].back()->ID).y + 20;
 
-        for (UiNodePtr uiNode : _graphNodes) {
-            if (uiNode->getOutputConnections().size() == 0 &&
-                (uiNode->getInput() != nullptr)) {
-                ed::SetNodePosition(uiNode->ID, ImVec2(startingPos));
-                startingPos.y += ed::GetNodeSize(uiNode->ID).y;
-                startingPos.y += 23;
-            }
-            else if (
-                uiNode->getOutputConnections().size() == 0 &&
-                (uiNode->getNode() != nullptr)) {
-                if (uiNode->getNode()->getCategory() !=
-                    mx::SURFACE_MATERIAL_NODE_STRING) {
-                    layoutPosition(uiNode, ImVec2(1200, 750), _initial, 0);
-                }
-            }
-        }
-    }
+    //    for (UiNodePtr uiNode : _graphNodes) {
+    //        if (uiNode->getOutputConnections().size() == 0 &&
+    //            (uiNode->getInput() != nullptr)) {
+    //            ed::SetNodePosition(uiNode->ID, ImVec2(startingPos));
+    //            startingPos.y += ed::GetNodeSize(uiNode->ID).y;
+    //            startingPos.y += 23;
+    //        }
+    //        else if (
+    //            uiNode->getOutputConnections().size() == 0 &&
+    //            (uiNode->getNode() != nullptr)) {
+    //            if (uiNode->getNode()->getCategory() !=
+    //                mx::SURFACE_MATERIAL_NODE_STRING) {
+    //                layoutPosition(uiNode, ImVec2(1200, 750), _initial, 0);
+    //            }
+    //        }
+    //    }
+    //}
 }
 
 void Graph::setPinColor()
@@ -606,243 +616,243 @@ void Graph::setConstant(
     mx::InputPtr& input,
     const mx::UIProperties& uiProperties)
 {
-    ImGui::PushItemWidth(-1);
+    // ImGui::PushItemWidth(-1);
 
-    mx::ValuePtr minVal = uiProperties.uiMin;
-    mx::ValuePtr maxVal = uiProperties.uiMax;
+    // mx::ValuePtr minVal = uiProperties.uiMin;
+    // mx::ValuePtr maxVal = uiProperties.uiMax;
 
-    // If input is a float set the float slider UI to the value
-    if (input->getType() == "float") {
-        mx::ValuePtr val = input->getValue();
+    //// If input is a float set the float slider UI to the value
+    // if (input->getType() == "float") {
+    //     mx::ValuePtr val = input->getValue();
 
-        if (val && val->isA<float>()) {
-            // Update the value to the default for new nodes
-            float prev, temp;
-            prev = temp = val->asA<float>();
-            float min = minVal ? minVal->asA<float>() : 0.f;
-            float max = maxVal ? maxVal->asA<float>() : 100.f;
-            float speed = (max - min) / 1000.0f;
-            ImGui::DragFloat("##hidelabel", &temp, speed, min, max);
+    //    if (val && val->isA<float>()) {
+    //        // Update the value to the default for new nodes
+    //        float prev, temp;
+    //        prev = temp = val->asA<float>();
+    //        float min = minVal ? minVal->asA<float>() : 0.f;
+    //        float max = maxVal ? maxVal->asA<float>() : 100.f;
+    //        float speed = (max - min) / 1000.0f;
+    //        ImGui::DragFloat("##hidelabel", &temp, speed, min, max);
 
-            // Set input value and update materials if different from previous
-            // value
-            if (prev != temp) {
-                addNodeInput(_currUiNode, input);
-                input->setValue(temp, input->getType());
-                updateMaterials(input, input->getValue());
-            }
-        }
-    }
-    else if (input->getType() == "integer") {
-        mx::ValuePtr val = input->getValue();
-        if (val && val->isA<int>()) {
-            int prev, temp;
-            prev = temp = val->asA<int>();
-            int min = minVal ? minVal->asA<int>() : 0;
-            int max = maxVal ? maxVal->asA<int>() : 100;
-            float speed = (max - min) / 100.0f;
-            ImGui::DragInt("##hidelabel", &temp, speed, min, max);
+    //        // Set input value and update materials if different from previous
+    //        // value
+    //        if (prev != temp) {
+    //            addNodeInput(_currUiNode, input);
+    //            input->setValue(temp, input->getType());
+    //            updateMaterials(input, input->getValue());
+    //        }
+    //    }
+    //}
+    // else if (input->getType() == "integer") {
+    //    mx::ValuePtr val = input->getValue();
+    //    if (val && val->isA<int>()) {
+    //        int prev, temp;
+    //        prev = temp = val->asA<int>();
+    //        int min = minVal ? minVal->asA<int>() : 0;
+    //        int max = maxVal ? maxVal->asA<int>() : 100;
+    //        float speed = (max - min) / 100.0f;
+    //        ImGui::DragInt("##hidelabel", &temp, speed, min, max);
 
-            // Set input value and update materials if different from previous
-            // value
-            if (prev != temp) {
-                addNodeInput(_currUiNode, input);
-                input->setValue(temp, input->getType());
-                updateMaterials(input, input->getValue());
-            }
-        }
-    }
-    else if (input->getType() == "color3") {
-        mx::ValuePtr val = input->getValue();
-        if (val && val->isA<mx::Color3>()) {
-            mx::Color3 prev, temp;
-            prev = temp = val->asA<mx::Color3>();
-            float min = minVal ? minVal->asA<mx::Color3>()[0] : 0.f;
-            float max = maxVal ? maxVal->asA<mx::Color3>()[0] : 100.f;
-            float speed = (max - min) / 1000.0f;
-            ImGui::PushItemWidth(-100);
-            ImGui::DragFloat3("##hidelabel", &temp[0], speed, min, max);
-            ImGui::PopItemWidth();
-            ImGui::SameLine();
-            ImGui::ColorEdit3(
-                "##color", &temp[0], ImGuiColorEditFlags_NoInputs);
+    //        // Set input value and update materials if different from previous
+    //        // value
+    //        if (prev != temp) {
+    //            addNodeInput(_currUiNode, input);
+    //            input->setValue(temp, input->getType());
+    //            updateMaterials(input, input->getValue());
+    //        }
+    //    }
+    //}
+    // else if (input->getType() == "color3") {
+    //    mx::ValuePtr val = input->getValue();
+    //    if (val && val->isA<mx::Color3>()) {
+    //        mx::Color3 prev, temp;
+    //        prev = temp = val->asA<mx::Color3>();
+    //        float min = minVal ? minVal->asA<mx::Color3>()[0] : 0.f;
+    //        float max = maxVal ? maxVal->asA<mx::Color3>()[0] : 100.f;
+    //        float speed = (max - min) / 1000.0f;
+    //        ImGui::PushItemWidth(-100);
+    //        ImGui::DragFloat3("##hidelabel", &temp[0], speed, min, max);
+    //        ImGui::PopItemWidth();
+    //        ImGui::SameLine();
+    //        ImGui::ColorEdit3(
+    //            "##color", &temp[0], ImGuiColorEditFlags_NoInputs);
 
-            // Set input value and update materials if different from previous
-            // value
-            if (prev != temp) {
-                addNodeInput(_currUiNode, input);
-                input->setValue(temp, input->getType());
-                updateMaterials(input, input->getValue());
-            }
-        }
-    }
-    else if (input->getType() == "color4") {
-        mx::ValuePtr val = input->getValue();
-        if (val && val->isA<mx::Color4>()) {
-            mx::Color4 prev, temp;
-            prev = temp = val->asA<mx::Color4>();
-            float min = minVal ? minVal->asA<mx::Color4>()[0] : 0.f;
-            float max = maxVal ? maxVal->asA<mx::Color4>()[0] : 100.f;
-            float speed = (max - min) / 1000.0f;
-            ImGui::PushItemWidth(-100);
-            ImGui::DragFloat4("##hidelabel", &temp[0], speed, min, max);
-            ImGui::PopItemWidth();
-            ImGui::SameLine();
+    //        // Set input value and update materials if different from previous
+    //        // value
+    //        if (prev != temp) {
+    //            addNodeInput(_currUiNode, input);
+    //            input->setValue(temp, input->getType());
+    //            updateMaterials(input, input->getValue());
+    //        }
+    //    }
+    //}
+    // else if (input->getType() == "color4") {
+    //    mx::ValuePtr val = input->getValue();
+    //    if (val && val->isA<mx::Color4>()) {
+    //        mx::Color4 prev, temp;
+    //        prev = temp = val->asA<mx::Color4>();
+    //        float min = minVal ? minVal->asA<mx::Color4>()[0] : 0.f;
+    //        float max = maxVal ? maxVal->asA<mx::Color4>()[0] : 100.f;
+    //        float speed = (max - min) / 1000.0f;
+    //        ImGui::PushItemWidth(-100);
+    //        ImGui::DragFloat4("##hidelabel", &temp[0], speed, min, max);
+    //        ImGui::PopItemWidth();
+    //        ImGui::SameLine();
 
-            // Color edit for the color picker to the right of the color floats
-            ImGui::ColorEdit4(
-                "##color", &temp[0], ImGuiColorEditFlags_NoInputs);
+    //        // Color edit for the color picker to the right of the color
+    //        floats ImGui::ColorEdit4(
+    //            "##color", &temp[0], ImGuiColorEditFlags_NoInputs);
 
-            // Set input value and update materials if different from previous
-            // value
-            if (temp != prev) {
-                addNodeInput(_currUiNode, input);
-                input->setValue(temp, input->getType());
-                updateMaterials(input, input->getValue());
-            }
-        }
-    }
-    else if (input->getType() == "vector2") {
-        mx::ValuePtr val = input->getValue();
-        if (val && val->isA<mx::Vector2>()) {
-            mx::Vector2 prev, temp;
-            prev = temp = val->asA<mx::Vector2>();
-            float min = minVal ? minVal->asA<mx::Vector2>()[0] : 0.f;
-            float max = maxVal ? maxVal->asA<mx::Vector2>()[0] : 100.f;
-            float speed = (max - min) / 1000.0f;
-            ImGui::DragFloat2("##hidelabel", &temp[0], speed, min, max);
+    //        // Set input value and update materials if different from previous
+    //        // value
+    //        if (temp != prev) {
+    //            addNodeInput(_currUiNode, input);
+    //            input->setValue(temp, input->getType());
+    //            updateMaterials(input, input->getValue());
+    //        }
+    //    }
+    //}
+    // else if (input->getType() == "vector2") {
+    //    mx::ValuePtr val = input->getValue();
+    //    if (val && val->isA<mx::Vector2>()) {
+    //        mx::Vector2 prev, temp;
+    //        prev = temp = val->asA<mx::Vector2>();
+    //        float min = minVal ? minVal->asA<mx::Vector2>()[0] : 0.f;
+    //        float max = maxVal ? maxVal->asA<mx::Vector2>()[0] : 100.f;
+    //        float speed = (max - min) / 1000.0f;
+    //        ImGui::DragFloat2("##hidelabel", &temp[0], speed, min, max);
 
-            // Set input value and update materials if different from previous
-            // value
-            if (prev != temp) {
-                addNodeInput(_currUiNode, input);
-                input->setValue(temp, input->getType());
-                updateMaterials(input, input->getValue());
-            }
-        }
-    }
-    else if (input->getType() == "vector3") {
-        mx::ValuePtr val = input->getValue();
-        if (val && val->isA<mx::Vector3>()) {
-            mx::Vector3 prev, temp;
-            prev = temp = val->asA<mx::Vector3>();
-            float min = minVal ? minVal->asA<mx::Vector3>()[0] : 0.f;
-            float max = maxVal ? maxVal->asA<mx::Vector3>()[0] : 100.f;
-            float speed = (max - min) / 1000.0f;
-            ImGui::DragFloat3("##hidelabel", &temp[0], speed, min, max);
+    //        // Set input value and update materials if different from previous
+    //        // value
+    //        if (prev != temp) {
+    //            addNodeInput(_currUiNode, input);
+    //            input->setValue(temp, input->getType());
+    //            updateMaterials(input, input->getValue());
+    //        }
+    //    }
+    //}
+    // else if (input->getType() == "vector3") {
+    //    mx::ValuePtr val = input->getValue();
+    //    if (val && val->isA<mx::Vector3>()) {
+    //        mx::Vector3 prev, temp;
+    //        prev = temp = val->asA<mx::Vector3>();
+    //        float min = minVal ? minVal->asA<mx::Vector3>()[0] : 0.f;
+    //        float max = maxVal ? maxVal->asA<mx::Vector3>()[0] : 100.f;
+    //        float speed = (max - min) / 1000.0f;
+    //        ImGui::DragFloat3("##hidelabel", &temp[0], speed, min, max);
 
-            // Set input value and update materials if different from previous
-            // value
-            if (prev != temp) {
-                addNodeInput(_currUiNode, input);
-                input->setValue(temp, input->getType());
-                updateMaterials(input, input->getValue());
-            }
-        }
-    }
-    else if (input->getType() == "vector4") {
-        mx::ValuePtr val = input->getValue();
-        if (val && val->isA<mx::Vector4>()) {
-            mx::Vector4 prev, temp;
-            prev = temp = val->asA<mx::Vector4>();
-            float min = minVal ? minVal->asA<mx::Vector4>()[0] : 0.f;
-            float max = maxVal ? maxVal->asA<mx::Vector4>()[0] : 100.f;
-            float speed = (max - min) / 1000.0f;
-            ImGui::DragFloat4("##hidelabel", &temp[0], speed, min, max);
+    //        // Set input value and update materials if different from previous
+    //        // value
+    //        if (prev != temp) {
+    //            addNodeInput(_currUiNode, input);
+    //            input->setValue(temp, input->getType());
+    //            updateMaterials(input, input->getValue());
+    //        }
+    //    }
+    //}
+    // else if (input->getType() == "vector4") {
+    //    mx::ValuePtr val = input->getValue();
+    //    if (val && val->isA<mx::Vector4>()) {
+    //        mx::Vector4 prev, temp;
+    //        prev = temp = val->asA<mx::Vector4>();
+    //        float min = minVal ? minVal->asA<mx::Vector4>()[0] : 0.f;
+    //        float max = maxVal ? maxVal->asA<mx::Vector4>()[0] : 100.f;
+    //        float speed = (max - min) / 1000.0f;
+    //        ImGui::DragFloat4("##hidelabel", &temp[0], speed, min, max);
 
-            // Set input value and update materials if different from previous
-            // value
-            if (prev != temp) {
-                addNodeInput(_currUiNode, input);
-                input->setValue(temp, input->getType());
-                updateMaterials(input, input->getValue());
-            }
-        }
-    }
-    else if (input->getType() == "string") {
-        mx::ValuePtr val = input->getValue();
-        if (val && val->isA<std::string>()) {
-            std::string prev, temp;
-            prev = temp = val->asA<std::string>();
-            ImGui::InputText("##constant", &temp);
+    //        // Set input value and update materials if different from previous
+    //        // value
+    //        if (prev != temp) {
+    //            addNodeInput(_currUiNode, input);
+    //            input->setValue(temp, input->getType());
+    //            updateMaterials(input, input->getValue());
+    //        }
+    //    }
+    //}
+    // else if (input->getType() == "string") {
+    //    mx::ValuePtr val = input->getValue();
+    //    if (val && val->isA<std::string>()) {
+    //        std::string prev, temp;
+    //        prev = temp = val->asA<std::string>();
+    //        ImGui::InputText("##constant", &temp);
 
-            // Set input value and update materials if different from previous
-            // value
-            if (prev != temp) {
-                addNodeInput(_currUiNode, input);
-                input->setValue(temp, input->getType());
-                updateMaterials();
-            }
-        }
-    }
-    else if (input->getType() == "filename") {
-        mx::ValuePtr val = input->getValue();
+    //        // Set input value and update materials if different from previous
+    //        // value
+    //        if (prev != temp) {
+    //            addNodeInput(_currUiNode, input);
+    //            input->setValue(temp, input->getType());
+    //            updateMaterials();
+    //        }
+    //    }
+    //}
+    // else if (input->getType() == "filename") {
+    //    mx::ValuePtr val = input->getValue();
 
-        if (val && val->isA<std::string>()) {
-            std::string prev, temp;
-            prev = temp = val->asA<std::string>();
-            ImGui::PushStyleColor(
-                ImGuiCol_Button, ImVec4(.15f, .15f, .15f, 1.0f));
-            ImGui::PushStyleColor(
-                ImGuiCol_ButtonHovered, ImVec4(.2f, .4f, .6f, 1.0f));
+    //    if (val && val->isA<std::string>()) {
+    //        std::string prev, temp;
+    //        prev = temp = val->asA<std::string>();
+    //        ImGui::PushStyleColor(
+    //            ImGuiCol_Button, ImVec4(.15f, .15f, .15f, 1.0f));
+    //        ImGui::PushStyleColor(
+    //            ImGuiCol_ButtonHovered, ImVec4(.2f, .4f, .6f, 1.0f));
 
-            // Browser button to select new file
-            ImGui::PushItemWidth(-100);
-            if (ImGui::Button("Browse")) {
-                _fileDialogImageInputName = input->getName();
-                _fileDialogImage.setTitle("Node Input Dialog");
-                _fileDialogImage.open();
-                _fileDialogImage.setTypeFilters(_imageFilter);
-            }
-            ImGui::PopItemWidth();
-            ImGui::SameLine();
-            ImGui::Text("%s", mx::FilePath(temp).getBaseName().c_str());
-            ImGui::PopStyleColor();
-            ImGui::PopStyleColor();
+    //        // Browser button to select new file
+    //        ImGui::PushItemWidth(-100);
+    //        if (ImGui::Button("Browse")) {
+    //            _fileDialogImageInputName = input->getName();
+    //            _fileDialogImage.setTitle("Node Input Dialog");
+    //            _fileDialogImage.open();
+    //            _fileDialogImage.setTypeFilters(_imageFilter);
+    //        }
+    //        ImGui::PopItemWidth();
+    //        ImGui::SameLine();
+    //        ImGui::Text("%s", mx::FilePath(temp).getBaseName().c_str());
+    //        ImGui::PopStyleColor();
+    //        ImGui::PopStyleColor();
 
-            // Create and load document from selected file
-            if (_fileDialogImage.hasSelected() &&
-                _fileDialogImageInputName == input->getName()) {
-                // Set the new filename to the complete file path
-                mx::FilePath fileName = _fileDialogImage.getSelected();
-                temp = fileName;
+    //        // Create and load document from selected file
+    //        if (_fileDialogImage.hasSelected() &&
+    //            _fileDialogImageInputName == input->getName()) {
+    //            // Set the new filename to the complete file path
+    //            mx::FilePath fileName = _fileDialogImage.getSelected();
+    //            temp = fileName;
 
-                // Need to clear the file prefix so that it can find the new
-                // file
-                input->setFilePrefix(mx::EMPTY_STRING);
-                _fileDialogImage.clearSelected();
-                _fileDialogImage.setTypeFilters(std::vector<std::string>());
-                _fileDialogImageInputName = "";
-            }
+    //            // Need to clear the file prefix so that it can find the new
+    //            // file
+    //            input->setFilePrefix(mx::EMPTY_STRING);
+    //            _fileDialogImage.clearSelected();
+    //            _fileDialogImage.setTypeFilters(std::vector<std::string>());
+    //            _fileDialogImageInputName = "";
+    //        }
 
-            // Set input value and update materials if different from previous
-            // value
-            if (prev != temp) {
-                addNodeInput(_currUiNode, input);
-                input->setValueString(temp);
-                input->setValue(temp, input->getType());
-                updateMaterials();
-            }
-        }
-    }
-    else if (input->getType() == "boolean") {
-        mx::ValuePtr val = input->getValue();
-        if (val && val->isA<bool>()) {
-            bool prev, temp;
-            prev = temp = val->asA<bool>();
-            ImGui::Checkbox("", &temp);
+    //        // Set input value and update materials if different from previous
+    //        // value
+    //        if (prev != temp) {
+    //            addNodeInput(_currUiNode, input);
+    //            input->setValueString(temp);
+    //            input->setValue(temp, input->getType());
+    //            updateMaterials();
+    //        }
+    //    }
+    //}
+    // else if (input->getType() == "boolean") {
+    //    mx::ValuePtr val = input->getValue();
+    //    if (val && val->isA<bool>()) {
+    //        bool prev, temp;
+    //        prev = temp = val->asA<bool>();
+    //        ImGui::Checkbox("", &temp);
 
-            // Set input value and update materials if different from previous
-            // value
-            if (prev != temp) {
-                addNodeInput(_currUiNode, input);
-                input->setValue(temp, input->getType());
-                updateMaterials(input, input->getValue());
-            }
-        }
-    }
+    //        // Set input value and update materials if different from previous
+    //        // value
+    //        if (prev != temp) {
+    //            addNodeInput(_currUiNode, input);
+    //            input->setValue(temp, input->getType());
+    //            updateMaterials(input, input->getValue());
+    //        }
+    //    }
+    //}
 
-    ImGui::PopItemWidth();
+    // ImGui::PopItemWidth();
 }
 
 void Graph::createNodeUIList(mx::DocumentPtr doc)
@@ -925,641 +935,652 @@ void Graph::createEdge(
     UiNodePtr downNode,
     mx::InputPtr connectingInput)
 {
-    if (downNode->getOutput()) {
-        // Create edges for the output nodes
-        UiEdge newEdge = UiEdge(upNode, downNode, nullptr);
-        if (!edgeExists(newEdge)) {
-            downNode->edges.push_back(newEdge);
-            downNode->setInputNodeNum(1);
-            upNode->setOutputConnection(downNode);
-            _currEdge.push_back(newEdge);
-        }
-    }
-    else if (connectingInput) {
-        UiEdge newEdge = UiEdge(upNode, downNode, connectingInput);
-        downNode->edges.push_back(newEdge);
-        downNode->setInputNodeNum(1);
-        upNode->setOutputConnection(downNode);
-        _currEdge.push_back(newEdge);
-    }
+    // if (downNode->getOutput()) {
+    //     // Create edges for the output nodes
+    //     UiEdge newEdge = UiEdge(upNode, downNode, nullptr);
+    //     if (!edgeExists(newEdge)) {
+    //         downNode->edges.push_back(newEdge);
+    //         downNode->setInputNodeNum(1);
+    //         upNode->setOutputConnection(downNode);
+    //         _currEdge.push_back(newEdge);
+    //     }
+    // }
+    // else if (connectingInput) {
+    //     UiEdge newEdge = UiEdge(upNode, downNode, connectingInput);
+    //     downNode->edges.push_back(newEdge);
+    //     downNode->setInputNodeNum(1);
+    //     upNode->setOutputConnection(downNode);
+    //     _currEdge.push_back(newEdge);
+    // }
 }
 
 void Graph::copyUiNode(UiNodePtr node)
 {
-    UiNodePtr copyNode =
-        std::make_shared<UiNode>(mx::EMPTY_STRING, int(_graphTotalSize + 1));
-    ++_graphTotalSize;
-    if (node->getElement()) {
-        std::string newName =
-            _currGraphElem->createValidChildName(node->getName());
-        if (node->getNode()) {
-            mx::NodePtr mxNode;
-            mxNode =
-                _currGraphElem->addNodeInstance(node->getNode()->getNodeDef());
-            mxNode->copyContentFrom(node->getNode());
-            mxNode->setName(newName);
-            copyNode->setNode(mxNode);
-        }
-        else if (node->getInput()) {
-            mx::InputPtr mxInput;
-            mxInput = _currGraphElem->addInput(newName);
-            mxInput->copyContentFrom(node->getInput());
-            copyNode->setInput(mxInput);
-        }
-        else if (node->getOutput()) {
-            mx::OutputPtr mxOutput;
-            mxOutput = _currGraphElem->addOutput(newName);
-            mxOutput->copyContentFrom(node->getOutput());
-            mxOutput->setName(newName);
-            copyNode->setOutput(mxOutput);
-        }
-        copyNode->getElement()->setName(newName);
-        copyNode->setName(newName);
-    }
-    else if (node->getNodeGraph()) {
-        _graphDoc->addNodeGraph();
-        std::string nodeGraphName =
-            _graphDoc->getNodeGraphs().back()->getName();
-        copyNode->setNodeGraph(_graphDoc->getNodeGraphs().back());
-        copyNode->setName(nodeGraphName);
-        copyNodeGraph(node, copyNode);
-    }
-    setUiNodeInfo(copyNode, node->getType(), node->getCategory());
-    _copiedNodes[node] = copyNode;
-    _graphNodes.push_back(copyNode);
+    /*   UiNodePtr copyNode =
+           std::make_shared<UiNode>(mx::EMPTY_STRING, int(_graphTotalSize + 1));
+       ++_graphTotalSize;
+       if (node->getElement()) {
+           std::string newName =
+               _currGraphElem->createValidChildName(node->getName());
+           if (node->getNode()) {
+               mx::NodePtr mxNode;
+               mxNode =
+                   _currGraphElem->addNodeInstance(node->getNode()->getNodeDef());
+               mxNode->copyContentFrom(node->getNode());
+               mxNode->setName(newName);
+               copyNode->setNode(mxNode);
+           }
+           else if (node->getInput()) {
+               mx::InputPtr mxInput;
+               mxInput = _currGraphElem->addInput(newName);
+               mxInput->copyContentFrom(node->getInput());
+               copyNode->setInput(mxInput);
+           }
+           else if (node->getOutput()) {
+               mx::OutputPtr mxOutput;
+               mxOutput = _currGraphElem->addOutput(newName);
+               mxOutput->copyContentFrom(node->getOutput());
+               mxOutput->setName(newName);
+               copyNode->setOutput(mxOutput);
+           }
+           copyNode->getElement()->setName(newName);
+           copyNode->setName(newName);
+       }
+       else if (node->getNodeGraph()) {
+           _graphDoc->addNodeGraph();
+           std::string nodeGraphName =
+               _graphDoc->getNodeGraphs().back()->getName();
+           copyNode->setNodeGraph(_graphDoc->getNodeGraphs().back());
+           copyNode->setName(nodeGraphName);
+           copyNodeGraph(node, copyNode);
+       }
+       setUiNodeInfo(copyNode, node->getType(), node->getCategory());
+       _copiedNodes[node] = copyNode;
+       _graphNodes.push_back(copyNode);*/
 }
 
 void Graph::copyNodeGraph(UiNodePtr origGraph, UiNodePtr copyGraph)
 {
-    copyGraph->getNodeGraph()->copyContentFrom(origGraph->getNodeGraph());
-    std::vector<mx::InputPtr> inputs =
-        copyGraph->getNodeGraph()->getActiveInputs();
-    for (mx::InputPtr input : inputs) {
-        std::string newName = _graphDoc->createValidChildName(input->getName());
-        input->setName(newName);
-    }
+    // copyGraph->getNodeGraph()->copyContentFrom(origGraph->getNodeGraph());
+    // std::vector<mx::InputPtr> inputs =
+    //     copyGraph->getNodeGraph()->getActiveInputs();
+    // for (mx::InputPtr input : inputs) {
+    //     std::string newName =
+    //     _graphDoc->createValidChildName(input->getName());
+    //     input->setName(newName);
+    // }
 }
 
 void Graph::copyInputs()
 {
-    for (std::map<UiNodePtr, UiNodePtr>::iterator iter = _copiedNodes.begin();
-         iter != _copiedNodes.end();
-         ++iter) {
-        int count = 0;
-        UiNodePtr origNode = iter->first;
-        UiNodePtr copyNode = iter->second;
-        for (UiPinPtr pin : origNode->inputPins) {
-            if (origNode->getConnectedNode(pin->_name) && !_ctrlClick) {
-                // If original node is connected check if connect node is in
-                // copied nodes
-                if (_copiedNodes.find(origNode->getConnectedNode(pin->_name)) !=
-                    _copiedNodes.end()) {
-                    // Set copy node connected to the value at this key
-                    createEdge(
-                        _copiedNodes[origNode->getConnectedNode(pin->_name)],
-                        copyNode,
-                        copyNode->inputPins[count]->_input);
-                    UiNodePtr upNode =
-                        _copiedNodes[origNode->getConnectedNode(pin->_name)];
-                    if (copyNode->getNode() || copyNode->getNodeGraph()) {
-                        mx::InputPtr connectingInput = nullptr;
-                        copyNode->inputPins[count]->_input->copyContentFrom(
-                            pin->_input);
+    // for (std::map<UiNodePtr, UiNodePtr>::iterator iter =
+    // _copiedNodes.begin();
+    //      iter != _copiedNodes.end();
+    //      ++iter) {
+    //     int count = 0;
+    //     UiNodePtr origNode = iter->first;
+    //     UiNodePtr copyNode = iter->second;
+    //     for (UiPinPtr pin : origNode->inputPins) {
+    //         if (origNode->getConnectedNode(pin->_name) && !_ctrlClick) {
+    //             // If original node is connected check if connect node is in
+    //             // copied nodes
+    //             if (_copiedNodes.find(origNode->getConnectedNode(pin->_name))
+    //             !=
+    //                 _copiedNodes.end()) {
+    //                 // Set copy node connected to the value at this key
+    //                 createEdge(
+    //                     _copiedNodes[origNode->getConnectedNode(pin->_name)],
+    //                     copyNode,
+    //                     copyNode->inputPins[count]->_input);
+    //                 UiNodePtr upNode =
+    //                     _copiedNodes[origNode->getConnectedNode(pin->_name)];
+    //                 if (copyNode->getNode() || copyNode->getNodeGraph()) {
+    //                     mx::InputPtr connectingInput = nullptr;
+    //                     copyNode->inputPins[count]->_input->copyContentFrom(
+    //                         pin->_input);
 
-                        // Update value to be empty
-                        if (copyNode->getNode() &&
-                            copyNode->getNode()->getType() ==
-                                mx::SURFACE_SHADER_TYPE_STRING) {
-                            if (upNode->getOutput()) {
-                                copyNode->inputPins[count]
-                                    ->_input->setConnectedOutput(
-                                        upNode->getOutput());
-                            }
-                            else if (upNode->getInput()) {
-                                copyNode->inputPins[count]
-                                    ->_input->setConnectedInterfaceName(
-                                        upNode->getName());
-                            }
-                            else {
-                                if (upNode->getNodeGraph()) {
-                                    SocketID outputId = getOutputPin(
-                                        copyNode,
-                                        upNode,
-                                        copyNode->inputPins[count]);
-                                    for (UiPinPtr outPin : upNode->outputPins) {
-                                        if (outPin->_pinId == outputId) {
-                                            mx::OutputPtr outputs =
-                                                upNode->getNodeGraph()
-                                                    ->getOutput(outPin->_name);
-                                            copyNode->inputPins[count]
-                                                ->_input->setConnectedOutput(
-                                                    outputs);
-                                        }
-                                    }
-                                }
-                                else {
-                                    copyNode->inputPins[count]
-                                        ->_input->setConnectedNode(
-                                            upNode->getNode());
-                                }
-                            }
-                        }
-                        else {
-                            if (upNode->getInput()) {
-                                copyNode->inputPins[count]
-                                    ->_input->setConnectedInterfaceName(
-                                        upNode->getName());
-                            }
-                            else {
-                                copyNode->inputPins[count]
-                                    ->_input->setConnectedNode(
-                                        upNode->getNode());
-                            }
-                        }
+    //                    // Update value to be empty
+    //                    if (copyNode->getNode() &&
+    //                        copyNode->getNode()->getType() ==
+    //                            mx::SURFACE_SHADER_TYPE_STRING) {
+    //                        if (upNode->getOutput()) {
+    //                            copyNode->inputPins[count]
+    //                                ->_input->setConnectedOutput(
+    //                                    upNode->getOutput());
+    //                        }
+    //                        else if (upNode->getInput()) {
+    //                            copyNode->inputPins[count]
+    //                                ->_input->setConnectedInterfaceName(
+    //                                    upNode->getName());
+    //                        }
+    //                        else {
+    //                            if (upNode->getNodeGraph()) {
+    //                                SocketID outputId = getOutputPin(
+    //                                    copyNode,
+    //                                    upNode,
+    //                                    copyNode->inputPins[count]);
+    //                                for (UiPinPtr outPin : upNode->outputPins)
+    //                                {
+    //                                    if (outPin->_pinId == outputId) {
+    //                                        mx::OutputPtr outputs =
+    //                                            upNode->getNodeGraph()
+    //                                                ->getOutput(outPin->_name);
+    //                                        copyNode->inputPins[count]
+    //                                            ->_input->setConnectedOutput(
+    //                                                outputs);
+    //                                    }
+    //                                }
+    //                            }
+    //                            else {
+    //                                copyNode->inputPins[count]
+    //                                    ->_input->setConnectedNode(
+    //                                        upNode->getNode());
+    //                            }
+    //                        }
+    //                    }
+    //                    else {
+    //                        if (upNode->getInput()) {
+    //                            copyNode->inputPins[count]
+    //                                ->_input->setConnectedInterfaceName(
+    //                                    upNode->getName());
+    //                        }
+    //                        else {
+    //                            copyNode->inputPins[count]
+    //                                ->_input->setConnectedNode(
+    //                                    upNode->getNode());
+    //                        }
+    //                    }
 
-                        copyNode->inputPins[count]->setConnected(true);
-                    }
-                    else if (copyNode->getOutput() != nullptr) {
-                        mx::InputPtr connectingInput = nullptr;
-                        copyNode->getOutput()->setConnectedNode(
-                            upNode->getNode());
-                    }
+    //                    copyNode->inputPins[count]->setConnected(true);
+    //                }
+    //                else if (copyNode->getOutput() != nullptr) {
+    //                    mx::InputPtr connectingInput = nullptr;
+    //                    copyNode->getOutput()->setConnectedNode(
+    //                        upNode->getNode());
+    //                }
 
-                    // Update input node num and output connections
-                    copyNode->setInputNodeNum(1);
-                    upNode->setOutputConnection(copyNode);
-                }
-                else if (pin->_input) {
-                    if (pin->_input->getInterfaceInput()) {
-                        copyNode->inputPins[count]
-                            ->_input->setConnectedInterfaceName(
-                                mx::EMPTY_STRING);
-                    }
-                    copyNode->inputPins[count]->setConnected(false);
-                    setDefaults(copyNode->inputPins[count]->_input);
-                    copyNode->inputPins[count]->_input->setConnectedNode(
-                        nullptr);
-                    copyNode->inputPins[count]->_input->setConnectedOutput(
-                        nullptr);
-                }
-            }
-            count++;
-        }
-    }
+    //                // Update input node num and output connections
+    //                copyNode->setInputNodeNum(1);
+    //                upNode->setOutputConnection(copyNode);
+    //            }
+    //            else if (pin->_input) {
+    //                if (pin->_input->getInterfaceInput()) {
+    //                    copyNode->inputPins[count]
+    //                        ->_input->setConnectedInterfaceName(
+    //                            mx::EMPTY_STRING);
+    //                }
+    //                copyNode->inputPins[count]->setConnected(false);
+    //                setDefaults(copyNode->inputPins[count]->_input);
+    //                copyNode->inputPins[count]->_input->setConnectedNode(
+    //                    nullptr);
+    //                copyNode->inputPins[count]->_input->setConnectedOutput(
+    //                    nullptr);
+    //            }
+    //        }
+    //        count++;
+    //    }
+    //}
 }
 
 int Graph::getNodeId(SocketID pinId)
 {
-    for (UiPinPtr pin : _currPins) {
-        if (pin->_pinId == pinId) {
-            return findNode(pin->_pinNode->ID);
-        }
-    }
+    // for (UiPinPtr pin : _currPins) {
+    //     if (pin->_pinId == pinId) {
+    //         return findNode(pin->_pinNode->ID);
+    //     }
+    // }
     return -1;
 }
 
 UiPinPtr Graph::getPin(SocketID pinId)
 {
-    for (UiPinPtr pin : _currPins) {
-        if (pin->_pinId == pinId) {
-            return pin;
-        }
-    }
-    UiPinPtr nullPin = std::make_shared<UiPin>(
-        -10000,
-        "nullPin",
-        "null",
-        nullptr,
-        ax::NodeEditor::PinKind::Output,
-        nullptr,
-        nullptr);
-    return nullPin;
+    // for (UiPinPtr pin : _currPins) {
+    //     if (pin->_pinId == pinId) {
+    //         return pin;
+    //     }
+    // }
+    // UiPinPtr nullPin = std::make_shared<UiPin>(
+    //     -10000,
+    //     "nullPin",
+    //     "null",
+    //     nullptr,
+    //     ax::NodeEditor::PinKind::Output,
+    //     nullptr,
+    //     nullptr);
+    // return nullPin;
+    return nullptr;
 }
 
 void Graph::drawPinIcon(const std::string& type, bool connected, int alpha)
 {
-    ax::Drawing::IconType iconType = ax::Drawing::IconType::Flow;
-    ImColor color = ImColor(0, 0, 0, 255);
-    if (_pinColor.find(type) != _pinColor.end()) {
-        color = _pinColor[type];
-    }
+    // ax::Drawing::IconType iconType = ax::Drawing::IconType::Flow;
+    // ImColor color = ImColor(0, 0, 0, 255);
+    // if (_pinColor.find(type) != _pinColor.end()) {
+    //     color = _pinColor[type];
+    // }
 
-    color.Value.w = alpha / 255.0f;
+    // color.Value.w = alpha / 255.0f;
 
-    ax::Widgets::Icon(
-        ImVec2(24, 24), iconType, connected, color, ImColor(32, 32, 32, alpha));
+    // ax::Widgets::Icon(
+    //     ImVec2(24, 24), iconType, connected, color, ImColor(32, 32, 32,
+    //     alpha));
 }
 
 void Graph::buildGroupNode(UiNodePtr node)
 {
-    const float commentAlpha = 0.75f;
+    // const float commentAlpha = 0.75f;
 
-    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, commentAlpha);
-    ed::PushStyleColor(ed::StyleColor_NodeBg, ImColor(255, 255, 255, 64));
-    ed::PushStyleColor(ed::StyleColor_NodeBorder, ImColor(255, 255, 255, 64));
+    // ImGui::PushStyleVar(ImGuiStyleVar_Alpha, commentAlpha);
+    // ed::PushStyleColor(ed::StyleColor_NodeBg, ImColor(255, 255, 255, 64));
+    // ed::PushStyleColor(ed::StyleColor_NodeBorder, ImColor(255, 255, 255,
+    // 64));
 
-    ed::BeginNode(node->ID);
-    ImGui::PushID(node->ID);
+    // ed::BeginNode(node->ID);
+    // ImGui::PushID(node->ID);
 
-    std::string original = node->getMessage();
-    std::string temp = original;
-    ImVec2 messageSize = ImGui::CalcTextSize(temp.c_str());
-    ImGui::PushItemWidth(messageSize.x + 15);
-    ImGui::InputText("##edit", &temp);
-    node->setMessage(temp);
-    ImGui::PopItemWidth();
-    ed::Group(ImVec2(300, 200));
-    ImGui::PopID();
-    ed::EndNode();
-    ed::PopStyleColor(2);
-    ImGui::PopStyleVar();
-    if (ed::BeginGroupHint(node->ID)) {
-        auto bgAlpha = static_cast<int>(ImGui::GetStyle().Alpha * 255);
-        auto min = ed::GetGroupMin();
+    // std::string original = node->getMessage();
+    // std::string temp = original;
+    // ImVec2 messageSize = ImGui::CalcTextSize(temp.c_str());
+    // ImGui::PushItemWidth(messageSize.x + 15);
+    // ImGui::InputText("##edit", &temp);
+    // node->setMessage(temp);
+    // ImGui::PopItemWidth();
+    // ed::Group(ImVec2(300, 200));
+    // ImGui::PopID();
+    // ed::EndNode();
+    // ed::PopStyleColor(2);
+    // ImGui::PopStyleVar();
+    // if (ed::BeginGroupHint(node->ID)) {
+    //     auto bgAlpha = static_cast<int>(ImGui::GetStyle().Alpha * 255);
+    //     auto min = ed::GetGroupMin();
 
-        ImGui::SetCursorScreenPos(
-            min - ImVec2(-8, ImGui::GetTextLineHeightWithSpacing() + 4));
-        ImGui::BeginGroup();
-        ImGui::PushID(node->ID + 1000);
-        std::string tempName = node->getName();
-        ImVec2 nameSize = ImGui::CalcTextSize(temp.c_str());
-        ImGui::PushItemWidth(nameSize.x);
-        ImGui::InputText("##edit", &tempName);
-        node->setName(tempName);
-        ImGui::PopID();
-        ImGui::EndGroup();
+    //    ImGui::SetCursorScreenPos(
+    //        min - ImVec2(-8, ImGui::GetTextLineHeightWithSpacing() + 4));
+    //    ImGui::BeginGroup();
+    //    ImGui::PushID(node->ID + 1000);
+    //    std::string tempName = node->getName();
+    //    ImVec2 nameSize = ImGui::CalcTextSize(temp.c_str());
+    //    ImGui::PushItemWidth(nameSize.x);
+    //    ImGui::InputText("##edit", &tempName);
+    //    node->setName(tempName);
+    //    ImGui::PopID();
+    //    ImGui::EndGroup();
 
-        auto drawList = ed::GetHintBackgroundDrawList();
+    //    auto drawList = ed::GetHintBackgroundDrawList();
 
-        ImRect hintBounds =
-            ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-        ImRect hintFrameBounds = expandImRect(hintBounds, 8, 4);
+    //    ImRect hintBounds =
+    //        ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+    //    ImRect hintFrameBounds = expandImRect(hintBounds, 8, 4);
 
-        drawList->AddRectFilled(
-            hintFrameBounds.GetTL(),
-            hintFrameBounds.GetBR(),
-            IM_COL32(255, 255, 255, 64 * bgAlpha / 255),
-            4.0f);
+    //    drawList->AddRectFilled(
+    //        hintFrameBounds.GetTL(),
+    //        hintFrameBounds.GetBR(),
+    //        IM_COL32(255, 255, 255, 64 * bgAlpha / 255),
+    //        4.0f);
 
-        drawList->AddRect(
-            hintFrameBounds.GetTL(),
-            hintFrameBounds.GetBR(),
-            IM_COL32(0, 255, 255, 128 * bgAlpha / 255),
-            4.0f);
-    }
-    ed::EndGroupHint();
+    //    drawList->AddRect(
+    //        hintFrameBounds.GetTL(),
+    //        hintFrameBounds.GetBR(),
+    //        IM_COL32(0, 255, 255, 128 * bgAlpha / 255),
+    //        4.0f);
+    //}
+    // ed::EndGroupHint();
 }
 
 bool Graph::readOnly()
 {
-    // If the sources are not the same then the current graph cannot be modified
-    return _currGraphElem->getActiveSourceUri() !=
-           _graphDoc->getActiveSourceUri();
+    return false;
+    //// If the sources are not the same then the current graph cannot be
+    /// modified
+    // return _currGraphElem->getActiveSourceUri() !=
+    //        _graphDoc->getActiveSourceUri();
 }
 
 void Graph::drawOutputPins(UiNodePtr node, const std::string& longestInputLabel)
 {
-    std::string longestLabel = longestInputLabel;
-    for (UiPinPtr pin : node->outputPins) {
-        if (pin->_name.size() > longestLabel.size())
-            longestLabel = pin->_name;
-    }
+    // std::string longestLabel = longestInputLabel;
+    // for (UiPinPtr pin : node->outputPins) {
+    //     if (pin->_name.size() > longestLabel.size())
+    //         longestLabel = pin->_name;
+    // }
 
-    // Create output pins
-    float nodeWidth = ImGui::CalcTextSize(longestLabel.c_str()).x;
-    for (UiPinPtr pin : node->outputPins) {
-        const float indent =
-            nodeWidth - ImGui::CalcTextSize(pin->_name.c_str()).x;
-        ImGui::Indent(indent);
-        ImGui::TextUnformatted(pin->_name.c_str());
-        ImGui::SameLine();
+    //// Create output pins
+    // float nodeWidth = ImGui::CalcTextSize(longestLabel.c_str()).x;
+    // for (UiPinPtr pin : node->outputPins) {
+    //     const float indent =
+    //         nodeWidth - ImGui::CalcTextSize(pin->_name.c_str()).x;
+    //     ImGui::Indent(indent);
+    //     ImGui::TextUnformatted(pin->_name.c_str());
+    //     ImGui::SameLine();
 
-        ed::BeginPin(pin->_pinId, ed::PinKind::Output);
-        bool connected = pin->getConnected();
-        if (!_pinFilterType.empty()) {
-            drawPinIcon(
-                pin->_type,
-                connected,
-                _pinFilterType == pin->_type ? DEFAULT_ALPHA : FILTER_ALPHA);
-        }
-        else {
-            drawPinIcon(pin->_type, connected, DEFAULT_ALPHA);
-        }
+    //    ed::BeginPin(pin->_pinId, ed::PinKind::Output);
+    //    bool connected = pin->getConnected();
+    //    if (!_pinFilterType.empty()) {
+    //        drawPinIcon(
+    //            pin->_type,
+    //            connected,
+    //            _pinFilterType == pin->_type ? DEFAULT_ALPHA : FILTER_ALPHA);
+    //    }
+    //    else {
+    //        drawPinIcon(pin->_type, connected, DEFAULT_ALPHA);
+    //    }
 
-        ed::EndPin();
-        ImGui::Unindent(indent);
-    }
+    //    ed::EndPin();
+    //    ImGui::Unindent(indent);
+    //}
 }
 
 void Graph::drawInputPin(UiPinPtr pin)
 {
-    ed::BeginPin(pin->_pinId, ed::PinKind::Input);
-    ImGui::PushID(int(pin->_pinId.Get()));
-    bool connected = pin->getConnected();
-    if (!_pinFilterType.empty()) {
-        if (_pinFilterType == pin->_type) {
-            drawPinIcon(pin->_type, connected, DEFAULT_ALPHA);
-        }
-        else {
-            drawPinIcon(pin->_type, connected, FILTER_ALPHA);
-        }
-    }
-    else {
-        drawPinIcon(pin->_type, connected, DEFAULT_ALPHA);
-    }
-    ImGui::PopID();
-    ed::EndPin();
+    // ed::BeginPin(pin->_pinId, ed::PinKind::Input);
+    // ImGui::PushID(int(pin->_pinId.Get()));
+    // bool connected = pin->getConnected();
+    // if (!_pinFilterType.empty()) {
+    //     if (_pinFilterType == pin->_type) {
+    //         drawPinIcon(pin->_type, connected, DEFAULT_ALPHA);
+    //     }
+    //     else {
+    //         drawPinIcon(pin->_type, connected, FILTER_ALPHA);
+    //     }
+    // }
+    // else {
+    //     drawPinIcon(pin->_type, connected, DEFAULT_ALPHA);
+    // }
+    // ImGui::PopID();
+    // ed::EndPin();
 
-    ImGui::SameLine();
-    ImGui::TextUnformatted(pin->_name.c_str());
+    // ImGui::SameLine();
+    // ImGui::TextUnformatted(pin->_name.c_str());
 }
 
 std::vector<int> Graph::createNodes(bool nodegraph)
 {
-    std::vector<int> outputNum;
+    // std::vector<int> outputNum;
 
-    for (UiNodePtr node : _graphNodes) {
-        if (node->getCategory() == "group") {
-            buildGroupNode(node);
-        }
-        else {
-            // Color for output pin
-            std::string outputType;
-            if (node->getNode() != nullptr) {
-                ed::BeginNode(node->ID);
-                ImGui::PushID(node->ID);
-                ImGui::SetWindowFontScale(1.2f * _fontScale);
-                ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImGui::GetCursorScreenPos() + ImVec2(-7.0, -8.0),
-                    ImGui::GetCursorScreenPos() +
-                        ImVec2(
-                            ed::GetNodeSize(node->ID).x - 9.f,
-                            ImGui::GetTextLineHeight() + 2.f),
-                    ImColor(ImColor(55, 55, 55, 255)),
-                    12.f);
-                ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImGui::GetCursorScreenPos() + ImVec2(-7.0, 3),
-                    ImGui::GetCursorScreenPos() +
-                        ImVec2(
-                            ed::GetNodeSize(node->ID).x - 9.f,
-                            ImGui::GetTextLineHeight() + 2.f),
-                    ImColor(ImColor(55, 55, 55, 255)),
-                    0.f);
-                ImGui::Text("%s", node->getName().c_str());
-                ImGui::SetWindowFontScale(_fontScale);
+    // for (UiNodePtr node : _graphNodes) {
+    //     if (node->getCategory() == "group") {
+    //         buildGroupNode(node);
+    //     }
+    //     else {
+    //         // Color for output pin
+    //         std::string outputType;
+    //         if (node->getNode() != nullptr) {
+    //             ed::BeginNode(node->ID);
+    //             ImGui::PushID(node->ID);
+    //             ImGui::SetWindowFontScale(1.2f * _fontScale);
+    //             ImGui::GetWindowDrawList()->AddRectFilled(
+    //                 ImGui::GetCursorScreenPos() + ImVec2(-7.0, -8.0),
+    //                 ImGui::GetCursorScreenPos() +
+    //                     ImVec2(
+    //                         ed::GetNodeSize(node->ID).x - 9.f,
+    //                         ImGui::GetTextLineHeight() + 2.f),
+    //                 ImColor(ImColor(55, 55, 55, 255)),
+    //                 12.f);
+    //             ImGui::GetWindowDrawList()->AddRectFilled(
+    //                 ImGui::GetCursorScreenPos() + ImVec2(-7.0, 3),
+    //                 ImGui::GetCursorScreenPos() +
+    //                     ImVec2(
+    //                         ed::GetNodeSize(node->ID).x - 9.f,
+    //                         ImGui::GetTextLineHeight() + 2.f),
+    //                 ImColor(ImColor(55, 55, 55, 255)),
+    //                 0.f);
+    //             ImGui::Text("%s", node->getName().c_str());
+    //             ImGui::SetWindowFontScale(_fontScale);
 
-                std::string longestInputLabel = node->getName();
-                for (UiPinPtr pin : node->inputPins) {
-                    UiNodePtr upUiNode = node->getConnectedNode(pin->_name);
-                    if (upUiNode) {
-                        size_t pinIndex = 0;
-                        if (upUiNode->outputPins.size() > 0) {
-                            const std::string outputString =
-                                pin->_input->getOutputString();
-                            if (!outputString.empty()) {
-                                for (size_t i = 0;
-                                     i < upUiNode->outputPins.size();
-                                     i++) {
-                                    UiPinPtr outPin = upUiNode->outputPins[i];
-                                    if (outPin->_name == outputString) {
-                                        pinIndex = i;
-                                        break;
-                                    }
-                                }
-                            }
+    //            std::string longestInputLabel = node->getName();
+    //            for (UiPinPtr pin : node->inputPins) {
+    //                UiNodePtr upUiNode = node->getConnectedNode(pin->_name);
+    //                if (upUiNode) {
+    //                    size_t pinIndex = 0;
+    //                    if (upUiNode->outputPins.size() > 0) {
+    //                        const std::string outputString =
+    //                            pin->_input->getOutputString();
+    //                        if (!outputString.empty()) {
+    //                            for (size_t i = 0;
+    //                                 i < upUiNode->outputPins.size();
+    //                                 i++) {
+    //                                UiPinPtr outPin = upUiNode->outputPins[i];
+    //                                if (outPin->_name == outputString) {
+    //                                    pinIndex = i;
+    //                                    break;
+    //                                }
+    //                            }
+    //                        }
 
-                            upUiNode->outputPins[pinIndex]->addConnection(pin);
-                            pin->addConnection(upUiNode->outputPins[pinIndex]);
-                        }
-                        pin->setConnected(true);
-                    }
-                    if (node->_showAllInputs ||
-                        (pin->getConnected() ||
-                         node->getNode()->getInput(pin->_name))) {
-                        drawInputPin(pin);
+    //                        upUiNode->outputPins[pinIndex]->addConnection(pin);
+    //                        pin->addConnection(upUiNode->outputPins[pinIndex]);
+    //                    }
+    //                    pin->setConnected(true);
+    //                }
+    //                if (node->_showAllInputs ||
+    //                    (pin->getConnected() ||
+    //                     node->getNode()->getInput(pin->_name))) {
+    //                    drawInputPin(pin);
 
-                        if (pin->_name.size() > longestInputLabel.size())
-                            longestInputLabel = pin->_name;
-                    }
-                }
-                drawOutputPins(node, longestInputLabel);
+    //                    if (pin->_name.size() > longestInputLabel.size())
+    //                        longestInputLabel = pin->_name;
+    //                }
+    //            }
+    //            drawOutputPins(node, longestInputLabel);
 
-                // Set color of output pin
-                if (node->getNode()->getType() ==
-                    mx::SURFACE_SHADER_TYPE_STRING) {
-                    if (node->getOutputConnections().size() > 0) {
-                        for (UiNodePtr outputCon :
-                             node->getOutputConnections()) {
-                            outputNum.push_back(findNode(outputCon->ID));
-                        }
-                    }
-                }
-            }
-            else if (node->getInput() != nullptr) {
-                std::string longestInputLabel = node->getName();
+    //            // Set color of output pin
+    //            if (node->getNode()->getType() ==
+    //                mx::SURFACE_SHADER_TYPE_STRING) {
+    //                if (node->getOutputConnections().size() > 0) {
+    //                    for (UiNodePtr outputCon :
+    //                         node->getOutputConnections()) {
+    //                        outputNum.push_back(findNode(outputCon->ID));
+    //                    }
+    //                }
+    //            }
+    //        }
+    //        else if (node->getInput() != nullptr) {
+    //            std::string longestInputLabel = node->getName();
 
-                ed::BeginNode(node->ID);
-                ImGui::PushID(node->ID);
-                ImGui::SetWindowFontScale(1.2f * _fontScale);
-                ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImGui::GetCursorScreenPos() + ImVec2(-7.0f, -8.0f),
-                    ImGui::GetCursorScreenPos() +
-                        ImVec2(
-                            ed::GetNodeSize(node->ID).x - 9.f,
-                            ImGui::GetTextLineHeight() + 2.f),
-                    ImColor(ImColor(85, 85, 85, 255)),
-                    12.f);
-                ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImGui::GetCursorScreenPos() + ImVec2(-7.0f, 3.f),
-                    ImGui::GetCursorScreenPos() +
-                        ImVec2(
-                            ed::GetNodeSize(node->ID).x - 9.f,
-                            ImGui::GetTextLineHeight() + 2.f),
-                    ImColor(ImColor(85, 85, 85, 255)),
-                    0.f);
-                ImGui::Text("%s", node->getName().c_str());
-                ImGui::SetWindowFontScale(_fontScale);
+    //            ed::BeginNode(node->ID);
+    //            ImGui::PushID(node->ID);
+    //            ImGui::SetWindowFontScale(1.2f * _fontScale);
+    //            ImGui::GetWindowDrawList()->AddRectFilled(
+    //                ImGui::GetCursorScreenPos() + ImVec2(-7.0f, -8.0f),
+    //                ImGui::GetCursorScreenPos() +
+    //                    ImVec2(
+    //                        ed::GetNodeSize(node->ID).x - 9.f,
+    //                        ImGui::GetTextLineHeight() + 2.f),
+    //                ImColor(ImColor(85, 85, 85, 255)),
+    //                12.f);
+    //            ImGui::GetWindowDrawList()->AddRectFilled(
+    //                ImGui::GetCursorScreenPos() + ImVec2(-7.0f, 3.f),
+    //                ImGui::GetCursorScreenPos() +
+    //                    ImVec2(
+    //                        ed::GetNodeSize(node->ID).x - 9.f,
+    //                        ImGui::GetTextLineHeight() + 2.f),
+    //                ImColor(ImColor(85, 85, 85, 255)),
+    //                0.f);
+    //            ImGui::Text("%s", node->getName().c_str());
+    //            ImGui::SetWindowFontScale(_fontScale);
 
-                outputType = node->getInput()->getType();
-                for (UiPinPtr pin : node->inputPins) {
-                    UiNodePtr upUiNode =
-                        node->getConnectedNode(node->getName());
-                    if (upUiNode) {
-                        if (upUiNode->outputPins.size()) {
-                            std::string outString =
-                                pin->_output ? pin->_output->getOutputString()
-                                             : mx::EMPTY_STRING;
-                            size_t pinIndex = 0;
-                            if (!outString.empty()) {
-                                for (size_t i = 0;
-                                     i < upUiNode->outputPins.size();
-                                     i++) {
-                                    if (upUiNode->outputPins[i]->_name ==
-                                        outString) {
-                                        pinIndex = i;
-                                        break;
-                                    }
-                                }
-                            }
-                            upUiNode->outputPins[pinIndex]->addConnection(pin);
-                            pin->addConnection(upUiNode->outputPins[pinIndex]);
-                        }
-                        pin->setConnected(true);
-                    }
-                    ed::BeginPin(pin->_pinId, ed::PinKind::Input);
-                    if (!_pinFilterType.empty()) {
-                        if (_pinFilterType == pin->_type) {
-                            drawPinIcon(pin->_type, true, DEFAULT_ALPHA);
-                        }
-                        else {
-                            drawPinIcon(pin->_type, true, FILTER_ALPHA);
-                        }
-                    }
-                    else {
-                        drawPinIcon(pin->_type, true, DEFAULT_ALPHA);
-                    }
+    //            outputType = node->getInput()->getType();
+    //            for (UiPinPtr pin : node->inputPins) {
+    //                UiNodePtr upUiNode =
+    //                    node->getConnectedNode(node->getName());
+    //                if (upUiNode) {
+    //                    if (upUiNode->outputPins.size()) {
+    //                        std::string outString =
+    //                            pin->_output ? pin->_output->getOutputString()
+    //                                         : mx::EMPTY_STRING;
+    //                        size_t pinIndex = 0;
+    //                        if (!outString.empty()) {
+    //                            for (size_t i = 0;
+    //                                 i < upUiNode->outputPins.size();
+    //                                 i++) {
+    //                                if (upUiNode->outputPins[i]->_name ==
+    //                                    outString) {
+    //                                    pinIndex = i;
+    //                                    break;
+    //                                }
+    //                            }
+    //                        }
+    //                        upUiNode->outputPins[pinIndex]->addConnection(pin);
+    //                        pin->addConnection(upUiNode->outputPins[pinIndex]);
+    //                    }
+    //                    pin->setConnected(true);
+    //                }
+    //                ed::BeginPin(pin->_pinId, ed::PinKind::Input);
+    //                if (!_pinFilterType.empty()) {
+    //                    if (_pinFilterType == pin->_type) {
+    //                        drawPinIcon(pin->_type, true, DEFAULT_ALPHA);
+    //                    }
+    //                    else {
+    //                        drawPinIcon(pin->_type, true, FILTER_ALPHA);
+    //                    }
+    //                }
+    //                else {
+    //                    drawPinIcon(pin->_type, true, DEFAULT_ALPHA);
+    //                }
 
-                    ImGui::SameLine();
-                    ImGui::TextUnformatted("value");
-                    ed::EndPin();
+    //                ImGui::SameLine();
+    //                ImGui::TextUnformatted("value");
+    //                ed::EndPin();
 
-                    if (pin->_name.size() > longestInputLabel.size())
-                        longestInputLabel = pin->_name;
-                }
-                drawOutputPins(node, longestInputLabel);
-            }
-            else if (node->getOutput() != nullptr) {
-                std::string longestInputLabel = node->getName();
+    //                if (pin->_name.size() > longestInputLabel.size())
+    //                    longestInputLabel = pin->_name;
+    //            }
+    //            drawOutputPins(node, longestInputLabel);
+    //        }
+    //        else if (node->getOutput() != nullptr) {
+    //            std::string longestInputLabel = node->getName();
 
-                ed::BeginNode(node->ID);
-                ImGui::PushID(node->ID);
-                ImGui::SetWindowFontScale(1.2f * _fontScale);
-                ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImGui::GetCursorScreenPos() + ImVec2(-7.0, -8.0),
-                    ImGui::GetCursorScreenPos() +
-                        ImVec2(
-                            ed::GetNodeSize(node->ID).x - 9.f,
-                            ImGui::GetTextLineHeight() + 2.f),
-                    ImColor(ImColor(35, 35, 35, 255)),
-                    12.f);
-                ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImGui::GetCursorScreenPos() + ImVec2(-7.0, 3),
-                    ImGui::GetCursorScreenPos() +
-                        ImVec2(
-                            ed::GetNodeSize(node->ID).x - 9.f,
-                            ImGui::GetTextLineHeight() + 2.f),
-                    ImColor(ImColor(35, 35, 35, 255)),
-                    0);
-                ImGui::Text("%s", node->getName().c_str());
-                ImGui::SetWindowFontScale(_fontScale);
+    //            ed::BeginNode(node->ID);
+    //            ImGui::PushID(node->ID);
+    //            ImGui::SetWindowFontScale(1.2f * _fontScale);
+    //            ImGui::GetWindowDrawList()->AddRectFilled(
+    //                ImGui::GetCursorScreenPos() + ImVec2(-7.0, -8.0),
+    //                ImGui::GetCursorScreenPos() +
+    //                    ImVec2(
+    //                        ed::GetNodeSize(node->ID).x - 9.f,
+    //                        ImGui::GetTextLineHeight() + 2.f),
+    //                ImColor(ImColor(35, 35, 35, 255)),
+    //                12.f);
+    //            ImGui::GetWindowDrawList()->AddRectFilled(
+    //                ImGui::GetCursorScreenPos() + ImVec2(-7.0, 3),
+    //                ImGui::GetCursorScreenPos() +
+    //                    ImVec2(
+    //                        ed::GetNodeSize(node->ID).x - 9.f,
+    //                        ImGui::GetTextLineHeight() + 2.f),
+    //                ImColor(ImColor(35, 35, 35, 255)),
+    //                0);
+    //            ImGui::Text("%s", node->getName().c_str());
+    //            ImGui::SetWindowFontScale(_fontScale);
 
-                outputType = node->getOutput()->getType();
+    //            outputType = node->getOutput()->getType();
 
-                for (UiPinPtr pin : node->inputPins) {
-                    UiNodePtr upUiNode = node->getConnectedNode("");
-                    if (upUiNode) {
-                        if (upUiNode->outputPins.size()) {
-                            std::string outString =
-                                pin->_output ? pin->_output->getOutputString()
-                                             : mx::EMPTY_STRING;
-                            size_t pinIndex = 0;
-                            if (!outString.empty()) {
-                                for (size_t i = 0;
-                                     i < upUiNode->outputPins.size();
-                                     i++) {
-                                    if (upUiNode->outputPins[i]->_name ==
-                                        outString) {
-                                        pinIndex = i;
-                                        break;
-                                    }
-                                }
-                            }
-                            upUiNode->outputPins[pinIndex]->addConnection(pin);
-                            pin->addConnection(upUiNode->outputPins[pinIndex]);
-                        }
-                    }
+    //            for (UiPinPtr pin : node->inputPins) {
+    //                UiNodePtr upUiNode = node->getConnectedNode("");
+    //                if (upUiNode) {
+    //                    if (upUiNode->outputPins.size()) {
+    //                        std::string outString =
+    //                            pin->_output ? pin->_output->getOutputString()
+    //                                         : mx::EMPTY_STRING;
+    //                        size_t pinIndex = 0;
+    //                        if (!outString.empty()) {
+    //                            for (size_t i = 0;
+    //                                 i < upUiNode->outputPins.size();
+    //                                 i++) {
+    //                                if (upUiNode->outputPins[i]->_name ==
+    //                                    outString) {
+    //                                    pinIndex = i;
+    //                                    break;
+    //                                }
+    //                            }
+    //                        }
+    //                        upUiNode->outputPins[pinIndex]->addConnection(pin);
+    //                        pin->addConnection(upUiNode->outputPins[pinIndex]);
+    //                    }
+    //                }
 
-                    ed::BeginPin(pin->_pinId, ed::PinKind::Input);
-                    if (!_pinFilterType.empty()) {
-                        if (_pinFilterType == pin->_type) {
-                            drawPinIcon(pin->_type, true, DEFAULT_ALPHA);
-                        }
-                        else {
-                            drawPinIcon(pin->_type, true, FILTER_ALPHA);
-                        }
-                    }
-                    else {
-                        drawPinIcon(pin->_type, true, DEFAULT_ALPHA);
-                    }
-                    ImGui::SameLine();
-                    ImGui::TextUnformatted("input");
+    //                ed::BeginPin(pin->_pinId, ed::PinKind::Input);
+    //                if (!_pinFilterType.empty()) {
+    //                    if (_pinFilterType == pin->_type) {
+    //                        drawPinIcon(pin->_type, true, DEFAULT_ALPHA);
+    //                    }
+    //                    else {
+    //                        drawPinIcon(pin->_type, true, FILTER_ALPHA);
+    //                    }
+    //                }
+    //                else {
+    //                    drawPinIcon(pin->_type, true, DEFAULT_ALPHA);
+    //                }
+    //                ImGui::SameLine();
+    //                ImGui::TextUnformatted("input");
 
-                    ed::EndPin();
+    //                ed::EndPin();
 
-                    if (pin->_name.size() > longestInputLabel.size())
-                        longestInputLabel = pin->_name;
-                }
-                drawOutputPins(node, longestInputLabel);
-                if (nodegraph) {
-                    outputNum.push_back(findNode(node->ID));
-                }
-            }
-            else if (node->getNodeGraph() != nullptr) {
-                std::string longestInputLabel = node->getName();
+    //                if (pin->_name.size() > longestInputLabel.size())
+    //                    longestInputLabel = pin->_name;
+    //            }
+    //            drawOutputPins(node, longestInputLabel);
+    //            if (nodegraph) {
+    //                outputNum.push_back(findNode(node->ID));
+    //            }
+    //        }
+    //        else if (node->getNodeGraph() != nullptr) {
+    //            std::string longestInputLabel = node->getName();
 
-                ed::BeginNode(node->ID);
-                ImGui::PushID(node->ID);
-                ImGui::SetWindowFontScale(1.2f * _fontScale);
-                ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImGui::GetCursorScreenPos() + ImVec2(-7.0, -8.0),
-                    ImGui::GetCursorScreenPos() +
-                        ImVec2(
-                            ed::GetNodeSize(node->ID).x - 9.f,
-                            ImGui::GetTextLineHeight() + 2.f),
-                    ImColor(ImColor(35, 35, 35, 255)),
-                    12.f);
-                ImGui::GetWindowDrawList()->AddRectFilled(
-                    ImGui::GetCursorScreenPos() + ImVec2(-7.0, 3),
-                    ImGui::GetCursorScreenPos() +
-                        ImVec2(
-                            ed::GetNodeSize(node->ID).x - 9.f,
-                            ImGui::GetTextLineHeight() + 2.f),
-                    ImColor(ImColor(35, 35, 35, 255)),
-                    0);
-                ImGui::Text("%s", node->getName().c_str());
-                ImGui::SetWindowFontScale(_fontScale);
-                for (UiPinPtr pin : node->inputPins) {
-                    if (node->getConnectedNode(pin->_name) != nullptr) {
-                        pin->setConnected(true);
-                    }
-                    if (node->_showAllInputs ||
-                        (pin->getConnected() ||
-                         node->getNodeGraph()->getInput(pin->_name))) {
-                        drawInputPin(pin);
+    //            ed::BeginNode(node->ID);
+    //            ImGui::PushID(node->ID);
+    //            ImGui::SetWindowFontScale(1.2f * _fontScale);
+    //            ImGui::GetWindowDrawList()->AddRectFilled(
+    //                ImGui::GetCursorScreenPos() + ImVec2(-7.0, -8.0),
+    //                ImGui::GetCursorScreenPos() +
+    //                    ImVec2(
+    //                        ed::GetNodeSize(node->ID).x - 9.f,
+    //                        ImGui::GetTextLineHeight() + 2.f),
+    //                ImColor(ImColor(35, 35, 35, 255)),
+    //                12.f);
+    //            ImGui::GetWindowDrawList()->AddRectFilled(
+    //                ImGui::GetCursorScreenPos() + ImVec2(-7.0, 3),
+    //                ImGui::GetCursorScreenPos() +
+    //                    ImVec2(
+    //                        ed::GetNodeSize(node->ID).x - 9.f,
+    //                        ImGui::GetTextLineHeight() + 2.f),
+    //                ImColor(ImColor(35, 35, 35, 255)),
+    //                0);
+    //            ImGui::Text("%s", node->getName().c_str());
+    //            ImGui::SetWindowFontScale(_fontScale);
+    //            for (UiPinPtr pin : node->inputPins) {
+    //                if (node->getConnectedNode(pin->_name) != nullptr) {
+    //                    pin->setConnected(true);
+    //                }
+    //                if (node->_showAllInputs ||
+    //                    (pin->getConnected() ||
+    //                     node->getNodeGraph()->getInput(pin->_name))) {
+    //                    drawInputPin(pin);
 
-                        if (pin->_name.size() > longestInputLabel.size())
-                            longestInputLabel = pin->_name;
-                    }
-                }
-                drawOutputPins(node, longestInputLabel);
-            }
-            ImGui::PopID();
-            ed::EndNode();
-        }
-    }
-    ImGui::SetWindowFontScale(_fontScale);
-    return outputNum;
+    //                    if (pin->_name.size() > longestInputLabel.size())
+    //                        longestInputLabel = pin->_name;
+    //                }
+    //            }
+    //            drawOutputPins(node, longestInputLabel);
+    //        }
+    //        ImGui::PopID();
+    //        ed::EndNode();
+    //    }
+    //}
+    // ImGui::SetWindowFontScale(_fontScale);
+    // return outputNum;
+    return {};
 }
 
 void Graph::addNodeInput(UiNodePtr node, mx::InputPtr& input)
 {
-    if (node->getNode()) {
-        if (!node->getNode()->getInput(input->getName())) {
-            input =
-                node->getNode()->addInput(input->getName(), input->getType());
-            input->setConnectedNode(nullptr);
-        }
-    }
+    // if (node->getNode()) {
+    //     if (!node->getNode()->getInput(input->getName())) {
+    //         input =
+    //             node->getNode()->addInput(input->getName(),
+    //             input->getType());
+    //         input->setConnectedNode(nullptr);
+    //     }
+    // }
 }
 void Graph::setDefaults(mx::InputPtr input)
 {
@@ -1597,133 +1618,135 @@ void Graph::setDefaults(mx::InputPtr input)
 
 void Graph::deleteLinkInfo(int startAttr, int endAttr)
 {
-    int upNode = getNodeId(startAttr);
-    int downNode = getNodeId(endAttr);
-    if (upNode == -1 || downNode == -1) {
-        return;
-    }
+    // int upNode = getNodeId(startAttr);
+    // int downNode = getNodeId(endAttr);
+    // if (upNode == -1 || downNode == -1) {
+    //     return;
+    // }
 
-    // Change input to default value
-    if (_graphNodes[downNode]->getNode()) {
-        mx::NodeDefPtr nodeDef = _graphNodes[downNode]->getNode()->getNodeDef(
-            _graphNodes[downNode]->getNode()->getName());
+    //// Change input to default value
+    // if (_graphNodes[downNode]->getNode()) {
+    //     mx::NodeDefPtr nodeDef =
+    //     _graphNodes[downNode]->getNode()->getNodeDef(
+    //         _graphNodes[downNode]->getNode()->getName());
 
-        for (UiPinPtr pin : _graphNodes[downNode]->inputPins) {
-            if ((int)pin->_pinId.Get() == endAttr) {
-                removeEdge(downNode, upNode, pin);
-                mx::ValuePtr val =
-                    nodeDef->getActiveInput(pin->_input->getName())->getValue();
-                if (_graphNodes[downNode]->getNode()->getType() ==
-                        mx::SURFACE_SHADER_TYPE_STRING &&
-                    _graphNodes[upNode]->getNodeGraph()) {
-                    pin->_input->setConnectedOutput(nullptr);
-                }
-                else {
-                    pin->_input->setConnectedNode(nullptr);
-                }
-                if (_graphNodes[upNode]->getInput()) {
-                    // Remove interface value in order to set the default of the
-                    // input
-                    pin->_input->setConnectedInterfaceName(mx::EMPTY_STRING);
-                    setDefaults(pin->_input);
-                    setDefaults(_graphNodes[upNode]->getInput());
-                }
+    //    for (UiPinPtr pin : _graphNodes[downNode]->inputPins) {
+    //        if ((int)pin->_pinId.Get() == endAttr) {
+    //            removeEdge(downNode, upNode, pin);
+    //            mx::ValuePtr val =
+    //                nodeDef->getActiveInput(pin->_input->getName())->getValue();
+    //            if (_graphNodes[downNode]->getNode()->getType() ==
+    //                    mx::SURFACE_SHADER_TYPE_STRING &&
+    //                _graphNodes[upNode]->getNodeGraph()) {
+    //                pin->_input->setConnectedOutput(nullptr);
+    //            }
+    //            else {
+    //                pin->_input->setConnectedNode(nullptr);
+    //            }
+    //            if (_graphNodes[upNode]->getInput()) {
+    //                // Remove interface value in order to set the default of
+    //                the
+    //                // input
+    //                pin->_input->setConnectedInterfaceName(mx::EMPTY_STRING);
+    //                setDefaults(pin->_input);
+    //                setDefaults(_graphNodes[upNode]->getInput());
+    //            }
 
-                for (UiPinPtr connect : pin->_connections) {
-                    pin->deleteConnection(connect);
-                }
+    //            for (UiPinPtr connect : pin->_connections) {
+    //                pin->deleteConnection(connect);
+    //            }
 
-                // Remove any output reference
-                pin->_input->removeAttribute(mx::PortElement::OUTPUT_ATTRIBUTE);
-                pin->setConnected(false);
+    //            // Remove any output reference
+    //            pin->_input->removeAttribute(mx::PortElement::OUTPUT_ATTRIBUTE);
+    //            pin->setConnected(false);
 
-                // If a value exists update the input with it
-                if (val) {
-                    pin->_input->setValueString(val->getValueString());
-                }
-            }
-        }
-    }
-    else if (_graphNodes[downNode]->getNodeGraph()) {
-        // Set default values for nodegraph node pins ie nodegraph inputs
-        mx::NodeDefPtr nodeDef =
-            _graphNodes[downNode]->getNodeGraph()->getNodeDef();
-        for (UiPinPtr pin : _graphNodes[downNode]->inputPins) {
-            if ((int)pin->_pinId.Get() == endAttr) {
-                removeEdge(downNode, upNode, pin);
-                if (_graphNodes[upNode]->getInput()) {
-                    _graphNodes[downNode]
-                        ->getNodeGraph()
-                        ->getInput(pin->_name)
-                        ->setConnectedInterfaceName(mx::EMPTY_STRING);
-                    setDefaults(_graphNodes[upNode]->getInput());
-                }
-                for (UiPinPtr connect : pin->_connections) {
-                    pin->deleteConnection(connect);
-                }
-                pin->_input->setConnectedNode(nullptr);
-                pin->setConnected(false);
-                setDefaults(pin->_input);
-            }
-        }
-    }
-    else if (_graphNodes[downNode]->getOutput()) {
-        for (UiPinPtr pin : _graphNodes[downNode]->inputPins) {
-            if ((int)pin->_pinId.Get() == endAttr) {
-                removeEdge(downNode, upNode, pin);
-                _graphNodes[downNode]->getOutput()->removeAttribute("nodename");
-                for (UiPinPtr connect : pin->_connections) {
-                    pin->deleteConnection(connect);
-                }
-                pin->setConnected(false);
-            }
-        }
-    }
+    //            // If a value exists update the input with it
+    //            if (val) {
+    //                pin->_input->setValueString(val->getValueString());
+    //            }
+    //        }
+    //    }
+    //}
+    // else if (_graphNodes[downNode]->getNodeGraph()) {
+    //    // Set default values for nodegraph node pins ie nodegraph inputs
+    //    mx::NodeDefPtr nodeDef =
+    //        _graphNodes[downNode]->getNodeGraph()->getNodeDef();
+    //    for (UiPinPtr pin : _graphNodes[downNode]->inputPins) {
+    //        if ((int)pin->_pinId.Get() == endAttr) {
+    //            removeEdge(downNode, upNode, pin);
+    //            if (_graphNodes[upNode]->getInput()) {
+    //                _graphNodes[downNode]
+    //                    ->getNodeGraph()
+    //                    ->getInput(pin->_name)
+    //                    ->setConnectedInterfaceName(mx::EMPTY_STRING);
+    //                setDefaults(_graphNodes[upNode]->getInput());
+    //            }
+    //            for (UiPinPtr connect : pin->_connections) {
+    //                pin->deleteConnection(connect);
+    //            }
+    //            pin->_input->setConnectedNode(nullptr);
+    //            pin->setConnected(false);
+    //            setDefaults(pin->_input);
+    //        }
+    //    }
+    //}
+    // else if (_graphNodes[downNode]->getOutput()) {
+    //    for (UiPinPtr pin : _graphNodes[downNode]->inputPins) {
+    //        if ((int)pin->_pinId.Get() == endAttr) {
+    //            removeEdge(downNode, upNode, pin);
+    //            _graphNodes[downNode]->getOutput()->removeAttribute("nodename");
+    //            for (UiPinPtr connect : pin->_connections) {
+    //                pin->deleteConnection(connect);
+    //            }
+    //            pin->setConnected(false);
+    //        }
+    //    }
+    //}
 }
 
 void Graph::upNodeGraph()
 {
-    if (!_graphStack.empty()) {
-        savePosition();
-        _graphNodes = _graphStack.top();
-        _currPins = _pinStack.top();
-        _graphTotalSize = _sizeStack.top();
-        addNodeGraphPins();
-        _graphStack.pop();
-        _pinStack.pop();
-        _sizeStack.pop();
-        _currGraphName.pop_back();
-        _initial = true;
-        ed::NavigateToContent();
-        if (_currUiNode) {
-            ed::DeselectNode(_currUiNode->ID);
-            _currUiNode = nullptr;
-        }
-        _prevUiNode = nullptr;
-        _isNodeGraph = false;
-        _currGraphElem = _graphDoc;
-        _initial = true;
-    }
+    // if (!_graphStack.empty()) {
+    //     savePosition();
+    //     _graphNodes = _graphStack.top();
+    //     _currPins = _pinStack.top();
+    //     _graphTotalSize = _sizeStack.top();
+    //     addNodeGraphPins();
+    //     _graphStack.pop();
+    //     _pinStack.pop();
+    //     _sizeStack.pop();
+    //     _currGraphName.pop_back();
+    //     _initial = true;
+    //     ed::NavigateToContent();
+    //     if (_currUiNode) {
+    //         ed::DeselectNode(_currUiNode->ID);
+    //         _currUiNode = nullptr;
+    //     }
+    //     _prevUiNode = nullptr;
+    //     _isNodeGraph = false;
+    //     _currGraphElem = _graphDoc;
+    //     _initial = true;
+    // }
 }
 
 void Graph::clearGraph()
 {
-    _graphNodes.clear();
-    _currLinks.clear();
-    _currEdge.clear();
-    _currPins.clear();
-    _graphDoc = mx::createDocument();
-    _graphDoc->setDataLibrary(_stdLib);
-    _currGraphElem = _graphDoc;
+    //_graphNodes.clear();
+    //_currLinks.clear();
+    //_currEdge.clear();
+    //_currPins.clear();
+    //_graphDoc = mx::createDocument();
+    //_graphDoc->setDataLibrary(_stdLib);
+    //_currGraphElem = _graphDoc;
 
-    if (_currUiNode != nullptr) {
-        ed::DeselectNode(_currUiNode->ID);
-        _currUiNode = nullptr;
-    }
-    _prevUiNode = nullptr;
-    _currRenderNode = nullptr;
-    _isNodeGraph = false;
-    _currGraphName.clear();
+    // if (_currUiNode != nullptr) {
+    //     ed::DeselectNode(_currUiNode->ID);
+    //     _currUiNode = nullptr;
+    // }
+    //_prevUiNode = nullptr;
+    //_currRenderNode = nullptr;
+    //_isNodeGraph = false;
+    //_currGraphName.clear();
 
     //_renderer->setDocument(_graphDoc);
     //_renderer->updateMaterials(nullptr);
@@ -1731,43 +1754,43 @@ void Graph::clearGraph()
 
 void Graph::loadGraphFromFile(bool prompt)
 {
-    // Deselect node before loading new file
-    if (_currUiNode) {
-        ed::DeselectNode(_currUiNode->ID);
-        _currUiNode = nullptr;
-    }
+    //// Deselect node before loading new file
+    // if (_currUiNode) {
+    //     ed::DeselectNode(_currUiNode->ID);
+    //     _currUiNode = nullptr;
+    // }
 
-    if (prompt || _materialFilename.isEmpty()) {
-        _fileDialog.setTitle("Open File");
-        _fileDialog.setTypeFilters(_mtlxFilter);
-        _fileDialog.open();
-    }
-    else {
-        _graphDoc = loadDocument(_materialFilename);
+    // if (prompt || _materialFilename.isEmpty()) {
+    //     _fileDialog.setTitle("Open File");
+    //     _fileDialog.setTypeFilters(_mtlxFilter);
+    //     _fileDialog.open();
+    // }
+    // else {
+    //     _graphDoc = loadDocument(_materialFilename);
 
-        // Rebuild the UI
-        _initial = true;
-        buildUiBaseGraph(_graphDoc);
-        _currGraphElem = _graphDoc;
-        _prevUiNode = nullptr;
+    //    // Rebuild the UI
+    //    _initial = true;
+    //    buildUiBaseGraph(_graphDoc);
+    //    _currGraphElem = _graphDoc;
+    //    _prevUiNode = nullptr;
 
-        //_renderer->setDocument(_graphDoc);
-        //_renderer->updateMaterials(nullptr);
-    }
+    //    //_renderer->setDocument(_graphDoc);
+    //    //_renderer->updateMaterials(nullptr);
+    //}
 }
 
 void Graph::saveGraphToFile()
 {
-    _fileDialogSave.setTypeFilters(_mtlxFilter);
-    _fileDialogSave.setTitle("Save File As");
-    _fileDialogSave.open();
+    //_fileDialogSave.setTypeFilters(_mtlxFilter);
+    //_fileDialogSave.setTitle("Save File As");
+    //_fileDialogSave.open();
 }
 
 void Graph::loadGeometry()
 {
-    _fileDialogGeom.setTitle("Load Geometry");
-    _fileDialogGeom.setTypeFilters(_geomFilter);
-    _fileDialogGeom.open();
+    //_fileDialogGeom.setTitle("Load Geometry");
+    //_fileDialogGeom.setTypeFilters(_geomFilter);
+    //_fileDialogGeom.open();
 }
 
 void Graph::graphButtons()
@@ -1823,23 +1846,23 @@ void Graph::graphButtons()
         ImGui::EndMenuBar();
     }
 
-    // Menu keys
-    ImGuiIO& guiIO = ImGui::GetIO();
-    if (guiIO.KeyCtrl && !_fileDialogSave.isOpened() &&
-        !_fileDialog.isOpened() && !_fileDialogGeom.isOpened()) {
-        if (ImGui::IsKeyReleased(ImGuiKey_O)) {
-            loadGraphFromFile(true);
-        }
-        else if (ImGui::IsKeyReleased(ImGuiKey_N)) {
-            clearGraph();
-        }
-        else if (ImGui::IsKeyReleased(ImGuiKey_R)) {
-            loadGraphFromFile(false);
-        }
-        else if (ImGui::IsKeyReleased(ImGuiKey_S)) {
-            saveGraphToFile();
-        }
-    }
+    //// Menu keys
+    // ImGuiIO& guiIO = ImGui::GetIO();
+    // if (guiIO.KeyCtrl && !_fileDialogSave.isOpened() &&
+    //     !_fileDialog.isOpened() && !_fileDialogGeom.isOpened()) {
+    //     if (ImGui::IsKeyReleased(ImGuiKey_O)) {
+    //         loadGraphFromFile(true);
+    //     }
+    //     else if (ImGui::IsKeyReleased(ImGuiKey_N)) {
+    //         clearGraph();
+    //     }
+    //     else if (ImGui::IsKeyReleased(ImGuiKey_R)) {
+    //         loadGraphFromFile(false);
+    //     }
+    //     else if (ImGui::IsKeyReleased(ImGuiKey_S)) {
+    //         saveGraphToFile();
+    //     }
+    // }
 
     // Split window into panes for NodeEditor
     static float leftPaneWidth = 375.0f;
@@ -1870,452 +1893,460 @@ void Graph::graphButtons()
     // Create two windows using splitter
     float paneWidth = (leftPaneWidth - 2.0f);
 
-    float aspectRatio = _renderer->getPixelRatio();
-    ImVec2 screenSize = ImVec2(paneWidth, paneWidth / aspectRatio);
+    // float aspectRatio = _renderer->getPixelRatio();
+    // ImVec2 screenSize = ImVec2(paneWidth, paneWidth / aspectRatio);
 
-    ImVec2 mousePos = ImGui::GetMousePos();
-    ImVec2 tempWindowPos = ImGui::GetCursorPos();
-    bool cursorInRenderView = mousePos.x > tempWindowPos.x &&
-                              mousePos.x < (tempWindowPos.x + screenSize.x) &&
-                              mousePos.y > tempWindowPos.y &&
-                              mousePos.y < (tempWindowPos.y + screenSize.y);
+    // ImVec2 mousePos = ImGui::GetMousePos();
+    // ImVec2 tempWindowPos = ImGui::GetCursorPos();
+    // bool cursorInRenderView = mousePos.x > tempWindowPos.x &&
+    //                           mousePos.x < (tempWindowPos.x + screenSize.x)
+    //                           && mousePos.y > tempWindowPos.y && mousePos.y <
+    //                           (tempWindowPos.y + screenSize.y);
 
-    ImGuiWindowFlags windowFlags = 0;
+    // ImGuiWindowFlags windowFlags = 0;
 
-    if (cursorInRenderView) {
-        windowFlags |= ImGuiWindowFlags_NoScrollWithMouse;
-    }
+    // if (cursorInRenderView) {
+    //     windowFlags |= ImGuiWindowFlags_NoScrollWithMouse;
+    // }
 
-    ImGui::BeginChild("Selection", ImVec2(paneWidth, 0), false, windowFlags);
-    ImVec2 windowPos = ImGui::GetWindowPos();
+    // ImGui::BeginChild("Selection", ImVec2(paneWidth, 0), false, windowFlags);
+    // ImVec2 windowPos = ImGui::GetWindowPos();
 
-    // Update cursorInRenderView to account for other windows overlapping the
-    // Render View (e.g. Menu dropdown).
-    cursorInRenderView &= ImGui::IsWindowHovered(ImGuiHoveredFlags_None);
+    //// Update cursorInRenderView to account for other windows overlapping the
+    //// Render View (e.g. Menu dropdown).
+    // cursorInRenderView &= ImGui::IsWindowHovered(ImGuiHoveredFlags_None);
 
-    // Update cursorInRenderView to account for visible scrollbar and scroll
-    // amount.
-    ImGuiContext* context = ImGui::GetCurrentContext();
-    bool hasScrollbar = context->CurrentWindow->ScrollbarY;
-    cursorInRenderView &= hasScrollbar
-                              ? mousePos.x < (tempWindowPos.x + screenSize.x -
-                                              ImGui::GetStyle().ScrollbarSize)
-                              : true;
-    cursorInRenderView &= hasScrollbar
-                              ? mousePos.y < (tempWindowPos.y + screenSize.y -
-                                              ImGui::GetScrollY())
-                              : true;
+    //// Update cursorInRenderView to account for visible scrollbar and scroll
+    //// amount.
+    // ImGuiContext* context = ImGui::GetCurrentContext();
+    // bool hasScrollbar = context->CurrentWindow->ScrollbarY;
+    // cursorInRenderView &= hasScrollbar
+    //                           ? mousePos.x < (tempWindowPos.x + screenSize.x
+    //                           -
+    //                                           ImGui::GetStyle().ScrollbarSize)
+    //                           : true;
+    // cursorInRenderView &= hasScrollbar
+    //                           ? mousePos.y < (tempWindowPos.y + screenSize.y
+    //                           -
+    //                                           ImGui::GetScrollY())
+    //                           : true;
 
-    // RenderView window
-    ImVec2 wsize = ImVec2(
-        (float)_renderer->getViewWidth(), (float)_renderer->getViewHeight());
-    _renderer->setViewWidth((int)screenSize[0]);
-    _renderer->setViewHeight((int)screenSize[1]);
+    //// RenderView window
+    // ImVec2 wsize = ImVec2(
+    //     (float)_renderer->getViewWidth(), (float)_renderer->getViewHeight());
+    //_renderer->setViewWidth((int)screenSize[0]);
+    //_renderer->setViewHeight((int)screenSize[1]);
 
-    if (_renderer) {
-        glEnable(GL_FRAMEBUFFER_SRGB);
-        _renderer->getViewCamera()->setViewportSize(
-            mx::Vector2(screenSize[0], screenSize[1]));
-        GLuint64 my_image_texture = _renderer->_textureID;
-        mx::Vector2 vec = _renderer->getViewCamera()->getViewportSize();
-        // current image has correct color space but causes problems for gui
-        ImGui::Image(
-            (ImTextureID)my_image_texture,
-            screenSize,
-            ImVec2(0, 1),
-            ImVec2(1, 0));
-    }
-    ImGui::Separator();
+    // if (_renderer) {
+    //     glEnable(GL_FRAMEBUFFER_SRGB);
+    //     _renderer->getViewCamera()->setViewportSize(
+    //         mx::Vector2(screenSize[0], screenSize[1]));
+    //     GLuint64 my_image_texture = _renderer->_textureID;
+    //     mx::Vector2 vec = _renderer->getViewCamera()->getViewportSize();
+    //     // current image has correct color space but causes problems for gui
+    //     ImGui::Image(
+    //         (ImTextureID)my_image_texture,
+    //         screenSize,
+    //         ImVec2(0, 1),
+    //         ImVec2(1, 0));
+    // }
+    // ImGui::Separator();
 
-    // Property editor for current nodes
-    propertyEditor();
-    ImGui::EndChild();
-    ImGui::SameLine(0.0f, 12.0f);
+    //// Property editor for current nodes
+    // propertyEditor();
+    // ImGui::EndChild();
+    // ImGui::SameLine(0.0f, 12.0f);
 
-    if (cursorInRenderView) {
-        handleRenderViewInputs();
-    }
+    // if (cursorInRenderView) {
+    //     handleRenderViewInputs();
+    // }
 }
 
 void Graph::propertyEditor()
 {
-    // Get parent dimensions
-    ImVec2 textPos =
-        ImGui::GetCursorScreenPos();  // Position for the background
-    float parentWidth =
-        ImGui::GetContentRegionAvail().x;  // Available width in the parent
+    //// Get parent dimensions
+    // ImVec2 textPos =
+    //     ImGui::GetCursorScreenPos();  // Position for the background
+    // float parentWidth =
+    //     ImGui::GetContentRegionAvail().x;  // Available width in the parent
 
-    // Draw the title bar
-    const ImGuiStyle& style = ImGui::GetStyle();
-    ImVec4 menuBarBgColor = style.Colors[ImGuiCol_MenuBarBg];
-    ImU32 bgColor = ImGui::ColorConvertFloat4ToU32(
-        menuBarBgColor);  // Convert to 32-bit color
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-    drawList->AddRectFilled(
-        textPos,
-        ImVec2(textPos.x + parentWidth, textPos.y + ImGui::GetTextLineHeight()),
-        bgColor);
-    ImGui::Text("Node Property Editor");
+    //// Draw the title bar
+    // const ImGuiStyle& style = ImGui::GetStyle();
+    // ImVec4 menuBarBgColor = style.Colors[ImGuiCol_MenuBarBg];
+    // ImU32 bgColor = ImGui::ColorConvertFloat4ToU32(
+    //     menuBarBgColor);  // Convert to 32-bit color
+    // ImDrawList* drawList = ImGui::GetWindowDrawList();
+    // drawList->AddRectFilled(
+    //     textPos,
+    //     ImVec2(textPos.x + parentWidth, textPos.y +
+    //     ImGui::GetTextLineHeight()), bgColor);
+    // ImGui::Text("Node Property Editor");
 
-    if (_currUiNode) {
-        // Set and edit name
-        ImGui::Text("Name: ");
-        ImGui::SameLine();
-        std::string original = _currUiNode->getName();
-        std::string temp = original;
-        float availableWidth = ImGui::GetContentRegionAvail().x;
-        ImGui::PushItemWidth(availableWidth);
-        ImGui::InputText("##edit", &temp);
-        ImGui::PopItemWidth();
+    // if (_currUiNode) {
+    //     // Set and edit name
+    //     ImGui::Text("Name: ");
+    //     ImGui::SameLine();
+    //     std::string original = _currUiNode->getName();
+    //     std::string temp = original;
+    //     float availableWidth = ImGui::GetContentRegionAvail().x;
+    //     ImGui::PushItemWidth(availableWidth);
+    //     ImGui::InputText("##edit", &temp);
+    //     ImGui::PopItemWidth();
 
-        std::string docString = "NodeDef Doc String: \n";
-        if (_currUiNode->getNode()) {
-            if (temp != original) {
-                std::string name =
-                    _currUiNode->getNode()->getParent()->createValidChildName(
-                        temp);
+    //    std::string docString = "NodeDef Doc String: \n";
+    //    if (_currUiNode->getNode()) {
+    //        if (temp != original) {
+    //            std::string name =
+    //                _currUiNode->getNode()->getParent()->createValidChildName(
+    //                    temp);
 
-                std::vector<UiNodePtr> downstreamNodes =
-                    _currUiNode->getOutputConnections();
-                for (UiNodePtr uiNode : downstreamNodes) {
-                    if (!uiNode->getInput() && uiNode->getNode()) {
-                        for (mx::InputPtr input :
-                             uiNode->getNode()->getActiveInputs()) {
-                            if (input->getConnectedNode() ==
-                                _currUiNode->getNode()) {
-                                _currUiNode->getNode()->setName(name);
-                                uiNode->getNode()->setConnectedNode(
-                                    input->getName(), _currUiNode->getNode());
-                            }
-                        }
-                    }
-                }
-                _currUiNode->setName(name);
-                _currUiNode->getNode()->setName(name);
-            }
-        }
-        else if (_currUiNode->getInput()) {
-            if (temp != original) {
-                std::string name =
-                    _currUiNode->getInput()->getParent()->createValidChildName(
-                        temp);
-                std::vector<UiNodePtr> downstreamNodes =
-                    _currUiNode->getOutputConnections();
-                for (UiNodePtr uiNode : downstreamNodes) {
-                    if (uiNode->getInput() == nullptr) {
-                        if (uiNode->getNode()) {
-                            for (mx::InputPtr input :
-                                 uiNode->getNode()->getActiveInputs()) {
-                                if (input->getInterfaceInput() ==
-                                    _currUiNode->getInput()) {
-                                    _currUiNode->getInput()->setName(name);
-                                    mx::ValuePtr val =
-                                        _currUiNode->getInput()->getValue();
-                                    input->setConnectedInterfaceName(name);
-                                    mx::InputPtr pt =
-                                        input->getInterfaceInput();
-                                }
-                            }
-                        }
-                        else {
-                            uiNode->getOutput()->setConnectedNode(
-                                _currUiNode->getNode());
-                        }
-                    }
-                }
+    //            std::vector<UiNodePtr> downstreamNodes =
+    //                _currUiNode->getOutputConnections();
+    //            for (UiNodePtr uiNode : downstreamNodes) {
+    //                if (!uiNode->getInput() && uiNode->getNode()) {
+    //                    for (mx::InputPtr input :
+    //                         uiNode->getNode()->getActiveInputs()) {
+    //                        if (input->getConnectedNode() ==
+    //                            _currUiNode->getNode()) {
+    //                            _currUiNode->getNode()->setName(name);
+    //                            uiNode->getNode()->setConnectedNode(
+    //                                input->getName(), _currUiNode->getNode());
+    //                        }
+    //                    }
+    //                }
+    //            }
+    //            _currUiNode->setName(name);
+    //            _currUiNode->getNode()->setName(name);
+    //        }
+    //    }
+    //    else if (_currUiNode->getInput()) {
+    //        if (temp != original) {
+    //            std::string name =
+    //                _currUiNode->getInput()->getParent()->createValidChildName(
+    //                    temp);
+    //            std::vector<UiNodePtr> downstreamNodes =
+    //                _currUiNode->getOutputConnections();
+    //            for (UiNodePtr uiNode : downstreamNodes) {
+    //                if (uiNode->getInput() == nullptr) {
+    //                    if (uiNode->getNode()) {
+    //                        for (mx::InputPtr input :
+    //                             uiNode->getNode()->getActiveInputs()) {
+    //                            if (input->getInterfaceInput() ==
+    //                                _currUiNode->getInput()) {
+    //                                _currUiNode->getInput()->setName(name);
+    //                                mx::ValuePtr val =
+    //                                    _currUiNode->getInput()->getValue();
+    //                                input->setConnectedInterfaceName(name);
+    //                                mx::InputPtr pt =
+    //                                    input->getInterfaceInput();
+    //                            }
+    //                        }
+    //                    }
+    //                    else {
+    //                        uiNode->getOutput()->setConnectedNode(
+    //                            _currUiNode->getNode());
+    //                    }
+    //                }
+    //            }
 
-                _currUiNode->getInput()->setName(name);
-                _currUiNode->setName(name);
-            }
-        }
-        else if (_currUiNode->getOutput()) {
-            if (temp != original) {
-                std::string name =
-                    _currUiNode->getOutput()->getParent()->createValidChildName(
-                        temp);
-                _currUiNode->getOutput()->setName(name);
-                _currUiNode->setName(name);
-            }
-        }
-        else if (_currUiNode->getCategory() == "group") {
-            _currUiNode->setName(temp);
-        }
-        else if (_currUiNode->getCategory() == "nodegraph") {
-            if (temp != original) {
-                std::string name = _currUiNode->getNodeGraph()
-                                       ->getParent()
-                                       ->createValidChildName(temp);
-                _currUiNode->getNodeGraph()->setName(name);
-                _currUiNode->setName(name);
+    //            _currUiNode->getInput()->setName(name);
+    //            _currUiNode->setName(name);
+    //        }
+    //    }
+    //    else if (_currUiNode->getOutput()) {
+    //        if (temp != original) {
+    //            std::string name =
+    //                _currUiNode->getOutput()->getParent()->createValidChildName(
+    //                    temp);
+    //            _currUiNode->getOutput()->setName(name);
+    //            _currUiNode->setName(name);
+    //        }
+    //    }
+    //    else if (_currUiNode->getCategory() == "group") {
+    //        _currUiNode->setName(temp);
+    //    }
+    //    else if (_currUiNode->getCategory() == "nodegraph") {
+    //        if (temp != original) {
+    //            std::string name = _currUiNode->getNodeGraph()
+    //                                   ->getParent()
+    //                                   ->createValidChildName(temp);
+    //            _currUiNode->getNodeGraph()->setName(name);
+    //            _currUiNode->setName(name);
 
-                for (UiNodePtr node : _graphNodes) {
-                    if (!node->getInput()) {
-                        std::vector<UiPinPtr> inputs = node->inputPins;
-                        for (size_t i = 0; i < inputs.size(); i++) {
-                            const std::string& inputName = inputs[i]->_name;
-                            UiNodePtr inputNode =
-                                node->getConnectedNode(inputName);
-                            if (inputNode && inputNode->getName() == name &&
-                                node->getNode()) {
-                                node->getNode()
-                                    ->getInput(inputName)
-                                    ->setAttribute("nodegraph", name);
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    //            for (UiNodePtr node : _graphNodes) {
+    //                if (!node->getInput()) {
+    //                    std::vector<UiPinPtr> inputs = node->inputPins;
+    //                    for (size_t i = 0; i < inputs.size(); i++) {
+    //                        const std::string& inputName = inputs[i]->_name;
+    //                        UiNodePtr inputNode =
+    //                            node->getConnectedNode(inputName);
+    //                        if (inputNode && inputNode->getName() == name &&
+    //                            node->getNode()) {
+    //                            node->getNode()
+    //                                ->getInput(inputName)
+    //                                ->setAttribute("nodegraph", name);
+    //                        }
+    //                    }
+    //                }
+    //            }
+    //        }
+    //    }
 
-        const float TEXT_BASE_HEIGHT =
-            ImGui::GetTextLineHeightWithSpacing() * 1.3f;
-        const int SCROLL_LINE_COUNT = 20;
-        ImGuiTableFlags tableFlags =
-            ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
-            ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersOuterH |
-            ImGuiTableFlags_NoBordersInBody;
+    //    const float TEXT_BASE_HEIGHT =
+    //        ImGui::GetTextLineHeightWithSpacing() * 1.3f;
+    //    const int SCROLL_LINE_COUNT = 20;
+    //    ImGuiTableFlags tableFlags =
+    //        ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
+    //        ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_BordersOuterH |
+    //        ImGuiTableFlags_NoBordersInBody;
 
-        ImGui::Text("Category:");
-        ImGui::SameLine();
+    //    ImGui::Text("Category:");
+    //    ImGui::SameLine();
 
-        // Change button color to match background
-        ImGui::PushStyleColor(
-            ImGuiCol_Button, ImVec4(.096f, .096f, .096f, 1.0f));
-        ImGui::PushStyleColor(
-            ImGuiCol_ButtonHovered, ImVec4(.1f, .1f, .1f, 1.0f));
-        if (_currUiNode->getNode()) {
-            ImGui::NextColumn();
-            ImGui::Text("%s", _currUiNode->getNode()->getCategory().c_str());
-            docString += _currUiNode->getNode()->getCategory();
-            if (_currUiNode->getNode()->getNodeDef()) {
-                docString += ":";
-                docString +=
-                    _currUiNode->getNode()->getNodeDef()->getDocString() + "\n";
-            }
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-                ImGui::SetTooltip(
-                    "%s",
-                    _currUiNode->getNode()
-                        ->getNodeDef()
-                        ->getDocString()
-                        .c_str());
-            }
+    //    // Change button color to match background
+    //    ImGui::PushStyleColor(
+    //        ImGuiCol_Button, ImVec4(.096f, .096f, .096f, 1.0f));
+    //    ImGui::PushStyleColor(
+    //        ImGuiCol_ButtonHovered, ImVec4(.1f, .1f, .1f, 1.0f));
+    //    if (_currUiNode->getNode()) {
+    //        ImGui::NextColumn();
+    //        ImGui::Text("%s", _currUiNode->getNode()->getCategory().c_str());
+    //        docString += _currUiNode->getNode()->getCategory();
+    //        if (_currUiNode->getNode()->getNodeDef()) {
+    //            docString += ":";
+    //            docString +=
+    //                _currUiNode->getNode()->getNodeDef()->getDocString() +
+    //                "\n";
+    //        }
+    //        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+    //            ImGui::SetTooltip(
+    //                "%s",
+    //                _currUiNode->getNode()
+    //                    ->getNodeDef()
+    //                    ->getDocString()
+    //                    .c_str());
+    //        }
 
-            ImGui::Checkbox("Show all inputs", &_currUiNode->_showAllInputs);
+    //        ImGui::Checkbox("Show all inputs", &_currUiNode->_showAllInputs);
 
-            int count = 0;
-            for (UiPinPtr input : _currUiNode->inputPins) {
-                if (_currUiNode->_showAllInputs ||
-                    (input->getConnected() ||
-                     _currUiNode->getNode()->getInput(input->_name))) {
-                    count++;
-                }
-            }
-            if (count) {
-                ImVec2 tableSize(
-                    0.0f,
-                    TEXT_BASE_HEIGHT * std::min(SCROLL_LINE_COUNT, count));
-                bool haveTable = ImGui::BeginTable(
-                    "inputs_node_table", 2, tableFlags, tableSize);
-                if (haveTable) {
-                    ImGui::SetWindowFontScale(_fontScale);
-                    for (UiPinPtr input : _currUiNode->inputPins) {
-                        if (_currUiNode->_showAllInputs ||
-                            (input->getConnected() ||
-                             _currUiNode->getNode()->getInput(input->_name))) {
-                            ImGui::TableNextRow();
-                            ImGui::TableNextColumn();
+    //        int count = 0;
+    //        for (UiPinPtr input : _currUiNode->inputPins) {
+    //            if (_currUiNode->_showAllInputs ||
+    //                (input->getConnected() ||
+    //                 _currUiNode->getNode()->getInput(input->_name))) {
+    //                count++;
+    //            }
+    //        }
+    //        if (count) {
+    //            ImVec2 tableSize(
+    //                0.0f,
+    //                TEXT_BASE_HEIGHT * std::min(SCROLL_LINE_COUNT, count));
+    //            bool haveTable = ImGui::BeginTable(
+    //                "inputs_node_table", 2, tableFlags, tableSize);
+    //            if (haveTable) {
+    //                ImGui::SetWindowFontScale(_fontScale);
+    //                for (UiPinPtr input : _currUiNode->inputPins) {
+    //                    if (_currUiNode->_showAllInputs ||
+    //                        (input->getConnected() ||
+    //                         _currUiNode->getNode()->getInput(input->_name)))
+    //                         {
+    //                        ImGui::TableNextRow();
+    //                        ImGui::TableNextColumn();
 
-                            mx::UIProperties uiProperties;
-                            mx::getUIProperties(
-                                input->_input, mx::EMPTY_STRING, uiProperties);
-                            std::string inputLabel =
-                                !uiProperties.uiName.empty()
-                                    ? uiProperties.uiName
-                                    : input->_input->getName();
-                            mx::OutputPtr out =
-                                input->_input->getConnectedOutput();
+    //                        mx::UIProperties uiProperties;
+    //                        mx::getUIProperties(
+    //                            input->_input, mx::EMPTY_STRING,
+    //                            uiProperties);
+    //                        std::string inputLabel =
+    //                            !uiProperties.uiName.empty()
+    //                                ? uiProperties.uiName
+    //                                : input->_input->getName();
+    //                        mx::OutputPtr out =
+    //                            input->_input->getConnectedOutput();
 
-                            // Set comment help box
-                            ImGui::PushID(int(input->_pinId.Get()));
-                            ImGui::Text("%s", inputLabel.c_str());
-                            mx::InputPtr tempInt =
-                                _currUiNode->getNode()
-                                    ->getNodeDef()
-                                    ->getActiveInput(input->_input->getName());
-                            docString += input->_name;
-                            docString += ": ";
-                            if (tempInt) {
-                                std::string newStr =
-                                    _currUiNode->getNode()
-                                        ->getNodeDef()
-                                        ->getActiveInput(
-                                            input->_input->getName())
-                                        ->getDocString();
-                                if (newStr != mx::EMPTY_STRING) {
-                                    docString += newStr;
-                                }
-                            }
-                            docString += "\t \n";
+    //                        // Set comment help box
+    //                        ImGui::PushID(int(input->_pinId.Get()));
+    //                        ImGui::Text("%s", inputLabel.c_str());
+    //                        mx::InputPtr tempInt =
+    //                            _currUiNode->getNode()
+    //                                ->getNodeDef()
+    //                                ->getActiveInput(input->_input->getName());
+    //                        docString += input->_name;
+    //                        docString += ": ";
+    //                        if (tempInt) {
+    //                            std::string newStr =
+    //                                _currUiNode->getNode()
+    //                                    ->getNodeDef()
+    //                                    ->getActiveInput(
+    //                                        input->_input->getName())
+    //                                    ->getDocString();
+    //                            if (newStr != mx::EMPTY_STRING) {
+    //                                docString += newStr;
+    //                            }
+    //                        }
+    //                        docString += "\t \n";
 
-                            // Set constant sliders for input values
-                            ImGui::TableNextColumn();
-                            if (!input->getConnected()) {
-                                setConstant(
-                                    _currUiNode, input->_input, uiProperties);
-                            }
-                            else {
-                                std::string typeText =
-                                    " [" + input->_input->getType() + "]";
-                                ImGui::Text("%s", typeText.c_str());
-                            }
+    //                        // Set constant sliders for input values
+    //                        ImGui::TableNextColumn();
+    //                        if (!input->getConnected()) {
+    //                            setConstant(
+    //                                _currUiNode, input->_input, uiProperties);
+    //                        }
+    //                        else {
+    //                            std::string typeText =
+    //                                " [" + input->_input->getType() + "]";
+    //                            ImGui::Text("%s", typeText.c_str());
+    //                        }
 
-                            ImGui::PopID();
-                        }
-                    }
+    //                        ImGui::PopID();
+    //                    }
+    //                }
 
-                    ImGui::EndTable();
-                    ImGui::SetWindowFontScale(1.0f);
-                }
-            }
-        }
+    //                ImGui::EndTable();
+    //                ImGui::SetWindowFontScale(1.0f);
+    //            }
+    //        }
+    //    }
 
-        else if (_currUiNode->getInput() != nullptr) {
-            ImGui::Text("%s", _currUiNode->getCategory().c_str());
-            std::vector<UiPinPtr> inputs = _currUiNode->inputPins;
+    //    else if (_currUiNode->getInput() != nullptr) {
+    //        ImGui::Text("%s", _currUiNode->getCategory().c_str());
+    //        std::vector<UiPinPtr> inputs = _currUiNode->inputPins;
 
-            int count = static_cast<int>(inputs.size());
-            if (count) {
-                bool haveTable = ImGui::BeginTable(
-                    "inputs_input_table",
-                    2,
-                    tableFlags,
-                    ImVec2(
-                        0.0f,
-                        TEXT_BASE_HEIGHT * std::min(SCROLL_LINE_COUNT, count)));
-                if (haveTable) {
-                    ImGui::SetWindowFontScale(_fontScale);
-                    for (size_t i = 0; i < inputs.size(); i++) {
-                        ImGui::TableNextRow();
-                        ImGui::TableNextColumn();
+    //        int count = static_cast<int>(inputs.size());
+    //        if (count) {
+    //            bool haveTable = ImGui::BeginTable(
+    //                "inputs_input_table",
+    //                2,
+    //                tableFlags,
+    //                ImVec2(
+    //                    0.0f,
+    //                    TEXT_BASE_HEIGHT * std::min(SCROLL_LINE_COUNT,
+    //                    count)));
+    //            if (haveTable) {
+    //                ImGui::SetWindowFontScale(_fontScale);
+    //                for (size_t i = 0; i < inputs.size(); i++) {
+    //                    ImGui::TableNextRow();
+    //                    ImGui::TableNextColumn();
 
-                        mx::InputPtr mxinput = inputs[i]->_input;
-                        mx::UIProperties uiProperties;
-                        mx::getUIProperties(
-                            mxinput, mx::EMPTY_STRING, uiProperties);
-                        std::string inputLabel = !uiProperties.uiName.empty()
-                                                     ? uiProperties.uiName
-                                                     : mxinput->getName();
+    //                    mx::InputPtr mxinput = inputs[i]->_input;
+    //                    mx::UIProperties uiProperties;
+    //                    mx::getUIProperties(
+    //                        mxinput, mx::EMPTY_STRING, uiProperties);
+    //                    std::string inputLabel = !uiProperties.uiName.empty()
+    //                                                 ? uiProperties.uiName
+    //                                                 : mxinput->getName();
 
-                        // Set comment help box
-                        ImGui::PushID(int(inputs[i]->_pinId.Get()));
-                        ImGui::Text("%s", inputLabel.c_str());
+    //                    // Set comment help box
+    //                    ImGui::PushID(int(inputs[i]->_pinId.Get()));
+    //                    ImGui::Text("%s", inputLabel.c_str());
 
-                        ImGui::TableNextColumn();
+    //                    ImGui::TableNextColumn();
 
-                        // Set constant sliders for input values
-                        if (!inputs[i]->getConnected()) {
-                            setConstant(
-                                _currUiNode, inputs[i]->_input, uiProperties);
-                        }
-                        else {
-                            std::string typeText =
-                                " [" + inputs[i]->_input->getType() + "]";
-                            ImGui::Text("%s", typeText.c_str());
-                        }
-                        ImGui::PopID();
-                    }
-                    ImGui::EndTable();
-                    ImGui::SetWindowFontScale(1.0f);
-                }
-            }
-        }
-        else if (_currUiNode->getOutput() != nullptr) {
-            ImGui::Text("%s", _currUiNode->getOutput()->getCategory().c_str());
-        }
-        else if (_currUiNode->getNodeGraph() != nullptr) {
-            std::vector<UiPinPtr> inputs = _currUiNode->inputPins;
-            ImGui::Text("%s", _currUiNode->getCategory().c_str());
-            int count = 0;
-            for (UiPinPtr input : inputs) {
-                if (_currUiNode->_showAllInputs ||
-                    (input->getConnected() ||
-                     _currUiNode->getNodeGraph()->getInput(input->_name))) {
-                    count++;
-                }
-            }
-            if (count) {
-                bool haveTable = ImGui::BeginTable(
-                    "inputs_nodegraph_table",
-                    2,
-                    tableFlags,
-                    ImVec2(
-                        0.0f,
-                        TEXT_BASE_HEIGHT * std::min(SCROLL_LINE_COUNT, count)));
-                if (haveTable) {
-                    ImGui::SetWindowFontScale(_fontScale);
-                    for (UiPinPtr input : inputs) {
-                        if (_currUiNode->_showAllInputs ||
-                            (input->getConnected() ||
-                             _currUiNode->getNodeGraph()->getInput(
-                                 input->_name))) {
-                            ImGui::TableNextRow();
-                            ImGui::TableNextColumn();
+    //                    // Set constant sliders for input values
+    //                    if (!inputs[i]->getConnected()) {
+    //                        setConstant(
+    //                            _currUiNode, inputs[i]->_input, uiProperties);
+    //                    }
+    //                    else {
+    //                        std::string typeText =
+    //                            " [" + inputs[i]->_input->getType() + "]";
+    //                        ImGui::Text("%s", typeText.c_str());
+    //                    }
+    //                    ImGui::PopID();
+    //                }
+    //                ImGui::EndTable();
+    //                ImGui::SetWindowFontScale(1.0f);
+    //            }
+    //        }
+    //    }
+    //    else if (_currUiNode->getOutput() != nullptr) {
+    //        ImGui::Text("%s",
+    //        _currUiNode->getOutput()->getCategory().c_str());
+    //    }
+    //    else if (_currUiNode->getNodeGraph() != nullptr) {
+    //        std::vector<UiPinPtr> inputs = _currUiNode->inputPins;
+    //        ImGui::Text("%s", _currUiNode->getCategory().c_str());
+    //        int count = 0;
+    //        for (UiPinPtr input : inputs) {
+    //            if (_currUiNode->_showAllInputs ||
+    //                (input->getConnected() ||
+    //                 _currUiNode->getNodeGraph()->getInput(input->_name))) {
+    //                count++;
+    //            }
+    //        }
+    //        if (count) {
+    //            bool haveTable = ImGui::BeginTable(
+    //                "inputs_nodegraph_table",
+    //                2,
+    //                tableFlags,
+    //                ImVec2(
+    //                    0.0f,
+    //                    TEXT_BASE_HEIGHT * std::min(SCROLL_LINE_COUNT,
+    //                    count)));
+    //            if (haveTable) {
+    //                ImGui::SetWindowFontScale(_fontScale);
+    //                for (UiPinPtr input : inputs) {
+    //                    if (_currUiNode->_showAllInputs ||
+    //                        (input->getConnected() ||
+    //                         _currUiNode->getNodeGraph()->getInput(
+    //                             input->_name))) {
+    //                        ImGui::TableNextRow();
+    //                        ImGui::TableNextColumn();
 
-                            mx::InputPtr mxinput = input->_input;
-                            mx::UIProperties uiProperties;
-                            mx::getUIProperties(
-                                mxinput, mx::EMPTY_STRING, uiProperties);
-                            std::string inputLabel =
-                                !uiProperties.uiName.empty()
-                                    ? uiProperties.uiName
-                                    : mxinput->getName();
+    //                        mx::InputPtr mxinput = input->_input;
+    //                        mx::UIProperties uiProperties;
+    //                        mx::getUIProperties(
+    //                            mxinput, mx::EMPTY_STRING, uiProperties);
+    //                        std::string inputLabel =
+    //                            !uiProperties.uiName.empty()
+    //                                ? uiProperties.uiName
+    //                                : mxinput->getName();
 
-                            // Set comment help box
-                            ImGui::PushID(int(input->_pinId.Get()));
-                            ImGui::Text("%s", inputLabel.c_str());
+    //                        // Set comment help box
+    //                        ImGui::PushID(int(input->_pinId.Get()));
+    //                        ImGui::Text("%s", inputLabel.c_str());
 
-                            docString +=
-                                _currUiNode->getNodeGraph()
-                                    ->getActiveInput(input->_input->getName())
-                                    ->getDocString();
+    //                        docString +=
+    //                            _currUiNode->getNodeGraph()
+    //                                ->getActiveInput(input->_input->getName())
+    //                                ->getDocString();
 
-                            ImGui::TableNextColumn();
-                            if (!input->_input->getConnectedNode() &&
-                                _currUiNode->getNodeGraph()->getActiveInput(
-                                    input->_input->getName())) {
-                                setConstant(
-                                    _currUiNode, input->_input, uiProperties);
-                            }
-                            else {
-                                std::string typeText =
-                                    " [" + input->_input->getType() + "]";
-                                ImGui::Text("%s", typeText.c_str());
-                            }
+    //                        ImGui::TableNextColumn();
+    //                        if (!input->_input->getConnectedNode() &&
+    //                            _currUiNode->getNodeGraph()->getActiveInput(
+    //                                input->_input->getName())) {
+    //                            setConstant(
+    //                                _currUiNode, input->_input, uiProperties);
+    //                        }
+    //                        else {
+    //                            std::string typeText =
+    //                                " [" + input->_input->getType() + "]";
+    //                            ImGui::Text("%s", typeText.c_str());
+    //                        }
 
-                            ImGui::PopID();
-                        }
-                    }
-                    ImGui::EndTable();
-                    ImGui::SetWindowFontScale(1.0f);
-                }
-            }
-            ImGui::Checkbox("Show all inputs", &_currUiNode->_showAllInputs);
-        }
-        ImGui::PopStyleColor();
-        ImGui::PopStyleColor();
+    //                        ImGui::PopID();
+    //                    }
+    //                }
+    //                ImGui::EndTable();
+    //                ImGui::SetWindowFontScale(1.0f);
+    //            }
+    //        }
+    //        ImGui::Checkbox("Show all inputs", &_currUiNode->_showAllInputs);
+    //    }
+    //    ImGui::PopStyleColor();
+    //    ImGui::PopStyleColor();
 
-        if (ImGui::Button("Node Info")) {
-            ImGui::OpenPopup("docstring");
-        }
+    //    if (ImGui::Button("Node Info")) {
+    //        ImGui::OpenPopup("docstring");
+    //    }
 
-        if (ImGui::BeginPopup("docstring")) {
-            ImGui::SetWindowFontScale(_fontScale);
-            ImGui::Text("%s", docString.c_str());
-            ImGui::SetWindowFontScale(1.0f);
-            ImGui::EndPopup();
-        }
-    }
+    //    if (ImGui::BeginPopup("docstring")) {
+    //        ImGui::SetWindowFontScale(_fontScale);
+    //        ImGui::Text("%s", docString.c_str());
+    //        ImGui::SetWindowFontScale(1.0f);
+    //        ImGui::EndPopup();
+    //    }
+    //}
 }
 
 void Graph::showHelp() const
@@ -2365,139 +2396,142 @@ void Graph::showHelp() const
 
 void Graph::addNodePopup(bool cursor)
 {
-    bool open_AddPopup = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootWindow) &&
-                         ImGui::IsKeyReleased(ImGuiKey_Tab);
-    static char input[32]{ "" };
-    if (open_AddPopup) {
-        cursor = true;
-        ImGui::OpenPopup("add node");
-    }
-    if (ImGui::BeginPopup("add node")) {
-        ImGui::Text("Add Node");
-        ImGui::Separator();
-        if (cursor) {
-            ImGui::SetKeyboardFocusHere();
-        }
-        ImGui::InputText("##input", input, sizeof(input));
-        std::string subs(input);
+    // bool open_AddPopup = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootWindow)
+    // &&
+    //                      ImGui::IsKeyReleased(ImGuiKey_Tab);
+    // static char input[32]{ "" };
+    // if (open_AddPopup) {
+    //     cursor = true;
+    //     ImGui::OpenPopup("add node");
+    // }
+    // if (ImGui::BeginPopup("add node")) {
+    //     ImGui::Text("Add Node");
+    //     ImGui::Separator();
+    //     if (cursor) {
+    //         ImGui::SetKeyboardFocusHere();
+    //     }
+    //     ImGui::InputText("##input", input, sizeof(input));
+    //     std::string subs(input);
 
-        // Input string length
-        // Filter extra nodes - includes inputs, outputs, groups, and node
-        // graphs
-        const std::string NODEGRAPH_ENTRY = "Node Graph";
+    //    // Input string length
+    //    // Filter extra nodes - includes inputs, outputs, groups, and node
+    //    // graphs
+    //    const std::string NODEGRAPH_ENTRY = "Node Graph";
 
-        // Filter nodedefs and add to menu if matches filter
-        for (auto node : _nodesToAdd) {
-            // Filter out list of nodes
-            if (subs.size() > 0) {
-                ImGui::SetNextWindowSizeConstraints(
-                    ImVec2(250.0f, 300.0f), ImVec2(-1.0f, 500.0f));
-                std::string str(node.getName());
-                std::string nodeName = node.getName();
+    //    // Filter nodedefs and add to menu if matches filter
+    //    for (auto node : _nodesToAdd) {
+    //        // Filter out list of nodes
+    //        if (subs.size() > 0) {
+    //            ImGui::SetNextWindowSizeConstraints(
+    //                ImVec2(250.0f, 300.0f), ImVec2(-1.0f, 500.0f));
+    //            std::string str(node.getName());
+    //            std::string nodeName = node.getName();
 
-                // Disallow creating nested nodegraphs
-                if (_isNodeGraph && node.getGroup() == NODEGRAPH_ENTRY) {
-                    continue;
-                }
+    //            // Disallow creating nested nodegraphs
+    //            if (_isNodeGraph && node.getGroup() == NODEGRAPH_ENTRY) {
+    //                continue;
+    //            }
 
-                // Allow spaces to be used to search for node names
-                std::replace(subs.begin(), subs.end(), ' ', '_');
+    //            // Allow spaces to be used to search for node names
+    //            std::replace(subs.begin(), subs.end(), ' ', '_');
 
-                if (str.find(subs) != std::string::npos) {
-                    if (ImGui::MenuItem(getUserNodeDefName(nodeName).c_str()) ||
-                        (ImGui::IsItemFocused() &&
-                         ImGui::IsKeyPressedMap(ImGuiKey_Enter))) {
-                        addNode(
-                            node.getCategory(),
-                            getUserNodeDefName(nodeName),
-                            node.getType());
-                        _addNewNode = true;
-                        memset(input, '\0', sizeof(input));
-                    }
-                }
-            }
-            else {
-                ImGui::SetNextWindowSizeConstraints(
-                    ImVec2(100, 10), ImVec2(-1, 300));
-                if (ImGui::BeginMenu(node.getGroup().c_str())) {
-                    ImGui::SetWindowFontScale(_fontScale);
-                    std::string name = node.getName();
-                    std::string prefix = "ND_";
-                    if (name.compare(0, prefix.size(), prefix) == 0 &&
-                        name.compare(
-                            prefix.size(),
-                            std::string::npos,
-                            node.getCategory()) == 0) {
-                        if (ImGui::MenuItem(getUserNodeDefName(name).c_str()) ||
-                            (ImGui::IsItemFocused() &&
-                             ImGui::IsKeyPressedMap(ImGuiKey_Enter))) {
-                            addNode(
-                                node.getCategory(),
-                                getUserNodeDefName(name),
-                                node.getType());
-                            _addNewNode = true;
-                        }
-                    }
-                    else {
-                        if (ImGui::BeginMenu(node.getCategory().c_str())) {
-                            if (ImGui::MenuItem(
-                                    getUserNodeDefName(name).c_str()) ||
-                                (ImGui::IsItemFocused() &&
-                                 ImGui::IsKeyPressedMap(ImGuiKey_Enter))) {
-                                addNode(
-                                    node.getCategory(),
-                                    getUserNodeDefName(name),
-                                    node.getType());
-                                _addNewNode = true;
-                            }
-                            ImGui::EndMenu();
-                        }
-                    }
+    //            if (str.find(subs) != std::string::npos) {
+    //                if (ImGui::MenuItem(getUserNodeDefName(nodeName).c_str())
+    //                ||
+    //                    (ImGui::IsItemFocused() &&
+    //                     ImGui::IsKeyPressedMap(ImGuiKey_Enter))) {
+    //                    addNode(
+    //                        node.getCategory(),
+    //                        getUserNodeDefName(nodeName),
+    //                        node.getType());
+    //                    _addNewNode = true;
+    //                    memset(input, '\0', sizeof(input));
+    //                }
+    //            }
+    //        }
+    //        else {
+    //            ImGui::SetNextWindowSizeConstraints(
+    //                ImVec2(100, 10), ImVec2(-1, 300));
+    //            if (ImGui::BeginMenu(node.getGroup().c_str())) {
+    //                ImGui::SetWindowFontScale(_fontScale);
+    //                std::string name = node.getName();
+    //                std::string prefix = "ND_";
+    //                if (name.compare(0, prefix.size(), prefix) == 0 &&
+    //                    name.compare(
+    //                        prefix.size(),
+    //                        std::string::npos,
+    //                        node.getCategory()) == 0) {
+    //                    if (ImGui::MenuItem(getUserNodeDefName(name).c_str())
+    //                    ||
+    //                        (ImGui::IsItemFocused() &&
+    //                         ImGui::IsKeyPressedMap(ImGuiKey_Enter))) {
+    //                        addNode(
+    //                            node.getCategory(),
+    //                            getUserNodeDefName(name),
+    //                            node.getType());
+    //                        _addNewNode = true;
+    //                    }
+    //                }
+    //                else {
+    //                    if (ImGui::BeginMenu(node.getCategory().c_str())) {
+    //                        if (ImGui::MenuItem(
+    //                                getUserNodeDefName(name).c_str()) ||
+    //                            (ImGui::IsItemFocused() &&
+    //                             ImGui::IsKeyPressedMap(ImGuiKey_Enter))) {
+    //                            addNode(
+    //                                node.getCategory(),
+    //                                getUserNodeDefName(name),
+    //                                node.getType());
+    //                            _addNewNode = true;
+    //                        }
+    //                        ImGui::EndMenu();
+    //                    }
+    //                }
 
-                    ImGui::EndMenu();
-                }
-            }
-        }
-        ImGui::EndPopup();
-        open_AddPopup = false;
-    }
+    //                ImGui::EndMenu();
+    //            }
+    //        }
+    //    }
+    //    ImGui::EndPopup();
+    //    open_AddPopup = false;
+    //}
 }
 
 void Graph::searchNodePopup(bool cursor)
 {
-    const bool open_search =
-        ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-        ImGui::IsKeyDown(ImGuiKey_F) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl);
-    if (open_search) {
-        cursor = true;
-        ImGui::OpenPopup("search");
-    }
-    if (ImGui::BeginPopup("search")) {
-        ed::NavigateToSelection();
-        static ImGuiTextFilter filter;
-        ImGui::Text("Search for Node:");
-        static char input[16]{ "" };
-        ImGui::SameLine();
-        if (cursor) {
-            ImGui::SetKeyboardFocusHere();
-        }
-        ImGui::InputText("##input", input, sizeof(input));
+    // const bool open_search =
+    //     ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+    //     ImGui::IsKeyDown(ImGuiKey_F) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl);
+    // if (open_search) {
+    //     cursor = true;
+    //     ImGui::OpenPopup("search");
+    // }
+    // if (ImGui::BeginPopup("search")) {
+    //     ed::NavigateToSelection();
+    //     static ImGuiTextFilter filter;
+    //     ImGui::Text("Search for Node:");
+    //     static char input[16]{ "" };
+    //     ImGui::SameLine();
+    //     if (cursor) {
+    //         ImGui::SetKeyboardFocusHere();
+    //     }
+    //     ImGui::InputText("##input", input, sizeof(input));
 
-        if (std::string(input).size() > 0) {
-            for (UiNodePtr node : _graphNodes) {
-                if (node->getName().find(std::string(input)) !=
-                    std::string::npos) {
-                    if (ImGui::MenuItem(node->getName().c_str()) ||
-                        (ImGui::IsItemFocused() &&
-                         ImGui::IsKeyPressedMap(ImGuiKey_Enter))) {
-                        _searchNodeId = node->ID;
-                        memset(input, '\0', sizeof(input));
-                    }
-                }
-            }
-        }
-        ImGui::EndPopup();
-    }
+    //    if (std::string(input).size() > 0) {
+    //        for (UiNodePtr node : _graphNodes) {
+    //            if (node->getName().find(std::string(input)) !=
+    //                std::string::npos) {
+    //                if (ImGui::MenuItem(node->getName().c_str()) ||
+    //                    (ImGui::IsItemFocused() &&
+    //                     ImGui::IsKeyPressedMap(ImGuiKey_Enter))) {
+    //                    _searchNodeId = node->ID;
+    //                    memset(input, '\0', sizeof(input));
+    //                }
+    //            }
+    //        }
+    //    }
+    //    ImGui::EndPopup();
+    //}
 }
 
 bool Graph::isPinHovered()
@@ -2509,29 +2543,29 @@ bool Graph::isPinHovered()
 
 void Graph::addPinPopup()
 {
-    // Add a floating popup to pin when hovered
-    if (isPinHovered()) {
-        ed::Suspend();
-        UiPinPtr pin = getPin(ed::GetHoveredPin());
-        std::string connected;
-        std::string value;
-        if (pin->_connected) {
-            mx::StringVec connectedNames;
-            for (UiPinPtr connectedPin : pin->getConnections()) {
-                connectedNames.push_back(connectedPin->_name);
-            }
-            connected =
-                "\nConnected to " + mx::joinStrings(connectedNames, ", ");
-        }
-        else if (pin->_input) {
-            value = "\nValue: " + pin->_input->getValueString();
-        }
-        const std::string message(
-            "Name: " + pin->_name + "\nType: " + pin->_type + value +
-            connected);
-        ImGui::SetTooltip("%s", message.c_str());
-        ed::Resume();
-    }
+    //// Add a floating popup to pin when hovered
+    // if (isPinHovered()) {
+    //     ed::Suspend();
+    //     UiPinPtr pin = getPin(ed::GetHoveredPin());
+    //     std::string connected;
+    //     std::string value;
+    //     if (pin->_connected) {
+    //         mx::StringVec connectedNames;
+    //         for (UiPinPtr connectedPin : pin->getConnections()) {
+    //             connectedNames.push_back(connectedPin->_name);
+    //         }
+    //         connected =
+    //             "\nConnected to " + mx::joinStrings(connectedNames, ", ");
+    //     }
+    //     else if (pin->_input) {
+    //         value = "\nValue: " + pin->_input->getValueString();
+    //     }
+    //     const std::string message(
+    //         "Name: " + pin->_name + "\nType: " + pin->_type + value +
+    //         connected);
+    //     ImGui::SetTooltip("%s", message.c_str());
+    //     ed::Resume();
+    // }
 }
 
 void Graph::readOnlyPopup()
@@ -2549,475 +2583,479 @@ void Graph::readOnlyPopup()
 
 void Graph::shaderPopup()
 {
-    if (_renderer->getMaterialCompilation()) {
-        ImGui::SetNextWindowPos(ImVec2(
-            (float)_renderer->getViewWidth() - 135,
-            (float)_renderer->getViewHeight() + 5));
-        ImGui::SetNextWindowBgAlpha(80.f);
-        ImGui::OpenPopup("Shaders");
-    }
-    if (ImGui::BeginPopup("Shaders")) {
-        ImGui::Text("Compiling Shaders");
-        if (!_renderer->getMaterialCompilation()) {
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::EndPopup();
-    }
+    // if (_renderer->getMaterialCompilation()) {
+    //     ImGui::SetNextWindowPos(ImVec2(
+    //         (float)_renderer->getViewWidth() - 135,
+    //         (float)_renderer->getViewHeight() + 5));
+    //     ImGui::SetNextWindowBgAlpha(80.f);
+    //     ImGui::OpenPopup("Shaders");
+    // }
+    // if (ImGui::BeginPopup("Shaders")) {
+    //     ImGui::Text("Compiling Shaders");
+    //     if (!_renderer->getMaterialCompilation()) {
+    //         ImGui::CloseCurrentPopup();
+    //     }
+    //     ImGui::EndPopup();
+    // }
 }
 
 void Graph::drawGraph(ImVec2 mousePos)
 {
-    if (_searchNodeId > 0) {
-        ed::SelectNode(_searchNodeId);
-        ed::NavigateToSelection();
-        _searchNodeId = -1;
-    }
+    // if (_searchNodeId > 0) {
+    //     ed::SelectNode(_searchNodeId);
+    //     ed::NavigateToSelection();
+    //     _searchNodeId = -1;
+    // }
 
-    bool TextCursor = false;
+    // bool TextCursor = false;
 
-    // Center imgui window and set size
-    ImGuiIO& io2 = ImGui::GetIO();
-    ImGui::SetNextWindowSize(io2.DisplaySize);
-    ImGui::SetNextWindowPos(
-        ImVec2(io2.DisplaySize.x * 0.5f, io2.DisplaySize.y * 0.5f),
-        ImGuiCond_Always,
-        ImVec2(0.5f, 0.5f));
-    ImGui::Begin(
-        "MaterialX",
-        nullptr,
-        ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoTitleBar |
-            ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
+    //// Center imgui window and set size
+    // ImGuiIO& io2 = ImGui::GetIO();
+    // ImGui::SetNextWindowSize(io2.DisplaySize);
+    // ImGui::SetNextWindowPos(
+    //     ImVec2(io2.DisplaySize.x * 0.5f, io2.DisplaySize.y * 0.5f),
+    //     ImGuiCond_Always,
+    //     ImVec2(0.5f, 0.5f));
+    // ImGui::Begin(
+    //     "MaterialX",
+    //     nullptr,
+    //     ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoTitleBar |
+    //         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
 
-    io2.ConfigFlags =
-        ImGuiConfigFlags_IsSRGB | ImGuiConfigFlags_NavEnableKeyboard;
-    io2.MouseDoubleClickTime = .5;
-    graphButtons();
+    // io2.ConfigFlags =
+    //     ImGuiConfigFlags_IsSRGB | ImGuiConfigFlags_NavEnableKeyboard;
+    // io2.MouseDoubleClickTime = .5;
+    // graphButtons();
 
-    ed::Begin("My Editor");
-    {
-        ed::Suspend();
+    // ed::Begin("My Editor");
+    //{
+    //     ed::Suspend();
 
-        // Set up popups for adding a node when tab is pressed
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.f, 8.f));
-        ImGui::SetNextWindowSizeConstraints(
-            ImVec2(250.0f, 300.0f), ImVec2(-1.0f, 500.0f));
-        addNodePopup(TextCursor);
-        searchNodePopup(TextCursor);
-        addPinPopup();
-        readOnlyPopup();
-        ImGui::PopStyleVar();
+    //    // Set up popups for adding a node when tab is pressed
+    //    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.f, 8.f));
+    //    ImGui::SetNextWindowSizeConstraints(
+    //        ImVec2(250.0f, 300.0f), ImVec2(-1.0f, 500.0f));
+    //    addNodePopup(TextCursor);
+    //    searchNodePopup(TextCursor);
+    //    addPinPopup();
+    //    readOnlyPopup();
+    //    ImGui::PopStyleVar();
 
-        ed::Resume();
+    //    ed::Resume();
 
-        // Gather selected nodes / links - from ImGui Node Editor
-        // blueprints-example.cpp
-        std::vector<ed::NodeId> selectedNodes;
-        std::vector<LinkId> selectedLinks;
-        selectedNodes.resize(ed::GetSelectedObjectCount());
-        selectedLinks.resize(ed::GetSelectedObjectCount());
+    //    // Gather selected nodes / links - from ImGui Node Editor
+    //    // blueprints-example.cpp
+    //    std::vector<ed::NodeId> selectedNodes;
+    //    std::vector<LinkId> selectedLinks;
+    //    selectedNodes.resize(ed::GetSelectedObjectCount());
+    //    selectedLinks.resize(ed::GetSelectedObjectCount());
 
-        int nodeCount = ed::GetSelectedNodes(
-            selectedNodes.data(), static_cast<int>(selectedNodes.size()));
-        int linkCount = ed::GetSelectedLinks(
-            selectedLinks.data(), static_cast<int>(selectedLinks.size()));
+    //    int nodeCount = ed::GetSelectedNodes(
+    //        selectedNodes.data(), static_cast<int>(selectedNodes.size()));
+    //    int linkCount = ed::GetSelectedLinks(
+    //        selectedLinks.data(), static_cast<int>(selectedLinks.size()));
 
-        selectedNodes.resize(nodeCount);
-        selectedLinks.resize(linkCount);
-        if (io2.KeyCtrl && io2.MouseDown[0]) {
-            _ctrlClick = true;
-        }
+    //    selectedNodes.resize(nodeCount);
+    //    selectedLinks.resize(linkCount);
+    //    if (io2.KeyCtrl && io2.MouseDown[0]) {
+    //        _ctrlClick = true;
+    //    }
 
-        // Set current node based off of selected node
-        if (selectedNodes.size() > 0) {
-            int graphPos = findNode(int(selectedNodes[0].Get()));
-            if (graphPos > -1) {
-                // Only selected if its not the same as previously selected
-                if (!_prevUiNode || (_prevUiNode->getName() !=
-                                     _graphNodes[graphPos]->getName())) {
-                    _currUiNode = _graphNodes[graphPos];
+    //    // Set current node based off of selected node
+    //    if (selectedNodes.size() > 0) {
+    //        int graphPos = findNode(int(selectedNodes[0].Get()));
+    //        if (graphPos > -1) {
+    //            // Only selected if its not the same as previously selected
+    //            if (!_prevUiNode || (_prevUiNode->getName() !=
+    //                                 _graphNodes[graphPos]->getName())) {
+    //                _currUiNode = _graphNodes[graphPos];
 
-                    // Update render material if needed
-                    if (_currUiNode->getNode()) {
-                        setRenderMaterial(_currUiNode);
-                    }
-                    else if (
-                        _currUiNode->getNodeGraph() ||
-                        _currUiNode->getOutput()) {
-                        setRenderMaterial(_currUiNode);
-                    }
-                    _prevUiNode = _currUiNode;
-                }
-            }
-        }
+    //                // Update render material if needed
+    //                if (_currUiNode->getNode()) {
+    //                    setRenderMaterial(_currUiNode);
+    //                }
+    //                else if (
+    //                    _currUiNode->getNodeGraph() ||
+    //                    _currUiNode->getOutput()) {
+    //                    setRenderMaterial(_currUiNode);
+    //                }
+    //                _prevUiNode = _currUiNode;
+    //            }
+    //        }
+    //    }
 
-        // Check if keyboard shortcuts for copy/cut/paste have been used
-        if (ed::BeginShortcut()) {
-            if (ed::AcceptCopy()) {
-                _copiedNodes.clear();
-                for (ed::NodeId selected : selectedNodes) {
-                    int pos = findNode((int)selected.Get());
-                    if (pos >= 0) {
-                        _copiedNodes.insert(std::pair<UiNodePtr, UiNodePtr>(
-                            _graphNodes[pos], nullptr));
-                    }
-                }
-            }
-            else if (ed::AcceptCut()) {
-                if (!readOnly()) {
-                    _copiedNodes.clear();
+    //    // Check if keyboard shortcuts for copy/cut/paste have been used
+    //    if (ed::BeginShortcut()) {
+    //        if (ed::AcceptCopy()) {
+    //            _copiedNodes.clear();
+    //            for (ed::NodeId selected : selectedNodes) {
+    //                int pos = findNode((int)selected.Get());
+    //                if (pos >= 0) {
+    //                    _copiedNodes.insert(std::pair<UiNodePtr, UiNodePtr>(
+    //                        _graphNodes[pos], nullptr));
+    //                }
+    //            }
+    //        }
+    //        else if (ed::AcceptCut()) {
+    //            if (!readOnly()) {
+    //                _copiedNodes.clear();
 
-                    // Same as copy but remove from graphNodes
-                    for (ed::NodeId selected : selectedNodes) {
-                        int pos = findNode((int)selected.Get());
-                        if (pos >= 0) {
-                            _copiedNodes.insert(std::pair<UiNodePtr, UiNodePtr>(
-                                _graphNodes[pos], nullptr));
-                        }
-                    }
-                    _isCut = true;
-                }
-                else {
-                    _popup = true;
-                }
-            }
-            else if (ed::AcceptPaste()) {
-                if (!readOnly()) {
-                    for (auto iter = _copiedNodes.begin();
-                         iter != _copiedNodes.end();
-                         ++iter) {
-                        copyUiNode(iter->first);
-                        _addNewNode = true;
-                    }
-                }
-                else {
-                    _popup = true;
-                }
-            }
-        }
+    //                // Same as copy but remove from graphNodes
+    //                for (ed::NodeId selected : selectedNodes) {
+    //                    int pos = findNode((int)selected.Get());
+    //                    if (pos >= 0) {
+    //                        _copiedNodes.insert(std::pair<UiNodePtr,
+    //                        UiNodePtr>(
+    //                            _graphNodes[pos], nullptr));
+    //                    }
+    //                }
+    //                _isCut = true;
+    //            }
+    //            else {
+    //                _popup = true;
+    //            }
+    //        }
+    //        else if (ed::AcceptPaste()) {
+    //            if (!readOnly()) {
+    //                for (auto iter = _copiedNodes.begin();
+    //                     iter != _copiedNodes.end();
+    //                     ++iter) {
+    //                    copyUiNode(iter->first);
+    //                    _addNewNode = true;
+    //                }
+    //            }
+    //            else {
+    //                _popup = true;
+    //            }
+    //        }
+    //    }
 
-        // Set y-position of first node
-        std::vector<int> outputNum = createNodes(_isNodeGraph);
+    //    // Set y-position of first node
+    //    std::vector<int> outputNum = createNodes(_isNodeGraph);
 
-        // Address copy information if applicable and relink graph if a new node
-        // has been added
-        if (_addNewNode) {
-            copyInputs();
-            linkGraph();
-            ImVec2 canvasPos = ed::ScreenToCanvas(mousePos);
+    //    // Address copy information if applicable and relink graph if a new
+    //    node
+    //    // has been added
+    //    if (_addNewNode) {
+    //        copyInputs();
+    //        linkGraph();
+    //        ImVec2 canvasPos = ed::ScreenToCanvas(mousePos);
 
-            // Place the copied nodes or the individual new nodes
-            if (!_copiedNodes.empty()) {
-                positionPasteBin(canvasPos);
-            }
-            else if (!_graphNodes.empty()) {
-                ed::SetNodePosition(_graphNodes.back()->ID, canvasPos);
-            }
-            _copiedNodes.clear();
-            _addNewNode = false;
-        }
+    //        // Place the copied nodes or the individual new nodes
+    //        if (!_copiedNodes.empty()) {
+    //            positionPasteBin(canvasPos);
+    //        }
+    //        else if (!_graphNodes.empty()) {
+    //            ed::SetNodePosition(_graphNodes.back()->ID, canvasPos);
+    //        }
+    //        _copiedNodes.clear();
+    //        _addNewNode = false;
+    //    }
 
-        // Layout and link graph during the initial call of drawGraph
-        if (_initial || _autoLayout) {
-            _currLinks.clear();
-            float y = 0.f;
-            _levelMap = std::unordered_map<int, std::vector<UiNodePtr>>();
+    //    // Layout and link graph during the initial call of drawGraph
+    //    if (_initial || _autoLayout) {
+    //        _currLinks.clear();
+    //        float y = 0.f;
+    //        _levelMap = std::unordered_map<int, std::vector<UiNodePtr>>();
 
-            // Start layout with output or material nodes since layout algorithm
-            // works right to left
-            for (int outN : outputNum) {
-                layoutPosition(_graphNodes[outN], ImVec2(1200.f, y), true, 0);
-                y += 350;
-            }
+    //        // Start layout with output or material nodes since layout
+    //        algorithm
+    //        // works right to left
+    //        for (int outN : outputNum) {
+    //            layoutPosition(_graphNodes[outN], ImVec2(1200.f, y), true, 0);
+    //            y += 350;
+    //        }
 
-            // If there are no output or material nodes but the nodes have
-            // position layout each individual node
-            if (_graphNodes.size() > 0) {
-                if (outputNum.size() == 0 && _graphNodes[0]->getElement()) {
-                    for (UiNodePtr node : _graphNodes) {
-                        layoutPosition(node, ImVec2(0, 0), true, 0);
-                    }
-                }
-            }
-            linkGraph();
-            findYSpacing(0.f);
-            layoutInputs();
+    //        // If there are no output or material nodes but the nodes have
+    //        // position layout each individual node
+    //        if (_graphNodes.size() > 0) {
+    //            if (outputNum.size() == 0 && _graphNodes[0]->getElement()) {
+    //                for (UiNodePtr node : _graphNodes) {
+    //                    layoutPosition(node, ImVec2(0, 0), true, 0);
+    //                }
+    //            }
+    //        }
+    //        linkGraph();
+    //        findYSpacing(0.f);
+    //        layoutInputs();
 
-            // Automatically frame node graph upon loading
-            ed::NavigateToContent();
-        }
-        if (_delete) {
-            linkGraph();
+    //        // Automatically frame node graph upon loading
+    //        ed::NavigateToContent();
+    //    }
+    //    if (_delete) {
+    //        linkGraph();
 
-            _delete = false;
-        }
-        connectLinks();
+    //        _delete = false;
+    //    }
+    //    connectLinks();
 
-        // Set to false after initial layout so that nodes can be moved
-        _initial = false;
-        _autoLayout = false;
+    //    // Set to false after initial layout so that nodes can be moved
+    //    _initial = false;
+    //    _autoLayout = false;
 
-        // Start the session with content centered
-        if (ImGui::GetFrameCount() == 2) {
-            ed::NavigateToContent(0.0f);
-        }
+    //    // Start the session with content centered
+    //    if (ImGui::GetFrameCount() == 2) {
+    //        ed::NavigateToContent(0.0f);
+    //    }
 
-        // Delete selected nodes and their links if delete key is pressed
-        // or if the shortcut for cut is used
-        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootWindow)) {
-            if (ImGui::IsKeyReleased(ImGuiKey_Delete) || _isCut) {
-                if (selectedNodes.size() > 0) {
-                    _frameCount = ImGui::GetFrameCount();
-                    _renderer->setMaterialCompilation(true);
-                    for (ed::NodeId id : selectedNodes) {
-                        if (int(id.Get()) > 0) {
-                            int pos = findNode(int(id.Get()));
-                            if (pos >= 0 && !readOnly()) {
-                                deleteNode(_graphNodes[pos]);
-                                _delete = true;
-                                ed::DeselectNode(id);
-                                ed::DeleteNode(id);
-                                _currUiNode = nullptr;
-                            }
-                            else if (readOnly()) {
-                                _popup = true;
-                            }
-                        }
-                    }
-                    linkGraph();
-                }
-                _isCut = false;
-            }
+    //    // Delete selected nodes and their links if delete key is pressed
+    //    // or if the shortcut for cut is used
+    //    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootWindow)) {
+    //        if (ImGui::IsKeyReleased(ImGuiKey_Delete) || _isCut) {
+    //            if (selectedNodes.size() > 0) {
+    //                _frameCount = ImGui::GetFrameCount();
+    //                _renderer->setMaterialCompilation(true);
+    //                for (ed::NodeId id : selectedNodes) {
+    //                    if (int(id.Get()) > 0) {
+    //                        int pos = findNode(int(id.Get()));
+    //                        if (pos >= 0 && !readOnly()) {
+    //                            deleteNode(_graphNodes[pos]);
+    //                            _delete = true;
+    //                            ed::DeselectNode(id);
+    //                            ed::DeleteNode(id);
+    //                            _currUiNode = nullptr;
+    //                        }
+    //                        else if (readOnly()) {
+    //                            _popup = true;
+    //                        }
+    //                    }
+    //                }
+    //                linkGraph();
+    //            }
+    //            _isCut = false;
+    //        }
 
-            // Hotkey to frame selected node(s)
-            if (ImGui::IsKeyReleased(ImGuiKey_F) &&
-                !_fileDialogSave.isOpened()) {
-                ed::NavigateToSelection();
-            }
+    //        // Hotkey to frame selected node(s)
+    //        if (ImGui::IsKeyReleased(ImGuiKey_F) &&
+    //            !_fileDialogSave.isOpened()) {
+    //            ed::NavigateToSelection();
+    //        }
 
-            // Go back up from inside a subgraph
-            if (ImGui::IsKeyReleased(ImGuiKey_U) &&
-                (!ImGui::IsPopupOpen("add node")) &&
-                (!ImGui::IsPopupOpen("search")) &&
-                !_fileDialogSave.isOpened()) {
-                upNodeGraph();
-            }
-        }
+    //        // Go back up from inside a subgraph
+    //        if (ImGui::IsKeyReleased(ImGuiKey_U) &&
+    //            (!ImGui::IsPopupOpen("add node")) &&
+    //            (!ImGui::IsPopupOpen("search")) &&
+    //            !_fileDialogSave.isOpened()) {
+    //            upNodeGraph();
+    //        }
+    //    }
 
-        // Add new link
-        if (ed::BeginCreate()) {
-            SocketID startPinId, endPinId, filterPinId;
-            if (ed::QueryNewLink(&startPinId, &endPinId)) {
-                if (!readOnly()) {
-                    addLink(startPinId, endPinId);
-                }
-                else {
-                    _popup = true;
-                }
-            }
-            if (ed::QueryNewNode(&filterPinId)) {
-                if (getPin(filterPinId)->_type != "null") {
-                    _pinFilterType = getPin(filterPinId)->_type;
-                }
-            }
-        }
-        else {
-            _pinFilterType = mx::EMPTY_STRING;
-        }
-        ed::EndCreate();
+    //    // Add new link
+    //    if (ed::BeginCreate()) {
+    //        SocketID startPinId, endPinId, filterPinId;
+    //        if (ed::QueryNewLink(&startPinId, &endPinId)) {
+    //            if (!readOnly()) {
+    //                addLink(startPinId, endPinId);
+    //            }
+    //            else {
+    //                _popup = true;
+    //            }
+    //        }
+    //        if (ed::QueryNewNode(&filterPinId)) {
+    //            if (getPin(filterPinId)->_type != "null") {
+    //                _pinFilterType = getPin(filterPinId)->_type;
+    //            }
+    //        }
+    //    }
+    //    else {
+    //        _pinFilterType = mx::EMPTY_STRING;
+    //    }
+    //    ed::EndCreate();
 
-        // Delete link
-        if (ed::BeginDelete()) {
-            LinkId deletedLinkId;
-            while (ed::QueryDeletedLink(&deletedLinkId)) {
-                if (!readOnly()) {
-                    deleteLink(deletedLinkId);
-                }
-                else {
-                    _popup = true;
-                }
-            }
-        }
-        ed::EndDelete();
-    }
+    //    // Delete link
+    //    if (ed::BeginDelete()) {
+    //        LinkId deletedLinkId;
+    //        while (ed::QueryDeletedLink(&deletedLinkId)) {
+    //            if (!readOnly()) {
+    //                deleteLink(deletedLinkId);
+    //            }
+    //            else {
+    //                _popup = true;
+    //            }
+    //        }
+    //    }
+    //    ed::EndDelete();
+    //}
 
-    // Dive into a node that has a subgraph
-    ed::NodeId clickedNode = ed::GetDoubleClickedNode();
-    if (clickedNode.Get() > 0) {
-        if (_currUiNode != nullptr) {
-            if (_currUiNode->getNode() != nullptr) {
-                mx::InterfaceElementPtr impl =
-                    _currUiNode->getNode()->getImplementation();
+    //// Dive into a node that has a subgraph
+    // ed::NodeId clickedNode = ed::GetDoubleClickedNode();
+    // if (clickedNode.Get() > 0) {
+    //     if (_currUiNode != nullptr) {
+    //         if (_currUiNode->getNode() != nullptr) {
+    //             mx::InterfaceElementPtr impl =
+    //                 _currUiNode->getNode()->getImplementation();
 
-                // Only dive if current node is a node graph
-                if (impl && impl->isA<mx::NodeGraph>()) {
-                    savePosition();
-                    _graphStack.push(_graphNodes);
-                    _pinStack.push(_currPins);
-                    _sizeStack.push(_graphTotalSize);
-                    mx::NodeGraphPtr implGraph = impl->asA<mx::NodeGraph>();
-                    _initial = true;
-                    _graphNodes.clear();
-                    ed::DeselectNode(_currUiNode->ID);
-                    _currUiNode = nullptr;
-                    _currGraphElem = implGraph;
-                    if (readOnly()) {
-                        std::string graphName =
-                            implGraph->getName() + " (Read Only)";
-                        _currGraphName.push_back(graphName);
-                        _popup = true;
-                    }
-                    else {
-                        _currGraphName.push_back(implGraph->getName());
-                    }
-                    buildUiNodeGraph(implGraph);
-                    ed::NavigateToContent();
-                }
-            }
-            else if (_currUiNode->getNodeGraph() != nullptr) {
-                savePosition();
-                _graphStack.push(_graphNodes);
-                _pinStack.push(_currPins);
-                _sizeStack.push(_graphTotalSize);
-                mx::NodeGraphPtr implGraph = _currUiNode->getNodeGraph();
-                _initial = true;
-                _graphNodes.clear();
-                _isNodeGraph = true;
-                setRenderMaterial(_currUiNode);
-                ed::DeselectNode(_currUiNode->ID);
-                _currUiNode = nullptr;
-                _currGraphElem = implGraph;
-                if (readOnly()) {
-                    std::string graphName =
-                        implGraph->getName() + " (Read Only)";
-                    _currGraphName.push_back(graphName);
-                    _popup = true;
-                }
-                else {
-                    _currGraphName.push_back(implGraph->getName());
-                }
-                buildUiNodeGraph(implGraph);
-                ed::NavigateToContent();
-            }
-        }
-    }
+    //            // Only dive if current node is a node graph
+    //            if (impl && impl->isA<mx::NodeGraph>()) {
+    //                savePosition();
+    //                _graphStack.push(_graphNodes);
+    //                _pinStack.push(_currPins);
+    //                _sizeStack.push(_graphTotalSize);
+    //                mx::NodeGraphPtr implGraph = impl->asA<mx::NodeGraph>();
+    //                _initial = true;
+    //                _graphNodes.clear();
+    //                ed::DeselectNode(_currUiNode->ID);
+    //                _currUiNode = nullptr;
+    //                _currGraphElem = implGraph;
+    //                if (readOnly()) {
+    //                    std::string graphName =
+    //                        implGraph->getName() + " (Read Only)";
+    //                    _currGraphName.push_back(graphName);
+    //                    _popup = true;
+    //                }
+    //                else {
+    //                    _currGraphName.push_back(implGraph->getName());
+    //                }
+    //                buildUiNodeGraph(implGraph);
+    //                ed::NavigateToContent();
+    //            }
+    //        }
+    //        else if (_currUiNode->getNodeGraph() != nullptr) {
+    //            savePosition();
+    //            _graphStack.push(_graphNodes);
+    //            _pinStack.push(_currPins);
+    //            _sizeStack.push(_graphTotalSize);
+    //            mx::NodeGraphPtr implGraph = _currUiNode->getNodeGraph();
+    //            _initial = true;
+    //            _graphNodes.clear();
+    //            _isNodeGraph = true;
+    //            setRenderMaterial(_currUiNode);
+    //            ed::DeselectNode(_currUiNode->ID);
+    //            _currUiNode = nullptr;
+    //            _currGraphElem = implGraph;
+    //            if (readOnly()) {
+    //                std::string graphName =
+    //                    implGraph->getName() + " (Read Only)";
+    //                _currGraphName.push_back(graphName);
+    //                _popup = true;
+    //            }
+    //            else {
+    //                _currGraphName.push_back(implGraph->getName());
+    //            }
+    //            buildUiNodeGraph(implGraph);
+    //            ed::NavigateToContent();
+    //        }
+    //    }
+    //}
 
-    shaderPopup();
-    if (ImGui::GetFrameCount() == (_frameCount + 2)) {
-        // updateMaterials();
-        //_renderer->setMaterialCompilation(false);
-    }
+    // shaderPopup();
+    // if (ImGui::GetFrameCount() == (_frameCount + 2)) {
+    //     // updateMaterials();
+    //     //_renderer->setMaterialCompilation(false);
+    // }
 
-    ed::Suspend();
-    _fileDialogSave.display();
+    // ed::Suspend();
+    //_fileDialogSave.display();
 
-    // Save file
-    if (_fileDialogSave.hasSelected()) {
-        std::string message;
-        if (!_graphDoc->validate(&message)) {
-            std::cerr << "*** Validation warnings for "
-                      << _materialFilename.getBaseName() << " ***" << std::endl;
-            std::cerr << message;
-        }
-        _materialFilename = _fileDialogSave.getSelected();
-        ed::Resume();
-        savePosition();
+    //// Save file
+    // if (_fileDialogSave.hasSelected()) {
+    //     std::string message;
+    //     if (!_graphDoc->validate(&message)) {
+    //         std::cerr << "*** Validation warnings for "
+    //                   << _materialFilename.getBaseName() << " ***" <<
+    //                   std::endl;
+    //         std::cerr << message;
+    //     }
+    //     _materialFilename = _fileDialogSave.getSelected();
+    //     ed::Resume();
+    //     savePosition();
 
-        saveDocument(_materialFilename);
-        _fileDialogSave.clearSelected();
-    }
-    else {
-        ed::Resume();
-    }
+    //    saveDocument(_materialFilename);
+    //    _fileDialogSave.clearSelected();
+    //}
+    // else {
+    //    ed::Resume();
+    //}
 
-    ed::End();
-    ImGui::End();
+    // ed::End();
+    // ImGui::End();
 
-    _fileDialog.display();
+    //_fileDialog.display();
 
-    // Create and load document from selected file
-    if (_fileDialog.hasSelected()) {
-        mx::FilePath fileName = _fileDialog.getSelected();
-        _currGraphName.clear();
-        std::string graphName = fileName.getBaseName();
-        _currGraphName.push_back(graphName.substr(0, graphName.length() - 5));
-        _graphDoc = loadDocument(fileName);
+    //// Create and load document from selected file
+    // if (_fileDialog.hasSelected()) {
+    //     mx::FilePath fileName = _fileDialog.getSelected();
+    //     _currGraphName.clear();
+    //     std::string graphName = fileName.getBaseName();
+    //     _currGraphName.push_back(graphName.substr(0, graphName.length() -
+    //     5)); _graphDoc = loadDocument(fileName);
 
-        _initial = true;
-        buildUiBaseGraph(_graphDoc);
-        _currGraphElem = _graphDoc;
-        _prevUiNode = nullptr;
-        _fileDialog.clearSelected();
+    //    _initial = true;
+    //    buildUiBaseGraph(_graphDoc);
+    //    _currGraphElem = _graphDoc;
+    //    _prevUiNode = nullptr;
+    //    _fileDialog.clearSelected();
 
-        //_renderer->setDocument(_graphDoc);
-        //_renderer->updateMaterials(nullptr);
-    }
+    //    //_renderer->setDocument(_graphDoc);
+    //    //_renderer->updateMaterials(nullptr);
+    //}
 
-    _fileDialogGeom.display();
-    if (_fileDialogGeom.hasSelected()) {
-        mx::FilePath fileName = _fileDialogGeom.getSelected();
-        _fileDialogGeom.clearSelected();
-        //_renderer->loadMesh(fileName);
-        //_renderer->updateMaterials(nullptr);
-    }
+    //_fileDialogGeom.display();
+    // if (_fileDialogGeom.hasSelected()) {
+    //    mx::FilePath fileName = _fileDialogGeom.getSelected();
+    //    _fileDialogGeom.clearSelected();
+    //    //_renderer->loadMesh(fileName);
+    //    //_renderer->updateMaterials(nullptr);
+    //}
 
-    _fileDialogImage.display();
+    //_fileDialogImage.display();
 }
 
 bool Graph::linkExists(Link newLink)
 {
-    for (const auto& link : _currLinks) {
-        if (link._startAttr == newLink._startAttr) {
-            if (link._endAttr == newLink._endAttr) {
-                return true;
-            }
-        }
-        else if (link._startAttr == newLink._endAttr) {
-            if (link._endAttr == newLink._startAttr) {
-                return true;
-            }
-        }
-    }
+    // for (const auto& link : _currLinks) {
+    //     if (link._startAttr == newLink._startAttr) {
+    //         if (link._endAttr == newLink._endAttr) {
+    //             return true;
+    //         }
+    //     }
+    //     else if (link._startAttr == newLink._endAttr) {
+    //         if (link._endAttr == newLink._startAttr) {
+    //             return true;
+    //         }
+    //     }
+    // }
     return false;
 }
 
 void Graph::savePosition()
 {
-    for (UiNodePtr node : _graphNodes) {
-        mx::ElementPtr elem = node->getElement();
-        if (elem) {
-            ImVec2 pos = ed::GetNodePosition(node->ID);
-            pos.x /= DEFAULT_NODE_SIZE.x;
-            pos.y /= DEFAULT_NODE_SIZE.y;
-            elem->setAttribute(
-                mx::Element::XPOS_ATTRIBUTE, std::to_string(pos.x));
-            elem->setAttribute(
-                mx::Element::YPOS_ATTRIBUTE, std::to_string(pos.y));
-            if (elem->hasAttribute("nodedef")) {
-                elem->removeAttribute("nodedef");
-            }
-        }
-    }
+    // for (UiNodePtr node : _graphNodes) {
+    //     mx::ElementPtr elem = node->getElement();
+    //     if (elem) {
+    //         ImVec2 pos = ed::GetNodePosition(node->ID);
+    //         pos.x /= DEFAULT_NODE_SIZE.x;
+    //         pos.y /= DEFAULT_NODE_SIZE.y;
+    //         elem->setAttribute(
+    //             mx::Element::XPOS_ATTRIBUTE, std::to_string(pos.x));
+    //         elem->setAttribute(
+    //             mx::Element::YPOS_ATTRIBUTE, std::to_string(pos.y));
+    //         if (elem->hasAttribute("nodedef")) {
+    //             elem->removeAttribute("nodedef");
+    //         }
+    //     }
+    // }
 }
 void Graph::saveDocument(mx::FilePath filePath)
 {
-    if (filePath.getExtension() != mx::MTLX_EXTENSION) {
-        filePath.addExtension(mx::MTLX_EXTENSION);
-    }
+    // if (filePath.getExtension() != mx::MTLX_EXTENSION) {
+    //     filePath.addExtension(mx::MTLX_EXTENSION);
+    // }
 
-    mx::DocumentPtr writeDoc = _graphDoc;
+    // mx::DocumentPtr writeDoc = _graphDoc;
 
-    // If requested, create a modified version of the document for saving.
-    if (!_saveNodePositions) {
-        writeDoc = _graphDoc->copy();
-        for (mx::ElementPtr elem : writeDoc->traverseTree()) {
-            elem->removeAttribute(mx::Element::XPOS_ATTRIBUTE);
-            elem->removeAttribute(mx::Element::YPOS_ATTRIBUTE);
-        }
-    }
+    //// If requested, create a modified version of the document for saving.
+    // if (!_saveNodePositions) {
+    //     writeDoc = _graphDoc->copy();
+    //     for (mx::ElementPtr elem : writeDoc->traverseTree()) {
+    //         elem->removeAttribute(mx::Element::XPOS_ATTRIBUTE);
+    //         elem->removeAttribute(mx::Element::YPOS_ATTRIBUTE);
+    //     }
+    // }
 
-    mx::XmlWriteOptions writeOptions;
-    writeOptions.elementPredicate = getElementPredicate();
-    mx::writeToXmlFile(writeDoc, filePath, &writeOptions);
+    // mx::XmlWriteOptions writeOptions;
+    // writeOptions.elementPredicate = getElementPredicate();
+    // mx::writeToXmlFile(writeDoc, filePath, &writeOptions);
 }
 
 void Graph::setRenderMaterial(UiNodePtr node)
