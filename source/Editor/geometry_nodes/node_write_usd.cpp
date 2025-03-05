@@ -172,13 +172,13 @@ NODE_EXECUTION_FUNCTION(write_usd)
         for (size_t i = 0; i < transforms.size(); ++i) {
             pxr::GfVec3f translation;
             pxr::GfQuath rotation;
-            pxr::GfVec3f scale;
+            //pxr::GfVec3f scale;
             translation = pxr::GfVec3f(transforms[i].ExtractTranslation());
             rotation = pxr::GfQuath(transforms[i].ExtractRotationQuat());
             // scale = pxr::GfVec3f(transforms[i].ExtractScale());
             positions[i] = translation;
             orientations[i] = rotation;
-            scales[i] = scale;
+            //scales[i] = scale;
         }
         instancer_component.CreateProtoIndicesAttr().Set(
             pxr::VtIntArray(instancer->get_proto_indices()));

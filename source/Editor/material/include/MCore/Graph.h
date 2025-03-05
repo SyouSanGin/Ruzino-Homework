@@ -7,6 +7,9 @@
 #define MATERIALX_GRAPH_H
 
 #include <GUI/ImGuiFileDialog.h>
+#include <MaterialXCore/Document.h>
+#include <MaterialXFormat/File.h>
+#include <MaterialXFormat/Util.h>
 
 #include <nodes/ui/ui_imgui.hpp>
 #include <stack>
@@ -322,10 +325,10 @@ class Graph {
     bool _delete;
 
     // file dialog information
-    FileDialog _fileDialog;
-    FileDialog _fileDialogSave;
-    FileDialog _fileDialogImage;
-    FileDialog _fileDialogGeom;
+    IGFD::FileDialog _fileDialog;
+    IGFD::FileDialog _fileDialogSave;
+    IGFD::FileDialog _fileDialogImage;
+    IGFD::FileDialog _fileDialogGeom;
     std::string _fileDialogImageInputName;
 
     bool _isNodeGraph;

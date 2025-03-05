@@ -8,6 +8,8 @@ USTC_CG_ADD_LIB(
 		usd
 		usdImaging
 		nodes_system
+		MaterialXCore
+		MaterialXFormat
 	COMPILE_DEFS
 		NOMINMAX=1
 		USTC_CG_BUILD_MODULE=1

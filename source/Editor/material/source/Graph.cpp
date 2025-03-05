@@ -7,20 +7,20 @@
 #include <MCore/Graph.h>
 #include <MaterialXFormat/Util.h>
 #include <MaterialXRenderGlsl/External/Glad/glad.h>
-#include <imgui_node_editor_internal.h>
 #include <imgui_stdlib.h>
 
 #include <iostream>
 
+#include "imgui_internal.h"
 #include "nodes/core/id.hpp"
 
-namespace {
+namespace USTC_CG {
 
 // Based on the dimensions of the dot_color3 node, computed by calling
 // ed::getNodeSize
 const ImVec2 DEFAULT_NODE_SIZE = ImVec2(138, 116);
 
-const int DEFAULT_ALPHA = 255;
+const int DEFAULT_ALPHA = 255;`
 const int FILTER_ALPHA = 50;
 
 const std::array<std::string, 22> NODE_GROUP_ORDER = {
@@ -107,8 +107,6 @@ std::string getUserNodeDefName(const std::string& val)
     return result;
 }
 
-}  // anonymous namespace
-
 //
 // NodeLink methods
 //
@@ -135,7 +133,7 @@ Graph::Graph(
       _libraryFolders(libraryFolders),
       _initial(false),
       _delete(false),
-      _fileDialogSave(FileDialog::EnterNewFilename),
+      _fileDialogSave(IGFD::FileDialog::EnterNewFilename),
       _isNodeGraph(false),
       _graphTotalSize(0),
       _popup(false),
@@ -4416,3 +4414,5 @@ void Graph::saveDocument(mx::FilePath filePath)
     writeOptions.elementPredicate = getElementPredicate();
     mx::writeToXmlFile(writeDoc, filePath, &writeOptions);
 }
+
+USTC_CG_NAMESPACE_CLOSE_SCOPE
