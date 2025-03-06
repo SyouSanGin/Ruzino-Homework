@@ -14,4 +14,5 @@ int main()
         std::make_shared<MaterialXNodeTreeDescriptor>());
 
     std::cout << tree.nodes.size() << std::endl;
+    std::cout << tree.links.size() << std::endl;
 }

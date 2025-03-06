@@ -34,7 +34,7 @@ class NODES_CORE_API NodeTreeDescriptor {
     NodeTreeDescriptor& register_conversion_name(
         const std::string& conversion_name);
 
-    virtual NodeTypeInfo* get_node_type(const std::string& name) ;
+    virtual NodeTypeInfo* get_node_type(const std::string& name);
 
     static std::string conversion_node_name(SocketType from, SocketType to);
     bool can_convert(SocketType from, SocketType to) const;
@@ -153,6 +153,13 @@ class NODES_CORE_API NodeTree {
     void update_toposort();
 
     void ensure_topology_cache();
+
+    NodeLink* add_link(
+        Node* fromnode,
+        Node* tonode,
+        const char* from_identifier,
+        const char* to_identifier,
+        bool refresh_topology = true);
 
     NodeLink* add_link(
         NodeSocket* fromsock,

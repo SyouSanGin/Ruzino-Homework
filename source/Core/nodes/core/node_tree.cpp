@@ -1142,6 +1142,22 @@ void NodeTree::ensure_topology_cache()
     update_toposort();
 }
 
+NodeLink* NodeTree::add_link(
+    Node* fromnode,
+    Node* tonode,
+    const char* from_identifier,
+    const char* to_identifier,
+    bool refresh_topology)
+{
+    auto fromsock = fromnode->get_output_socket(from_identifier);
+    auto tosock = tonode->get_input_socket(to_identifier);
+
+    if (fromsock && tosock) {
+        return add_link(fromsock, tosock, false, refresh_topology);
+    }
+    return nullptr;
+}
+
 void NodeTree::update_toposort()
 {
     update_toposort_(
