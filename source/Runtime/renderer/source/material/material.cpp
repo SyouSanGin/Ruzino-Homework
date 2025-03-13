@@ -33,10 +33,11 @@ Hd_USTC_CG_Material::Hd_USTC_CG_Material(SdfPath const& id) : HdMaterial(id)
 {
     std::call_once(shader_gen_initialized_, []() {
         mx::FileSearchPath searchPath = mx::getDefaultDataSearchPath();
+        searchPath.append(mx::FileSearchPath("usd/hd_USTC_CG/resources"));
+
         loadLibraries({ "libraries" }, searchPath, libraries);
         mx::loadLibraries(
             { "usd/hd_USTC_CG/resources/libraries" }, searchPath, libraries);
-        searchPath.append(mx::FileSearchPath("usd/hd_USTC_CG/resources"));
         shader_gen_context_->registerSourceCodeSearchPath(searchPath);
     });
 }
@@ -537,7 +538,7 @@ static void _FixNodeValues(HdMaterialNetwork2Interface* netInterface)
     // Fix textures wrap mode from repeat to periodic, because MaterialX does
     // not support repeat mode.
     const TfTokenVector nodeNames = netInterface->GetNodeNames();
-
+    std::cout << "Fixing node values" << std::endl;
     for (TfToken const& nodeName : nodeNames) {
         TfToken nodeType = netInterface->GetNodeType(nodeName);
         if (nodeType == _tokens->ND_UsdUVTexture) {
@@ -556,6 +557,18 @@ static void _FixNodeValues(HdMaterialNetwork2Interface* netInterface)
                     netInterface->SetNodeParameterValue(
                         nodeName, _tokens->wrapT, VtValue(_tokens->periodic));
                 }
+            }
+        }
+
+        if (nodeType == _tokens->ND_UsdPreviewSurface_surfaceshader) {
+            // Delete the 'specular' input from UsdPreviewSurface if exists
+
+            auto specularInput = netInterface->GetNodeParameterValue(
+                nodeName, pxr::TfToken("specular"));
+
+            if (!specularInput.IsEmpty()) {
+                netInterface->DeleteNodeParameter(
+                    nodeName, pxr::TfToken("specular"));
             }
         }
 
@@ -625,7 +638,17 @@ void Hd_USTC_CG_Material::Sync(
 
         auto renderable = mx::findRenderableElements(mtlx_document);
         auto element = renderable[0];
-        const std::string elementName(element->getNamePath());
+
+        mx::OutputPtr output = element->asA<mx::Output>();
+        mx::NodePtr outputNode = element->asA<mx::Node>();
+        if (output) {
+            outputNode = output->getConnectedNode();
+        }
+
+        mx::NodeDefPtr nodeDef = outputNode->getNodeDef();
+
+        std::string elementName(element->getNamePath());
+        elementName = mx::createValidName(elementName);
 
         ShaderGenerator& shader_generator_ =
             shader_gen_context_->getShaderGenerator();
