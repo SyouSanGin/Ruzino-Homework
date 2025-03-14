@@ -23,7 +23,7 @@ target_include_directories(hd_USTC_CG PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/source
 add_nodes(
 	TARGET_NAME render_nodes 
 	SRC_DIRS nodes
-	DEP_LIBS usd RHI hd_USTC_CG usdImaging
+	DEP_LIBS usd RHI hd_USTC_CG usdImaging shaders_interface
 	COMPILE_DEFS NOMINMAX 
 	EXTRA_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/source
 )
