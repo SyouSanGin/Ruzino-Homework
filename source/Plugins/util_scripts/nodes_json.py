@@ -5,7 +5,7 @@ import json
 import argparse
 
 
-def scan_cpp_files(directories, files, pattern):
+def scan_cpp_files(directories, files, pattern, suffix="", prefix=""):
     compiled_pattern = re.compile(pattern)
     nodes = {}
 
@@ -18,8 +18,10 @@ def scan_cpp_files(directories, files, pattern):
                         content = f.read()
                         matches = compiled_pattern.findall(content)
                         if matches:
+                            # add the suffix
+                            matches = list(map(lambda x: x+suffix, matches))
                             file_name_without_suffix = os.path.splitext(file)[0]
-                            nodes[file_name_without_suffix] = matches
+                            nodes[prefix+file_name_without_suffix] = matches
 
     for file in files:
         if file.endswith(".cpp"):
@@ -27,8 +29,9 @@ def scan_cpp_files(directories, files, pattern):
                 content = f.read()
                 matches = compiled_pattern.findall(content)
                 if matches:
+                    matches = list(map(lambda x: x + suffix, matches))
                     file_name_without_suffix = os.path.splitext(os.path.basename(file))[0]
-                    nodes[file_name_without_suffix] = matches
+                    nodes[prefix+file_name_without_suffix] = matches
 
     return nodes
 
@@ -55,14 +58,23 @@ def main():
     parser.add_argument(
         "--conversions-files", nargs="+", type=str, help="Paths to the conversion cpp files", default=[]
     )
+    parser.add_argument("--username", type=str, help="Username suffix", default="")
     parser.add_argument("--output", type=str, help="Path to the output JSON file")
     args = parser.parse_args()
 
     result = {}
+    if len(args.username) > 0:
+        print("Username is specified: {}".format(args.username))
+        suf = "_"+args.username
+        pref = args.username+"_"
+    else:
+        suf =""
+        pref = args.username+"_"
+
 
     if args.nodes_dir or args.nodes_files:
-        node_pattern = r"NODE_EXECUTION_FUNCTION\((\w+)\)"
-        result["nodes"] = scan_cpp_files(args.nodes_dir, args.nodes_files, node_pattern)
+        node_pattern = r"NODE_EXECUTION_FUNCTION\((\w+)\)" # match the original name
+        result["nodes"] = scan_cpp_files(args.nodes_dir, args.nodes_files, node_pattern, suffix=suf, prefix=pref)
     else:
         result["nodes"] = {}
 

@@ -1,3 +1,4 @@
+# Get all directories
 file(GLOB entries RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/* )
 set(dirs "")
 foreach (entry IN LISTS entries)
@@ -6,9 +7,8 @@ foreach (entry IN LISTS entries)
     endif ()
 endforeach ()
 message(STATUS "[Submission Nodes] " ${dirs})
-
+# Get all targets
 set(inner_targets "")
-
 foreach (dir IN LISTS dirs)
     message(STATUS "[Add directory] " ${dir})
     add_subdirectory(${dir})
@@ -26,3 +26,4 @@ add_custom_target(submission_nodes
         COMMENT "Building submissions..."
 )
 add_dependencies(submission_nodes ${inner_targets})
+

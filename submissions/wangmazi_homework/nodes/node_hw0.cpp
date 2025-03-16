@@ -13,6 +13,11 @@
 #include "GCore/GOP.h"
 #include "nodes/core/def/node_def.hpp"
 #include "simple_util.h"
+
+#ifdef CGHW_STUDENT_NAME
+#pragma message("CGHW_STUDENT_NAME is defined!")
+#endif
+
 namespace Dij {
 
 /// Graph
@@ -461,7 +466,7 @@ bool find_shortest_path(
 
 NODE_DEF_OPEN_SCOPE
 
-NODE_DECLARATION_FUNCTION(zhangsan_shortest_path)
+NODE_DECLARATION_FUNCTION(assignments_shortest_path)
 {
     b.add_input<std::string>("Picked Mesh [0] Name");
     b.add_input<std::string>("Picked Mesh [1] Name");
@@ -473,7 +478,7 @@ NODE_DECLARATION_FUNCTION(zhangsan_shortest_path)
     b.add_output<float>("Shortest Path Distance");
 }
 
-NODE_EXECUTION_FUNCTION(zhangsan_shortest_path)
+NODE_EXECUTION_FUNCTION(assignments_shortest_path)
 {
         foo();
 
@@ -549,7 +554,16 @@ NODE_EXECUTION_FUNCTION(zhangsan_shortest_path)
     return true;
 }
 
-NODE_DECLARATION_UI(zhangsan_shortest_path);
-NODE_DECLARATION_REQUIRED(zhangsan_shortest_path);
+NODE_DECLARATION_UI(assignments_shortest_path);
+NODE_DECLARATION_REQUIRED(assignments_shortest_path);
 
 NODE_DEF_CLOSE_SCOPE
+
+
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+#pragma message("CG_STUDENT_NAME 展开为: " TOSTRING(CG_STUDENT_NAME))
+#pragma message("NODE_DECLARATION_FUNCTION(assignments_shortest_path) 展开为: " TOSTRING(NODE_DECLARATION_FUNCTION(assignments_shortest_path)))
+#pragma message("NODE_EXECUTION_FUNCTION(assignments_shortest_path) 展开为: " TOSTRING(NODE_EXECUTION_FUNCTION(assignments_shortest_path)))
+#pragma message("NODE_DECLARATION_UI(assignments_shortest_path); 展开为: " TOSTRING(NODE_DECLARATION_UI(assignments_shortest_path);))
+#pragma message("NODE_DECLARATION_REQUIRED(assignments_shortest_path); 展开为: " TOSTRING(NODE_DECLARATION_REQUIRED(assignments_shortest_path);))
