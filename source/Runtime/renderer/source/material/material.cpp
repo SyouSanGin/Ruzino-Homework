@@ -28,25 +28,261 @@
 #include "pxr/usd/sdr/shaderNode.h"
 
 USTC_CG_NAMESPACE_OPEN_SCOPE
+using namespace MaterialX;
+/// Shared pointer to a BindlessContext
+using BindlessContextPtr = std::shared_ptr<class BindlessContext>;
 
-class BindlessContext : public MaterialX::HwResourceBindingContext {
+/// @class BindlessContext
+/// Class representing a resource binding for Slang shader resources.
+class BindlessContext : public HwResourceBindingContext {
    public:
-    ~BindlessContext() override;
-    void initialize() override;
-    void emitDirectives(
-        MaterialX::GenContext& context,
-        MaterialX::ShaderStage& stage) override;
+    BindlessContext(
+        size_t uniformBindingLocation,
+        size_t samplerBindingLocation);
+
+    static BindlessContextPtr create(
+        size_t uniformBindingLocation = 0,
+        size_t samplerBindingLocation = 0)
+    {
+        return std::make_shared<BindlessContext>(
+            uniformBindingLocation, samplerBindingLocation);
+    }
+
+    void initialize() override
+    {
+        fetch_data = "";
+        data_location = 0;
+    }
+
+    void emitDirectives(GenContext& context, ShaderStage& stage) override
+    {
+    }
+
+    // Emit uniforms with binding information
     void emitResourceBindings(
-        MaterialX::GenContext& context,
-        const MaterialX::VariableBlock& uniforms,
-        MaterialX::ShaderStage& stage) override;
+        GenContext& context,
+        const VariableBlock& uniforms,
+        ShaderStage& stage) override;
+
+    // Emit structured uniforms with binding information and align members where
+    // possible
     void emitStructuredResourceBindings(
-        MaterialX::GenContext& context,
-        const MaterialX::VariableBlock& uniforms,
-        MaterialX::ShaderStage& stage,
+        GenContext& context,
+        const VariableBlock& uniforms,
+        ShaderStage& stage,
         const std::string& structInstanceName,
         const std::string& arraySuffix) override;
+
+    std::string get_data_code()
+    {
+        return fetch_data;
+    }
+
+   private:
+    std::string fetch_data = "";
+    unsigned int data_location = 0;
 };
+
+//
+// BindlessContext
+//
+BindlessContext::BindlessContext(
+    size_t uniformBindingLocation,
+    size_t samplerBindingLocation)
+{
+}
+
+void BindlessContext::emitResourceBindings(
+    GenContext& context,
+    const VariableBlock& uniforms,
+    ShaderStage& stage)
+{
+    const ShaderGenerator& generator = context.getShaderGenerator();
+    const Syntax& syntax = generator.getSyntax();
+
+    // First, emit all value uniforms in a block with single layout binding
+    bool hasValueUniforms = false;
+    for (auto uniform : uniforms.getVariableOrder()) {
+        if (uniform->getType() != Type::FILENAME) {
+            hasValueUniforms = true;
+            break;
+        }
+    }
+    if (hasValueUniforms && uniforms.getName() == HW::PUBLIC_UNIFORMS) {
+        for (auto uniform : uniforms.getVariableOrder()) {
+            auto type = uniform->getType();
+
+            if (type != Type::FILENAME) {
+                if (type == Type::VECTOR3 || type == Type::VECTOR4) {
+                    string float3_string =
+                        "asfloat(data.data[" + std::to_string(data_location++) +
+                        "]), asfloat(data.data[" +
+                        std::to_string(data_location++) +
+                        "]), asfloat(data.data[" +
+                        std::to_string(data_location++) + "])";
+
+                    fetch_data += "float3 " + uniform->getName() + " = " +
+                                  float3_string + ";\n";
+                }
+                else if (type == Type::FLOAT) {
+                    string float_string = "asfloat(data.data[" +
+                                          std::to_string(data_location++) +
+                                          "])";
+                    fetch_data += "float " + uniform->getName() + " = " +
+                                  float_string + ";\n";
+                }
+                else if (type == Type::INTEGER) {
+                    string int_string = "asint(data.data[" +
+                                        std::to_string(data_location++) + "])";
+                    fetch_data += "int " + uniform->getName() + " = " +
+                                  int_string + ";\n";
+                }
+                else if (type == Type::MATRIX44) {
+                    std::ostringstream matrix_stream;
+                    matrix_stream << "float4x4(";
+
+                    // Create matrix with 4 rows of 4 elements each
+                    for (int row = 0; row < 4; row++) {
+                        for (int col = 0; col < 4; col++) {
+                            matrix_stream << "asfloat(data.data["
+                                          << data_location++ << "])";
+                            // Add comma after every element except the last
+                            // one
+                            if (!(row == 3 && col == 3)) {
+                                matrix_stream << ", ";
+                            }
+                        }
+                    }
+
+                    matrix_stream << ")";
+                    string matrix_string = matrix_stream.str();
+
+                    fetch_data += "float4x4 " + uniform->getName() + " = " +
+                                  matrix_string + ";\n";
+                }
+
+                // generator.emitLineBegin(stage);
+                // generator.emitVariableDeclaration(
+                //     uniform, EMPTY_STRING, context, stage, true);
+                // generator.emitString(Syntax::SEMICOLON, stage);
+                // generator.emitLineEnd(stage, false);
+            }
+        }
+
+        // Second, emit all sampler uniforms as separate uniforms with separate
+        // layout bindings
+        for (auto uniform : uniforms.getVariableOrder()) {
+            if (*uniform->getType() == *Type::FILENAME) {
+                // generator.emitString(
+                //     "layout (binding=" +
+                //         std::to_string(
+                //             _separateBindingLocation ?
+                //             _hwUniformBindLocation++
+                //                                      :
+                //                                      _hwSamplerBindLocation++)
+                //                                      +
+                //         ") " + syntax.getUniformQualifier() + " ",
+                //     stage);
+                // generator.emitVariableDeclaration(
+                //    uniform, EMPTY_STRING, context, stage, true);
+                // generator.emitLineEnd(stage, true);
+
+                fetch_data += "Texture2D " + uniform->getName() + " = " +
+                              " t_BindlessTextures[$" + uniform->getName() +
+                              "_id];\n";
+            }
+        }
+    }
+    generator.emitLineBreak(stage);
+}
+
+void BindlessContext::emitStructuredResourceBindings(
+    GenContext& context,
+    const VariableBlock& uniforms,
+    ShaderStage& stage,
+    const std::string& structInstanceName,
+    const std::string& arraySuffix)
+{
+    const ShaderGenerator& generator = context.getShaderGenerator();
+    const Syntax& syntax = generator.getSyntax();
+
+    // Slang structures need to be aligned. We make a best effort to base align
+    // struct members and add padding if required.
+    // https://www.khronos.org/registry/OpenGL/extensions/ARB/ARB_uniform_buffer_object.txt
+
+    const size_t baseAlignment = 16;
+    std::unordered_map<const TypeDesc*, size_t> alignmentMap(
+        { { Type::FLOAT, baseAlignment / 4 },
+          { Type::INTEGER, baseAlignment / 4 },
+          { Type::BOOLEAN, baseAlignment / 4 },
+          { Type::COLOR3, baseAlignment },
+          { Type::COLOR4, baseAlignment },
+          { Type::VECTOR2, baseAlignment },
+          { Type::VECTOR3, baseAlignment },
+          { Type::VECTOR4, baseAlignment },
+          { Type::MATRIX33, baseAlignment * 4 },
+          { Type::MATRIX44, baseAlignment * 4 } });
+
+    // Get struct alignment and size
+    // alignment, uniform member index
+    vector<std::pair<size_t, size_t>> memberOrder;
+    size_t structSize = 0;
+    for (size_t i = 0; i < uniforms.size(); ++i) {
+        auto it = alignmentMap.find(uniforms[i]->getType());
+        if (it == alignmentMap.end()) {
+            structSize += baseAlignment;
+            memberOrder.push_back(std::make_pair(baseAlignment, i));
+        }
+        else {
+            structSize += it->second;
+            memberOrder.push_back(std::make_pair(it->second, i));
+        }
+    }
+
+    // Align up and determine number of padding floats to add
+    const size_t numPaddingfloats =
+        (((structSize + (baseAlignment - 1)) & ~(baseAlignment - 1)) -
+         structSize) /
+        4;
+
+    // Sort order from largest to smallest
+    std::sort(
+        memberOrder.begin(),
+        memberOrder.end(),
+        [](const std::pair<size_t, size_t>& a,
+           const std::pair<size_t, size_t>& b) { return a.first > b.first; });
+
+    // Emit the struct
+    generator.emitLine("struct " + uniforms.getName(), stage, false);
+    generator.emitScopeBegin(stage);
+
+    for (size_t i = 0; i < uniforms.size(); ++i) {
+        size_t variableIndex = memberOrder[i].second;
+        generator.emitLineBegin(stage);
+        generator.emitVariableDeclaration(
+            uniforms[variableIndex], EMPTY_STRING, context, stage, false);
+        generator.emitString(Syntax::SEMICOLON, stage);
+        generator.emitLineEnd(stage, false);
+    }
+
+    // Emit padding
+    for (size_t i = 0; i < numPaddingfloats; ++i) {
+        generator.emitLine("float pad" + std::to_string(i), stage, true);
+    }
+    generator.emitScopeEnd(stage, true);
+
+    // Emit binding information
+    generator.emitLineBreak(stage);
+    generator.emitLine(
+        syntax.getUniformQualifier() + " " + uniforms.getName() + "_" +
+            stage.getName(),
+        stage,
+        false);
+    generator.emitScopeBegin(stage);
+    generator.emitLine(
+        uniforms.getName() + " " + structInstanceName + arraySuffix, stage);
+    generator.emitScopeEnd(stage, true);
+}
 
 namespace mx = MaterialX;
 
@@ -67,9 +303,8 @@ Hd_USTC_CG_Material::Hd_USTC_CG_Material(SdfPath const& id) : HdMaterial(id)
             { "usd/hd_USTC_CG/resources/libraries" }, searchPath, libraries);
         shader_gen_context_->registerSourceCodeSearchPath(searchPath);
 
-        // shader_gen_context_->pushUserData(
-        //     mx::HW::USER_DATA_BINDING_CONTEXT,
-        //     std::make_shared<BindlessContext>());
+        shader_gen_context_->pushUserData(
+            mx::HW::USER_DATA_BINDING_CONTEXT, BindlessContext::create());
     });
 }
 
@@ -196,29 +431,28 @@ void Hd_USTC_CG_Material::MtlxGenerateShader(
     _UpdateTextureNodes(
         &netInterface, hdMtlxData.hdTextureNodes, mtlx_document);
 
+    auto renderable = findRenderableElements(mtlx_document);
+
+    _FixOmittedConnections(mtlx_document, renderable);
     using namespace mx;
-    auto materials = mtlx_document->getMaterialNodes();
 
-    auto shaders = mtlx_document->getNodesOfType(SURFACE_SHADER_TYPE_STRING);
-
-    auto renderable = mx::findRenderableElements(mtlx_document);
     auto element = renderable[0];
-
-    mx::OutputPtr output = element->asA<mx::Output>();
-    mx::NodePtr outputNode = element->asA<mx::Node>();
-    if (output) {
-        outputNode = output->getConnectedNode();
-    }
-
-    mx::NodeDefPtr nodeDef = outputNode->getNodeDef();
 
     std::string elementName(element->getNamePath());
     elementName = mx::createValidName(elementName);
 
     ShaderGenerator& shader_generator_ =
         shader_gen_context_->getShaderGenerator();
-    shader =
-        shader_generator_.generate(elementName, element, *shader_gen_context_);
+    {
+        std::lock_guard lock(shadergen_mutex);
+        shader = shader_generator_.generate(
+            elementName, element, *shader_gen_context_);
+
+        BindlessContextPtr context =
+            shader_gen_context_->getUserData<BindlessContext>(
+                mx::HW::USER_DATA_BINDING_CONTEXT);
+        get_data_code = context->get_data_code();
+    }
 
 #ifndef NDEBUG
     // Ensure the generated_shaders directory exists
@@ -269,7 +503,7 @@ void Hd_USTC_CG_Material::Sync(
 {
     auto param = static_cast<Hd_USTC_CG_RenderParam*>(renderParam);
 
-    material_data_handle = param->InstanceCollection->material_pool.allocate(1);
+    ensure_material_data_handle(param);
 
     HdMaterialNetwork2 hdNetwork;
     SdfPath materialPath;
@@ -292,6 +526,26 @@ void Hd_USTC_CG_Material::Sync(
         CollectTextures(netInterface, hdMtlxData);
         LoadTextures();
         BuildGPUTextures(param);
+
+        for (auto& tex : textureResources) {
+            if (tex.second.texture) {
+                auto texture_name =
+                    std::filesystem::path(tex.first).filename().string();
+                auto texture_id = tex.second.descriptor.Get();
+
+                // Replace the "$"+ texture_name+"_id" with the actual
+                // texture_id in the get_data_code string
+
+                std::string to_replace = "$" + texture_name + "_file_id";
+                std::string replace_with = std::to_string(texture_id);
+
+                size_t pos = get_data_code.find(to_replace);
+                if (pos != std::string::npos) {
+                    get_data_code.replace(
+                        pos, to_replace.length(), replace_with);
+                }
+            }
+        }
     }
     *dirtyBits = HdChangeTracker::Clean;
 }
@@ -304,6 +558,33 @@ HdDirtyBits Hd_USTC_CG_Material::GetInitialDirtyBitsMask() const
 void Hd_USTC_CG_Material::Finalize(HdRenderParam* renderParam)
 {
     HdMaterial::Finalize(renderParam);
+}
+
+std::vector<TextureHandle> Hd_USTC_CG_Material::GetTextures() const
+{
+    std::vector<TextureHandle> textures;
+    for (const auto& tex : textureResources) {
+        textures.push_back(tex.second.texture);
+    }
+    return textures;
+}
+
+void Hd_USTC_CG_Material::ensure_material_data_handle(
+    Hd_USTC_CG_RenderParam* render_param)
+{
+    std::lock_guard<std::mutex> lock(material_data_handle_mutex);
+    if (!material_data_handle) {
+        if (!render_param) {
+            throw std::runtime_error("Render param is null.");
+        }
+        material_data_handle =
+            render_param->InstanceCollection->material_pool.allocate(1);
+    }
+}
+
+unsigned Hd_USTC_CG_Material::GetMaterialLocation() const
+{
+    return material_data_handle->index();
 }
 
 // HLSL callable shader
@@ -334,6 +615,11 @@ std::shared_ptr<ProgramVars> Hd_USTC_CG_Material::GetShader(
     ResourceAllocator& allocator)
 {
     if (!program) {
+        if (shader) {
+            ProgramDesc mtlx_desc;
+            mtlx_desc.set_source_code(shader->getSourceCode());
+            auto mtlx_program = factory.createProgram(mtlx_desc);
+        }
         ProgramDesc desc;
         desc.set_source_code(slang_source_code).set_entry_name("getColor");
 

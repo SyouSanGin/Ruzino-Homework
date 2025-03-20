@@ -51,7 +51,14 @@ class RHI_API ShaderFactory {
         shader_search_path = string;
     }
 
+    void add_search_path(const std::string& string)
+    {
+        search_paths.push_back(string);
+    }
+
    private:
+    std::vector<std::string> search_paths;
+
     void SlangCompile(
         const std::filesystem::path& path,
         const std::string& sourceCode,

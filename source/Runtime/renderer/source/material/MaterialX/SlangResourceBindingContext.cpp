@@ -84,7 +84,7 @@ void SlangResourceBindingContext::emitResourceBindings(
             if (uniform->getType() != Type::FILENAME) {
                 generator.emitLineBegin(stage);
                 generator.emitVariableDeclaration(
-                    uniform, EMPTY_STRING, context, stage, false);
+                    uniform, EMPTY_STRING, context, stage, true);
                 generator.emitString(Syntax::SEMICOLON, stage);
                 generator.emitLineEnd(stage, false);
             }
@@ -105,7 +105,7 @@ void SlangResourceBindingContext::emitResourceBindings(
             //         ") " + syntax.getUniformQualifier() + " ",
             //     stage);
             generator.emitVariableDeclaration(
-                uniform, EMPTY_STRING, context, stage, false);
+                uniform, EMPTY_STRING, context, stage, true);
             generator.emitLineEnd(stage, true);
         }
     }

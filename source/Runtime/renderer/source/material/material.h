@@ -34,30 +34,26 @@ class HD_USTC_CG_API Hd_USTC_CG_Material : public HdMaterial {
 
     void Finalize(HdRenderParam* renderParam) override;
 
-    std::vector<TextureHandle> GetTextures() const
-    {
-        std::vector<TextureHandle> textures;
-        for (const auto& tex : textureResources) {
-            textures.push_back(tex.second.texture);
-        }
-        return textures;
-    }
+    std::vector<TextureHandle> GetTextures() const;
 
-    unsigned GetMaterialLocation() const
-    {
-        return material_data_handle->index();
-    }
+    void ensure_material_data_handle(Hd_USTC_CG_RenderParam* render_param);
+
+    unsigned GetMaterialLocation() const;
 
     std::shared_ptr<ProgramVars> GetShader(
         const ShaderFactory& factory,
         ResourceAllocator& allocator);
 
    private:
+    std::mutex material_data_handle_mutex;
+    std::mutex shadergen_mutex;
+
     HdMaterialNetwork2 surfaceNetwork;
     MaterialX::ShaderPtr shader;
     ProgramHandle program = nullptr;
 
     std::unordered_map<std::string, std::string> texturePaths;
+    std::string get_data_code;
 
     struct TextureResource {
         std::string filePath;

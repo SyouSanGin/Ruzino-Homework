@@ -492,6 +492,9 @@ void ShaderFactory::SlangCompile(
     std::vector<std::string> searchPaths = { shader_search_path };
     searchPaths.push_back("./");
     searchPaths.push_back(shader_search_path + "/shaders/");
+    for (auto& search_path : search_paths) {
+        searchPaths.push_back(search_path);
+    }
 
     std::vector<const char*> slangSearchPaths;
     for (auto& path : searchPaths) {

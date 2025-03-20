@@ -91,6 +91,10 @@ void ClosureCompoundNodeSlang::emitFunctionDefinition(
         delim = ", ";
     }
 
+    const string& type = syntax.getTypeName(Type::VECTOR3);
+    shadergen.emitString(delim + type + " " + HW::DIR_L, stage);
+    shadergen.emitString(", " + type + " " + HW::DIR_V, stage);
+
     // Add all inputs
     for (ShaderGraphInputSocket* inputSocket : _rootGraph->getInputSockets()) {
         shadergen.emitString(
@@ -228,7 +232,9 @@ void ClosureCompoundNodeSlang::emitFunctionCall(
         if (!vertexData.empty()) {
             shadergen.emitString(delim + vertexData.getInstance(), stage);
             delim = ", ";
-        }  
+        }
+
+        shadergen.emitString(delim + HW::DIR_L + ", " + HW::DIR_V, stage);
 
         // Emit all inputs.
         for (ShaderInput* input : node.getInputs()) {
@@ -236,7 +242,7 @@ void ClosureCompoundNodeSlang::emitFunctionCall(
             shadergen.emitInput(input, context, stage);
             delim = ", ";
         }
-         
+
         // Emit all outputs.
         for (size_t i = 0; i < node.numOutputs(); ++i) {
             shadergen.emitString(delim, stage);

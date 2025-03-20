@@ -340,6 +340,7 @@ void Hd_USTC_CG_Mesh::updateTLAS(
 
         GeometryInstanceData instance_data;
         instance_data.geometryID = mesh_desc_buffer->index();
+        material->ensure_material_data_handle(render_param);
         instance_data.materialID = material->GetMaterialLocation();
         memcpy(&instance_data.transform, mat.data(), sizeof(pxr::GfMatrix4f));
         instanceBuffer->write_data(&instance_data, i);

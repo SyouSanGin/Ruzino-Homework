@@ -1,7 +1,11 @@
 #include "materialFilter.h"
 
-USTC_CG_NAMESPACE_OPEN_SCOPE
+#include "MaterialXGenShader/Util.h"
+#include "pxr/base/arch/library.h"
+#include "pxr/usd/ar/resolver.h"
+#include "pxr/usdImaging/usdImaging/tokens.h"
 
+USTC_CG_NAMESPACE_OPEN_SCOPE
 TF_DEFINE_PRIVATE_TOKENS(
     _tokens,
     (mtlx)
@@ -9,7 +13,8 @@ TF_DEFINE_PRIVATE_TOKENS(
     // Hydra MaterialX Node Types
     (ND_standard_surface_surfaceshader)(ND_UsdPreviewSurface_surfaceshader)(ND_displacement_float)(ND_displacement_vector3)(ND_image_vector2)(ND_image_vector3)(ND_image_vector4)
     // For supporting Usd texturing nodes
-    (wrapS)(wrapT)(repeat)(periodic)(ND_UsdUVTexture)(ND_dot_vector2)(ND_UsdPrimvarReader_vector2)(UsdPrimvarReader_float2)(UsdUVTexture)(UsdVerticalFlip)(varname)(file)(filename)(black)(clamp)(uaddressmode)(vaddressmode)(ND_geompropvalue_vector2)(ND_separate2_vector2)(ND_floor_float)(ND_multiply_float)(ND_add_float)(ND_subtract_float)(ND_combine2_vector2)(separate2)(floor)(multiply)(add)(subtract)(combine2)(texcoord)(geomprop)(geompropvalue)(in)(in1)(in2)(out)(outx)(outy)(st)(vector2)((
+    (
+        wrapS)(wrapT)(repeat)(periodic)(ND_UsdUVTexture_23)(ND_dot_vector2)(ND_UsdPrimvarReader_vector2)(UsdPrimvarReader_float2)(UsdUVTexture)(UsdVerticalFlip)(varname)(file)(filename)(black)(clamp)(uaddressmode)(vaddressmode)(ND_geompropvalue_vector2)(ND_separate2_vector2)(ND_separate3_vector3)(ND_separate4_vector4)(ND_separate3_color3)(ND_separate4_color4)(ND_floor_float)(ND_multiply_float)(ND_add_float)(ND_subtract_float)(ND_combine2_vector2)(separate2)(separate3)(separate4)(floor)(multiply)(add)(subtract)(combine2)(texcoord)(geomprop)(geompropvalue)(in)(in1)(in2)(out)(outx)(outy)(st)(vector2)((
         string_type,
         "string"))  // Color Space
     ((cs_raw, "raw"))((cs_auto, "auto"))((cs_srgb, "sRGB"))(
@@ -21,7 +26,7 @@ TfToken _FixSingleType(TfToken const& nodeType)
         return _tokens->ND_UsdPreviewSurface_surfaceshader;
     }
     else if (nodeType == UsdImagingTokens->UsdUVTexture) {
-        return _tokens->ND_UsdUVTexture;
+        return _tokens->ND_UsdUVTexture_23;
     }
     else if (nodeType == UsdImagingTokens->UsdPrimvarReader_float2) {
         return _tokens->ND_UsdPrimvarReader_vector2;
@@ -306,9 +311,9 @@ void _UpdateTextureNodes(
 
             // UsdUvTexture nodes and MtlxImage nodes have different
             // names for their texture coordinate connection.
-            const TfToken texCoordToken = (nodeType == _tokens->ND_UsdUVTexture)
-                                              ? _tokens->st
-                                              : _tokens->texcoord;
+            const TfToken texCoordToken =
+                (nodeType == _tokens->ND_UsdUVTexture_23) ? _tokens->st
+                                                          : _tokens->texcoord;
 
             // If texcoord param isn't connected, make a default connection
             // to a mtlx geompropvalue node.
@@ -474,9 +479,24 @@ void _FixNodeValues(HdMaterialNetwork2Interface* netInterface)
     // Fix textures wrap mode from repeat to periodic, because MaterialX does
     // not support repeat mode.
     const TfTokenVector nodeNames = netInterface->GetNodeNames();
+
     for (TfToken const& nodeName : nodeNames) {
+        std::cout << "Node name: " << nodeName.GetString() << std::endl;
+
+        auto params = netInterface->GetAuthoredNodeParameterNames(nodeName);
+        for (auto const& param : params) {
+            std::cout << "Param name: " << param.GetString() << std::endl;
+        }
+
+        auto input_connections =
+            netInterface->GetNodeInputConnectionNames(nodeName);
+        for (auto const& input_connection : input_connections) {
+            std::cout << "Input connection name: "
+                      << input_connection.GetString() << std::endl;
+        }
+
         TfToken nodeType = netInterface->GetNodeType(nodeName);
-        if (nodeType == _tokens->ND_UsdUVTexture) {
+        if (nodeType == _tokens->ND_UsdUVTexture_23) {
             VtValue wrapS =
                 netInterface->GetNodeParameterValue(nodeName, _tokens->wrapS);
             VtValue wrapT =
@@ -505,6 +525,140 @@ void _FixNodeValues(HdMaterialNetwork2Interface* netInterface)
                 netInterface->DeleteNodeParameter(
                     nodeName, pxr::TfToken("specular"));
             }
+
+            auto metallicInput = netInterface->GetNodeInputConnection(
+                nodeName, pxr::TfToken("metallic"));
+
+            if (!metallicInput.empty()) {
+                auto input = metallicInput[0];
+                auto connected_param = netInterface->GetNodeParameterData(
+                    input.upstreamNodeName, input.upstreamOutputName);
+                std::cout << "input.upstreamNodeName: "
+                          << input.upstreamNodeName.GetString()
+                          << " input.upstreamOutputName: "
+                          << input.upstreamOutputName.GetString() << std::endl;
+                std::cout << "connected_param.value: "
+                          << connected_param.value.GetTypeName() << std::endl;
+                if (connected_param.value.IsHolding<GfVec3f>()) {
+                    GfVec3f value = connected_param.value.Get<GfVec3f>();
+                    netInterface->SetNodeParameterValue(
+                        input.upstreamNodeName,
+                        input.upstreamNodeName,
+                        VtValue(value[0]));
+                }
+            }
+        }
+    }
+}
+
+void _FixOmittedConnections(
+    mx::DocumentPtr const& mxDoc,
+    const std::vector<mx::TypedElementPtr>& renderableElements)
+{
+    // Recursively checks and fixes nodes and their upstream connections
+    std::function<void(mx::NodePtr, std::set<mx::NodePtr>&)>
+        processNodeRecursively =
+            [&mxDoc, &processNodeRecursively](
+                mx::NodePtr node, std::set<mx::NodePtr>& visitedNodes) -> void {
+        // Avoid infinite recursion by tracking visited nodes
+        if (visitedNodes.find(node) != visitedNodes.end()) {
+            return;
+        }
+        visitedNodes.insert(node);
+
+        auto node_def = node->getNodeDef();
+        auto rough_node_def =
+            node->getNodeDef(MaterialX_v1_38_10::EMPTY_STRING, true);
+
+        if (rough_node_def && !node_def) {
+            // Process each input on this node
+            for (auto input : node->getInputs()) {
+                auto input_in_def = rough_node_def->getInput(input->getName());
+
+                if (input_in_def->getType() != input->getType()) {
+                    log::info("Fixing skipped link.");
+
+                    if (input_in_def->getType() == mx::Type::FLOAT->getName() &&
+                        input->getType() == mx::Type::COLOR3->getName()) {
+                        auto upstream = input->getConnectedOutput();
+                        // Add a separate node
+                        auto parent_graph =
+                            node->getParent()->asA<mx::NodeGraph>();
+                        auto parent_doc =
+                            node->getParent()->asA<mx::Document>();
+
+                        if (parent_graph)
+
+                        {
+                            auto separate_node = parent_graph->addNode(
+                                "separate",
+                                node->getName() + "_separate",
+                                "color3");
+
+                            input->setConnectedNode(separate_node);
+                            input->setConnectedOutput(
+                                separate_node->getOutput("outr"));
+                            auto upstream_node =
+                                upstream->getParent()->asA<mx::Node>();
+                            separate_node->getInput("in")->setConnectedNode(
+                                upstream_node);
+                            separate_node->getInput("in")->setConnectedOutput(
+                                upstream);
+                        }
+
+                        if (parent_doc) {
+                            auto separate_node = parent_doc->addNode(
+                                _tokens->separate3,
+                                upstream->getName() + "_separate");
+                            separate_node->setNodeDefString(
+                                _tokens->ND_separate3_color3);
+                            separate_node->addInputsFromNodeDef();
+
+                            auto separate_def = separate_node->getNodeDef(
+                                mx::EMPTY_STRING, true);
+
+                            for (auto output :
+                                 separate_def->getActiveOutputs()) {
+                                separate_node->addOutput(
+                                    output->getName(), output->getType());
+                            }
+
+                            input->setConnectedOutput(
+                                separate_node->getOutput("outr"));
+                            input->setType(input_in_def->getType());
+                            separate_node->getInput("in")->setConnectedOutput(
+                                upstream);
+                        }
+                    }
+                }
+            }
+        }
+
+        for (auto input : node->getInputs()) {
+            auto node = input->getConnectedNode();
+            if (node) {
+                processNodeRecursively(node, visitedNodes);
+            }
+        }
+    };
+
+    // Start processing from each renderable element
+    for (auto const& elem : renderableElements) {
+        // Skip nodes that aren't actually shaders
+        if (!elem->isA<mx::Node>()) {
+            continue;
+        }
+
+        mx::NodePtr node = elem->asA<mx::Node>();
+        std::set<mx::NodePtr> visitedNodes;
+        processNodeRecursively(node, visitedNodes);
+    }
+    std::string m;
+
+    for (auto const& traversed : renderableElements[0]->traverseTree()) {
+        traversed->validate(&m);
+        if (!m.empty()) {
+            log::warning("Validation: %s", m.c_str());
         }
     }
 }

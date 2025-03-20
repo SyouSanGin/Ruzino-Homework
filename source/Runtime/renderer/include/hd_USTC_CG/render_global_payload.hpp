@@ -32,6 +32,7 @@ struct RenderGlobalPayload {
           shader_factory(&resource_allocator)
     {
         shader_factory.set_search_path(RENDERER_SHADER_DIR);
+        shader_factory.add_search_path("usd/hd_USTC_CG/resources/libraries");
         resource_allocator.device = nvrhi_device;
         resource_allocator.shader_factory = &shader_factory;
     }
@@ -44,6 +45,8 @@ struct RenderGlobalPayload {
           shader_factory(&resource_allocator)
     {
         shader_factory.set_search_path(RENDERER_SHADER_DIR);
+        shader_factory.add_search_path("usd/hd_USTC_CG/resources/libraries");
+
         resource_allocator.device = nvrhi_device;
         resource_allocator.shader_factory = &shader_factory;
     }
@@ -56,6 +59,8 @@ struct RenderGlobalPayload {
         nvrhi_device = rhs.nvrhi_device;
         shader_factory = ShaderFactory(&resource_allocator);
         shader_factory.set_search_path(RENDERER_SHADER_DIR);
+        shader_factory.add_search_path("usd/hd_USTC_CG/resources/libraries");
+
         resource_allocator.device = nvrhi_device;
         resource_allocator.shader_factory = &shader_factory;
         return *this;

@@ -2,26 +2,11 @@
 #include <pxr/imaging/hd/material.h>
 #include <pxr/imaging/hd/materialNetwork2Interface.h>
 #include <pxr/imaging/hdMtlx/hdMtlx.h>
-#include <pxr/imaging/hio/image.h>
-#include <pxr/usdImaging/usdImaging/tokens.h>
 
-#include "MaterialX/SlangShaderGenerator.h"
-#include "MaterialXCore/Document.h"
 #include "MaterialXFormat/Util.h"
-#include "MaterialXGenShader/Shader.h"
-#include "MaterialXGenShader/Util.h"
-#include "RHI/Hgi/format_conversion.hpp"
-#include "api.h"
 #include "material.h"
-#include "nvrhi/nvrhi.h"
-#include "pxr/base/arch/fileSystem.h"
-#include "pxr/base/arch/hash.h"
-#include "pxr/base/arch/library.h"
-#include "pxr/imaging/hd/changeTracker.h"
 #include "pxr/imaging/hd/sceneDelegate.h"
-#include "pxr/usd/ar/resolver.h"
 #include "pxr/usd/sdr/registry.h"
-#include "pxr/usd/sdr/shaderNode.h"
 USTC_CG_NAMESPACE_OPEN_SCOPE
 namespace mx = MaterialX;
 
@@ -45,6 +30,9 @@ void _GetWrapModes(
     TfToken* uWrap,
     TfToken* vWrap);
 
+void _FixOmittedConnections(
+    mx::DocumentPtr const& mxDoc,
+    const std::vector<mx::TypedElementPtr>& renderables);
 // Returns true is the given mtlxSdrNode requires primvar support for texture
 // coordinates
 bool _NodeHasTextureCoordPrimvar(

@@ -809,7 +809,7 @@ void SlangShaderGenerator::emitPixelStage(
     else {
         emitLine(")", stage, false);
     }
-     
+
     emitFunctionBodyBegin(graph, context, stage);
 
     if (graph.hasClassification(ShaderNode::Classification::CLOSURE) &&
