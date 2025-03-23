@@ -1,6 +1,6 @@
 
 struct MaterialDataBlob {
-    uint data[32];
+    uint data[64];
 }
 
 RWStructuredBuffer<MaterialDataBlob> materialBuffer;
