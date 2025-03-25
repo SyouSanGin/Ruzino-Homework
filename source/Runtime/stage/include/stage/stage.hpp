@@ -9,6 +9,10 @@
 #include "pxr/usd/usdGeom/sphere.h"
 #include "pxr/usd/usdGeom/xform.h"
 #include "pxr/usd/usdGeom/xformCache.h"
+#include "pxr/usd/usdLux/diskLight.h"
+#include "pxr/usd/usdLux/distantLight.h"
+#include "pxr/usd/usdLux/domeLight.h"
+#include "pxr/usd/usdLux/rectLight.h"
 #include "stage/api.h"
 
 USTC_CG_NAMESPACE_OPEN_SCOPE
@@ -42,6 +46,18 @@ class STAGE_API Stage {
     pxr::UsdGeomMesh create_mesh(
         const pxr::SdfPath& path = pxr::SdfPath::EmptyPath()) const;
 
+    pxr::UsdLuxRectLight create_rect_light(
+        const pxr::SdfPath& path = pxr::SdfPath::EmptyPath()) const;
+
+    pxr::UsdLuxDistantLight create_distant_light(
+        const pxr::SdfPath& path = pxr::SdfPath::EmptyPath()) const;
+
+    pxr::UsdLuxDiskLight create_disk_light(
+        const pxr::SdfPath& path = pxr::SdfPath::EmptyPath()) const;
+
+    pxr::UsdLuxDomeLight create_dome_light(
+        const pxr::SdfPath& path = pxr::SdfPath::EmptyPath()) const;
+
     void remove_prim(const pxr::SdfPath& path);
 
     [[nodiscard]] std::string stage_content() const;
@@ -57,9 +73,11 @@ class STAGE_API Stage {
     void import_usd(
         const std::string& path_string,
         const pxr::SdfPath& sdf_path);
-    const std::string & GetStagePath(){
+    const std::string& GetStagePath()
+    {
         return m_stage_path;
     }
+
    private:
     std::string m_stage_path;
     pxr::UsdStageRefPtr stage;
@@ -76,5 +94,6 @@ class STAGE_API Stage {
 };
 
 STAGE_API std::unique_ptr<Stage> create_global_stage();
-STAGE_API std::unique_ptr<Stage> create_custom_global_stage(const std::string& filename);
+STAGE_API std::unique_ptr<Stage> create_custom_global_stage(
+    const std::string& filename);
 USTC_CG_NAMESPACE_CLOSE_SCOPE

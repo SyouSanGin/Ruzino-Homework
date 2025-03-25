@@ -82,7 +82,6 @@ Stage::Stage(const std::string& stage_path)
     stage = pxr::UsdStage::CreateNew(abs_path.string());
     stage->SetMetadata(pxr::UsdGeomTokens->metersPerUnit, 1.0);
     stage->SetMetadata(pxr::UsdGeomTokens->upAxis, pxr::TfToken("Z"));
-
 }
 
 Stage::~Stage()
@@ -172,6 +171,27 @@ pxr::UsdGeomXform Stage::create_xform(const pxr::SdfPath& path) const
 pxr::UsdGeomMesh Stage::create_mesh(const pxr::SdfPath& path) const
 {
     return create_prim<pxr::UsdGeomMesh>(path, "mesh");
+}
+
+pxr::UsdLuxRectLight Stage::create_rect_light(const pxr::SdfPath& path) const
+{
+    return create_prim<pxr::UsdLuxRectLight>(path, "rect_light");
+}
+
+pxr::UsdLuxDistantLight Stage::create_distant_light(
+    const pxr::SdfPath& path) const
+{
+    return create_prim<pxr::UsdLuxDistantLight>(path, "distant_light");
+}
+
+pxr::UsdLuxDiskLight Stage::create_disk_light(const pxr::SdfPath& path) const
+{
+    return create_prim<pxr::UsdLuxDiskLight>(path, "disk_light");
+}
+
+pxr::UsdLuxDomeLight Stage::create_dome_light(const pxr::SdfPath& path) const
+{
+    return create_prim<pxr::UsdLuxDomeLight>(path, "dome_light");
 }
 
 void Stage::remove_prim(const pxr::SdfPath& path)
@@ -275,7 +295,8 @@ std::unique_ptr<Stage> create_global_stage()
     return std::make_unique<Stage>();
 }
 
-std::unique_ptr<Stage> create_custom_global_stage(const std::string& filename){
+std::unique_ptr<Stage> create_custom_global_stage(const std::string& filename)
+{
     return std::make_unique<Stage>(filename);
 }
 

@@ -339,7 +339,7 @@ void UsdFileViewer::remove_prim_logic()
 void UsdFileViewer::show_right_click_menu()
 {
     if (ImGui::BeginPopupContextWindow("Prim Operation")) {
-        if (ImGui::BeginMenu("Create")) {
+        if (ImGui::BeginMenu("Create Geometry")) {
             if (ImGui::MenuItem("Mesh")) {
                 stage->create_mesh(selected);
             }
@@ -350,6 +350,22 @@ void UsdFileViewer::show_right_click_menu()
                 stage->create_sphere(selected);
             }
 
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Create Light")) {
+            if (ImGui::MenuItem("Dome Light")) {
+                stage->create_dome_light(selected);
+            }
+            if (ImGui::MenuItem("Disk Light")) {
+                stage->create_disk_light(selected);
+            }
+            if (ImGui::MenuItem("Distant Light")) {
+                stage->create_distant_light(selected);
+            }
+            if (ImGui::MenuItem("Rect Light")) {
+                stage->create_rect_light(selected);
+            }
             ImGui::EndMenu();
         }
 
