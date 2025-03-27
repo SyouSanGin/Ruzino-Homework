@@ -8,7 +8,7 @@ using uint = uint32_t;
 #endif
 
 struct MaterialDataBlob {
-    uint data[64];
+    uint data[128];
 };
 
 #ifndef HOST_CODE
