@@ -50,12 +50,11 @@ NODE_EXECUTION_FUNCTION(shadow_mapping)
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 
     glViewport(0, 0, resolution, resolution);
-    int NN = lights.size();
-    auto tmp = global_payload;
-    for (int light_id = 0; light_id < NN; ++light_id) {
+
+    for (int light_id = 0; light_id < lights.size(); ++light_id) {
         shader_handle->shader.use();
+
         if (!lights[light_id]->GetId().IsEmpty()) {
-            std ::cout << "ID:" << lights[light_id]->GetId() << "\n";
             GlfSimpleLight light_params =
                 lights[light_id]->Get(HdTokens->params).Get<GlfSimpleLight>();
 
@@ -67,22 +66,38 @@ NODE_EXECUTION_FUNCTION(shadow_mapping)
             GfMatrix4f light_view_mat;
             GfMatrix4f light_projection_mat;
 
-            if (lights[light_id]->GetLightType() ==
-                HdPrimTypeTokens->sphereLight) {
-                GfFrustum frustum;
-                GfVec3f light_position = { light_params.GetPosition()[0],
-                                           light_params.GetPosition()[1],
-                                           light_params.GetPosition()[2] };
+
+
+            GfFrustum frustum;
+                GfVec3f light_position = { 1,
+                                           1,
+                                           1};
 
                 light_view_mat = GfMatrix4f().SetLookAt(
                     light_position, GfVec3f(0, 0, 0), GfVec3f(0, 0, 1));
                 frustum.SetPerspective(120.f, 1.0, 1, 25.f);
                 light_projection_mat =
                     GfMatrix4f(frustum.ComputeProjectionMatrix());
-            }
-            // else (lights[light_id]->GetLightType() ==
+
+            //if (lights[light_id]->GetLightType() ==
+            //    HdPrimTypeTokens->sphereLight) {
+            //    GfFrustum frustum;
+            //    GfVec3f light_position = { light_params.GetPosition()[0],
+            //                               light_params.GetPosition()[1],
+            //                               light_params.GetPosition()[2] };
+
+            //    light_view_mat = GfMatrix4f().SetLookAt(
+            //        light_position, GfVec3f(0, 0, 0), GfVec3f(0, 0, 1));
+            //    frustum.SetPerspective(120.f, 1.0, 1, 25.f);
+            //    light_projection_mat =
+            //        GfMatrix4f(frustum.ComputeProjectionMatrix());
+            //}
+            // else if (lights[light_id]->GetLightType() ==
             // HdPrimTypeTokens->distantLight). See light.cpp under
             // hd_ustc_cg_gl/
+            /*else {
+                continue
+            }*/
 
             shader_handle->shader.setMat4("light_view", light_view_mat);
             shader_handle->shader.setMat4(

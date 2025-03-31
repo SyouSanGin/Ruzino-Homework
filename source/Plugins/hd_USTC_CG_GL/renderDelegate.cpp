@@ -40,7 +40,8 @@
 #include "renderBuffer.h"
 #include "renderPass.h"
 #include "renderer.h"
-
+#include <regex>
+#include <filesystem>
 USTC_CG_NAMESPACE_OPEN_SCOPE
 using namespace pxr;
 TF_DEFINE_PUBLIC_TOKENS(
@@ -125,6 +126,19 @@ void Hd_USTC_CG_RenderDelegate::_Initialize()
 
     node_system = create_dynamic_loading_system();
     node_system->load_configuration("gl_based_render_nodes.json");
+
+
+            namespace fs = std::filesystem;
+            std::regex submission_suffix(R"(.*_nodes_hw_submissions_render\.json)");
+            log::info("LOADING SUBMISSIONS [Render]");
+            for (auto &itr: fs::directory_iterator(".")){
+                if (std::regex_match(itr.path().string(), submission_suffix)){
+                    log::info("Found: %s", itr.path().string().c_str());
+                    node_system->load_configuration(itr.path());
+                }
+            }
+
+
     node_system->set_node_tree_executor(std::move(render_executor));
     node_system->allow_ui_execution = false;
     node_system->init();

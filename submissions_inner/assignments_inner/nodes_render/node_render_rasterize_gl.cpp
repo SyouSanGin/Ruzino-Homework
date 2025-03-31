@@ -23,8 +23,7 @@ NODE_DECLARATION_FUNCTION(rasterize_impl)
 
 NODE_EXECUTION_FUNCTION(rasterize_impl)
 {
-    try{
-        Hd_USTC_CG_Camera* free_camera = get_free_camera(params);
+    Hd_USTC_CG_Camera* free_camera = get_free_camera(params);
 
     auto size = free_camera->_dataWindow.GetSize();
 
@@ -140,7 +139,11 @@ NODE_EXECUTION_FUNCTION(rasterize_impl)
         mesh->RefreshTexcoordGLBuffer(texcoordName);
 
         glBindVertexArray(mesh->VAO);
-        glDrawElements(GL_TRIANGLES,static_cast<unsigned int>(mesh->triangulatedIndices.size() * 3),GL_UNSIGNED_INT,0);
+        glDrawElements(
+            GL_TRIANGLES,
+            static_cast<unsigned int>(mesh->triangulatedIndices.size() * 3),
+            GL_UNSIGNED_INT,
+            0);
         glBindVertexArray(0);
     }
 
@@ -161,10 +164,6 @@ NODE_EXECUTION_FUNCTION(rasterize_impl)
 
     if (!shader_error.empty()) {
         throw std::runtime_error(shader_error);
-    }
-    }
-    catch (std::exception e){
-        return false;
     }
 }
 
