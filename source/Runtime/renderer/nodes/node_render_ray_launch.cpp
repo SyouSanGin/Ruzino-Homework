@@ -58,6 +58,18 @@ NODE_EXECUTION_FUNCTION(scene_ray_launch)
         resource_allocator.create(hit_counter_buffer_desc);
     MARK_DESTROY_NVRHI_RESOURCE(hit_counter_buffer);
 
+    // Create a readable copy buffer for hit counter
+    auto hit_counter_readback_desc =
+        BufferDesc{}
+            .setStructStride(sizeof(unsigned))
+            .setByteSize(sizeof(unsigned))
+            .setInitialState(nvrhi::ResourceStates::CopyDest)
+            .setKeepInitialState(true)
+            .setCpuAccess(nvrhi::CpuAccessMode::Read);
+    auto hit_counter_readback =
+        resource_allocator.create(hit_counter_readback_desc);
+    MARK_DESTROY_NVRHI_RESOURCE(hit_counter_readback);
+
     auto miss_counter_buffer_desc =
         BufferDesc{}
             .setStructStride(sizeof(unsigned))
@@ -68,6 +80,18 @@ NODE_EXECUTION_FUNCTION(scene_ray_launch)
     auto miss_counter_buffer =
         resource_allocator.create(miss_counter_buffer_desc);
     MARK_DESTROY_NVRHI_RESOURCE(miss_counter_buffer);
+
+    // Create a readable copy buffer for miss counter
+    auto miss_counter_readback_desc =
+        BufferDesc{}
+            .setStructStride(sizeof(unsigned))
+            .setByteSize(sizeof(unsigned))
+            .setInitialState(nvrhi::ResourceStates::CopyDest)
+            .setKeepInitialState(true)
+            .setCpuAccess(nvrhi::CpuAccessMode::Read);
+    auto miss_counter_readback =
+        resource_allocator.create(miss_counter_readback_desc);
+    MARK_DESTROY_NVRHI_RESOURCE(miss_counter_readback);
 
     auto pixel_buffer_desc =
         BufferDesc{}
@@ -185,6 +209,13 @@ NODE_EXECUTION_FUNCTION(scene_ray_launch)
         args.width = length;
         m_CommandList->dispatchRays(args);
         nvrhi::utils::BufferUavBarrier(m_CommandList, hit_counter_buffer);
+        nvrhi::utils::BufferUavBarrier(m_CommandList, miss_counter_buffer);
+
+        // Copy counters to readable buffers
+        m_CommandList->copyBuffer(
+            hit_counter_readback, 0, hit_counter_buffer, 0, sizeof(unsigned));
+        m_CommandList->copyBuffer(
+            miss_counter_readback, 0, miss_counter_buffer, 0, sizeof(unsigned));
 
         m_CommandList->close();
         resource_allocator.device->executeCommandList(m_CommandList);
@@ -204,15 +235,16 @@ NODE_EXECUTION_FUNCTION(scene_ray_launch)
     params.set_output("Hit Objects", hit_objects);
     params.set_output("Pixel Target", pixel_target_buffer);
 
+    // Read from the readback buffers
     auto hit_cpu_read_out = resource_allocator.device->mapBuffer(
-        hit_counter_buffer, nvrhi::CpuAccessMode::Read);
+        hit_counter_readback, nvrhi::CpuAccessMode::Read);
     unsigned hit_counter = *reinterpret_cast<unsigned*>(hit_cpu_read_out);
-    resource_allocator.device->unmapBuffer(hit_counter_buffer);
+    resource_allocator.device->unmapBuffer(hit_counter_readback);
 
     auto miss_cpu_read_out = resource_allocator.device->mapBuffer(
-        miss_counter_buffer, nvrhi::CpuAccessMode::Read);
+        miss_counter_readback, nvrhi::CpuAccessMode::Read);
     unsigned miss_counter = *reinterpret_cast<unsigned*>(miss_cpu_read_out);
-    resource_allocator.device->unmapBuffer(miss_counter_buffer);
+    resource_allocator.device->unmapBuffer(miss_counter_readback);
 
     assert(hit_counter + miss_counter == length);
     params.set_output("Buffer Size", static_cast<int>(hit_counter));
