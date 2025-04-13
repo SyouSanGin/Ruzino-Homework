@@ -138,8 +138,9 @@ class ICUDALinearBuffer : public nvrhi::IResource {
     virtual void assign_host_data(const thrust::host_vector<uint8_t>& data) = 0;
 };
 using CUDALinearBufferHandle = nvrhi::RefCountPtr<ICUDALinearBuffer>;
-RHI_API CUDALinearBufferHandle
-create_cuda_linear_buffer(const CUDALinearBufferDesc& d);
+RHI_API CUDALinearBufferHandle create_cuda_linear_buffer(
+    const CUDALinearBufferDesc& d,
+    void* init_data = nullptr);
 
 template<typename T>
 CUDALinearBufferHandle create_cuda_linear_buffer(size_t count = 1)

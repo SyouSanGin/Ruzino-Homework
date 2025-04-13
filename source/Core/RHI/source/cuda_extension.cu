@@ -25,6 +25,10 @@ class CUDALinearBuffer : public nvrhi::RefCounter<cuda::ICUDALinearBuffer> {
 
     const cuda::CUDALinearBufferDesc desc;
     thrust::device_vector<uint8_t> d_vec;
+
+    friend CUDALinearBufferHandle create_cuda_linear_buffer(
+        const CUDALinearBufferDesc& d,
+        void* init_data);
 };
 
 CUDALinearBuffer::CUDALinearBuffer(const cuda::CUDALinearBufferDesc& in_desc)
@@ -59,9 +63,16 @@ void CUDALinearBuffer::assign_host_data(
     d_vec = data;
 }
 
-CUDALinearBufferHandle create_cuda_linear_buffer(const CUDALinearBufferDesc& d)
+CUDALinearBufferHandle create_cuda_linear_buffer(
+    const CUDALinearBufferDesc& d,
+    void* init_data)
 {
     auto buffer = new CUDALinearBuffer(d);
+
+    buffer->assign_host_data(thrust::host_vector<uint8_t>(
+        static_cast<uint8_t*>(init_data),
+        static_cast<uint8_t*>(init_data) + d.element_size * d.element_count));
+
     return CUDALinearBufferHandle::Create(buffer);
 }
 

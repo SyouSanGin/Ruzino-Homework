@@ -57,6 +57,17 @@ NODE_DECLARATION_FUNCTION(create_buffer4f)
     b.add_output<float4Buffer>("Buffer");
 };
 
+NODE_DECLARATION_FUNCTION(create_float2f)
+{
+    for (int i = 0; i < 2; ++i) {
+        b.add_input<float>(socket_name(i).c_str())
+            .min(-10)
+            .max(10)
+            .default_val(0);
+    }
+    b.add_output<pxr::GfVec2f>("Buffer");
+};
+
 NODE_DECLARATION_FUNCTION(create_float3f)
 {
     for (int i = 0; i < 3; ++i) {
@@ -193,6 +204,18 @@ NODE_EXECUTION_FUNCTION(create_buffer4f)
     pxr::VtArray<pxr::GfVec4f> arr;
     arr.resize(s, data);
     params.set_output("Buffer", arr);
+    return true;
+};
+
+NODE_EXECUTION_FUNCTION(create_float2f)
+{
+    float val[2];
+    for (int i = 0; i < 2; ++i) {
+        val[i] = params.get_input<float>(socket_name(i).c_str());
+    }
+    pxr::GfVec2f data;
+    memcpy(&data, val, sizeof(pxr::GfVec2f));
+    params.set_output("Buffer", data);
     return true;
 };
 
