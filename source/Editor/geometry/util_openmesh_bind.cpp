@@ -7,8 +7,10 @@ std::shared_ptr<PolyMesh> operand_to_openmesh(Geometry* mesh_oeprand)
     auto openmesh = std::make_shared<PolyMesh>();
     auto topology = mesh_oeprand->get_component<MeshComponent>();
 
-    // Request vertex normals
+    // Request vertex normals, texcoords, and colors
     openmesh->request_vertex_normals();
+    openmesh->request_vertex_texcoords2D();
+    openmesh->request_vertex_colors();
 
     // Get mesh data
     const auto& vertices = topology->get_vertices();
@@ -23,9 +25,16 @@ std::shared_ptr<PolyMesh> operand_to_openmesh(Geometry* mesh_oeprand)
     auto faceVertexIndices = topology->get_face_vertex_indices();
     auto faceVertexCounts = topology->get_face_vertex_counts();
     auto normals = topology->get_normals();
+    auto texcoords = topology->get_texcoords_array();
+    auto colors = topology->get_display_color();
 
     bool hasNormals = !normals.empty();
     bool perVertexNormals = hasNormals && (normals.size() == vertices.size());
+    bool hasTexcoords = !texcoords.empty();
+    bool perVertexTexcoords =
+        hasTexcoords && (texcoords.size() == vertices.size());
+    bool hasColors = !colors.empty();
+    bool perVertexColors = hasColors && (colors.size() == vertices.size());
 
     int vertexIndex = 0;
     for (int i = 0; i < faceVertexCounts.size(); i++) {
@@ -58,6 +67,49 @@ std::shared_ptr<PolyMesh> operand_to_openmesh(Geometry* mesh_oeprand)
                 }
             }
 
+            // Set texcoords if available
+            if (hasTexcoords) {
+                if (perVertexTexcoords) {
+                    // Use per-vertex texcoords
+                    OpenMesh::Vec2f t(texcoords[index][0], texcoords[index][1]);
+                    openmesh->set_texcoord2D(vh, t);
+                }
+                else {
+                    // Use per-face-vertex texcoords
+                    OpenMesh::Vec2f t(
+                        texcoords[vertexIndex][0], texcoords[vertexIndex][1]);
+                    openmesh->set_texcoord2D(vh, t);
+                }
+            }
+
+            // Set colors if available
+            if (hasColors) {
+                if (perVertexColors) {
+                    // Use per-vertex colors
+                    OpenMesh::Vec3f c(
+                        colors[index][0], colors[index][1], colors[index][2]);
+                    openmesh->set_color(
+                        vh,
+                        PolyMesh::Color(
+                            static_cast<unsigned char>(c[0] * 255),
+                            static_cast<unsigned char>(c[1] * 255),
+                            static_cast<unsigned char>(c[2] * 255)));
+                }
+                else {
+                    // Use per-face-vertex colors
+                    OpenMesh::Vec3f c(
+                        colors[vertexIndex][0],
+                        colors[vertexIndex][1],
+                        colors[vertexIndex][2]);
+                    openmesh->set_color(
+                        vh,
+                        PolyMesh::Color(
+                            static_cast<unsigned char>(c[0] * 255),
+                            static_cast<unsigned char>(c[1] * 255),
+                            static_cast<unsigned char>(c[2] * 255)));
+                }
+            }
+
             vertexIndex++;
         }
         // Add the face to the mesh
@@ -84,36 +136,53 @@ std::shared_ptr<Geometry> openmesh_to_operand(PolyMesh* openmesh)
     pxr::VtArray<int> faceVertexIndices;
     pxr::VtArray<int> faceVertexCounts;
     pxr::VtArray<pxr::GfVec3f> normals;
+    pxr::VtArray<pxr::GfVec2f> texcoords;
+    pxr::VtArray<pxr::GfVec3f> colors;
 
     bool hasNormals = openmesh->has_vertex_normals();
-    if (hasNormals) {
-        // Request vertex normals if not already available
-        if (!openmesh->has_vertex_normals())
-            openmesh->request_vertex_normals();
+    bool hasTexcoords = openmesh->has_vertex_texcoords2D();
+    bool hasColors = openmesh->has_vertex_colors();
 
-        // Ensure normals are updated
+    if (hasNormals && !openmesh->has_vertex_normals())
+        openmesh->request_vertex_normals();
+    if (hasTexcoords && !openmesh->has_vertex_texcoords2D())
+        openmesh->request_vertex_texcoords2D();
+    if (hasColors && !openmesh->has_vertex_colors())
+        openmesh->request_vertex_colors();
+
+    // Ensure normals are updated
+    if (hasNormals)
         openmesh->update_normals();
-    }
 
     // Set the points
     for (const auto& v : openmesh->vertices()) {
         const auto& p = openmesh->point(v);
         points.push_back(pxr::GfVec3f(p[0], p[1], p[2]));
+
+        // Add per-vertex normal if available
+        if (hasNormals) {
+            const auto& n = openmesh->normal(v);
+            normals.push_back(pxr::GfVec3f(n[0], n[1], n[2]));
+        }
+
+        // Add per-vertex texcoord if available
+        if (hasTexcoords) {
+            const auto& t = openmesh->texcoord2D(v);
+            texcoords.push_back(pxr::GfVec2f(t[0], t[1]));
+        }
+
+        // Add per-vertex color if available
+        if (hasColors) {
+            const auto& c = openmesh->color(v);
+            colors.push_back(pxr::GfVec3f(c[0], c[1], c[2]));
+        }
     }
 
-    // Set the topology and collect normals per face vertex
+    // Set the topology
     for (const auto& f : openmesh->faces()) {
         size_t count = 0;
         for (const auto& vf : f.vertices()) {
             faceVertexIndices.push_back(vf.idx());
-
-            // Add normals if available
-            if (hasNormals) {
-                PolyMesh::VertexHandle vh = openmesh->vertex_handle(vf.idx());
-                const auto& n = openmesh->normal(vh);
-                normals.push_back(pxr::GfVec3f(n[0], n[1], n[2]));
-            }
-
             count += 1;
         }
         faceVertexCounts.push_back(count);
@@ -125,6 +194,14 @@ std::shared_ptr<Geometry> openmesh_to_operand(PolyMesh* openmesh)
 
     if (hasNormals) {
         mesh->set_normals(normals);
+    }
+
+    if (hasTexcoords) {
+        mesh->set_texcoords_array(texcoords);
+    }
+
+    if (hasColors) {
+        mesh->set_display_color(colors);
     }
 
     return geometry;

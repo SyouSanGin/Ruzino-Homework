@@ -126,6 +126,13 @@ NODE_EXECUTION_FUNCTION(read_usd)
                         primvar.Get(&texcoords, time);
                         mesh->set_texcoords_array(texcoords);
                     }
+
+                    primvar = primVarAPI.GetPrimvar(pxr::TfToken("st"));
+                    if (primvar) {
+                        pxr::VtArray<pxr::GfVec2f> texcoords;
+                        primvar.Get(&texcoords, time);
+                        mesh->set_texcoords_array(texcoords);
+                    }
                 }
             }
 

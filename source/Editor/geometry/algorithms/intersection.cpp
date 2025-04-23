@@ -28,6 +28,7 @@ void init_gpu_geometry_algorithms()
         resource_allocator_.set_device(RHI::get_device());
         shader_factory = std::make_shared<ShaderFactory>();
         shader_factory->add_search_path(RENDERER_SHADER_DIR "shaders");
+        shader_factory->add_search_path(GEOM_COMPUTE_SHADER_DIR);
         resource_allocator_.shader_factory = shader_factory.get();
     }
 }
