@@ -24,6 +24,14 @@ std::string XformComponent::to_string() const
     return std::string("XformComponent");
 }
 
+void XformComponent::apply_transform(const pxr::GfMatrix4d& transform)
+{
+    // Clear the transform chain
+    translation.clear();
+    scale.clear();
+    rotation.clear();
+}
+
 pxr::GfMatrix4d XformComponent::get_transform() const
 {
     assert(translation.size() == rotation.size());

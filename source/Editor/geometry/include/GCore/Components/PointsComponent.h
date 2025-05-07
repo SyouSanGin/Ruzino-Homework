@@ -12,14 +12,7 @@ struct GEOMETRY_API PointsComponent : public GeometryComponent {
 
     std::string to_string() const override;
 
-    void apply_transform(const pxr::GfMatrix4d& transform) override
-    {
-        auto vertices = get_vertices();
-        for (auto& vertex : vertices) {
-            vertex = pxr::GfVec3f(transform.Transform(vertex));
-        }
-        set_vertices(vertices);
-    }
+    void apply_transform(const pxr::GfMatrix4d& transform) override;
 
     GeometryComponentHandle copy(Geometry* operand) const override;
 

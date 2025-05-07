@@ -23,6 +23,29 @@ MeshComponent::~MeshComponent()
 {
 }
 
+void MeshComponent::apply_transform(const pxr::GfMatrix4d& transform)
+{
+    auto vertices = get_vertices();
+    for (auto& vertex : vertices) {
+        vertex = pxr::GfVec3f(transform.Transform(vertex));
+    }
+
+    auto normals = get_normals();
+    if (!normals.empty()) {
+        for (auto& normal : normals) {
+            // Transform normals with the inverse transpose to preserve
+            // orthogonality
+            pxr::GfMatrix4d normalTransform =
+                transform.GetInverse().GetTranspose();
+            normal = pxr::GfVec3f(normalTransform.TransformDir(normal))
+                         .GetNormalized();
+        }
+        set_normals(normals);
+    }
+
+    set_vertices(vertices);
+}
+
 std::string MeshComponent::to_string() const
 {
     std::ostringstream out;

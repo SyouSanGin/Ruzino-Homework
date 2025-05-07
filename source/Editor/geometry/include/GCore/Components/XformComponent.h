@@ -17,9 +17,7 @@ class GEOMETRY_API XformComponent : public GeometryComponent {
     {
     }
 
-    void apply_transform(const pxr::GfMatrix4d& transform) override
-    {
-    }
+    void apply_transform(const pxr::GfMatrix4d& transform) override;
 
     pxr::GfMatrix4d get_transform() const;
 
