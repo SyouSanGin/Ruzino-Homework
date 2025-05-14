@@ -27,6 +27,7 @@ NODE_DEF_OPEN_SCOPE
 NODE_DECLARATION_FUNCTION(write_usd)
 {
     b.add_input<Geometry>("Geometry");
+    b.add_input<std::string>("Sub Path").optional(true);
 }
 
 bool legal(const std::string& string)
@@ -49,13 +50,9 @@ NODE_EXECUTION_FUNCTION(write_usd)
     auto geometry = params.get_input<Geometry>("Geometry");
 
     auto mesh = geometry.get_component<MeshComponent>();
-
     auto points = geometry.get_component<PointsComponent>();
-
     auto curve = geometry.get_component<CurveComponent>();
-
     auto volume = geometry.get_component<VolumeComponent>();
-
     auto instancer = geometry.get_component<InstancerComponent>();
 
     assert(!(points && mesh));
@@ -64,6 +61,15 @@ NODE_EXECUTION_FUNCTION(write_usd)
 
     pxr::UsdStageRefPtr stage = global_payload.stage;
     auto sdf_path = global_payload.prim_path;
+
+    auto sub_path = params.get_input<std::string>("Sub Path");
+    if (!std::string(sub_path.c_str()).empty()) {
+        if (!legal(sub_path)) {
+            log::error("Illegal sub path");
+            return false;
+        }
+        sdf_path = sdf_path.AppendPath(pxr::SdfPath(sub_path.c_str()));
+    }
 
     if (instancer) {
         sdf_path =

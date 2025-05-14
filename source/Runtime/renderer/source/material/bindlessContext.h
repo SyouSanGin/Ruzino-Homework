@@ -30,9 +30,7 @@ class BindlessContext : public HwResourceBindingContext {
 
     void initialize() override
     {
-        fetch_data =
-            "MaterialDataBlob data = materialBlobBuffer[material_id];\n VertexData "
-            "vd; \n";
+        fetch_data = "\n VertexData vd; \n";
         data_location = 0;
     }
 

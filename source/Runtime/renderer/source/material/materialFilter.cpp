@@ -1,5 +1,6 @@
 #include "materialFilter.h"
 
+#include "MaterialXGenShader/TypeDesc.h"
 #include "MaterialXGenShader/Util.h"
 #include "pxr/base/arch/library.h"
 #include "pxr/usd/ar/resolver.h"

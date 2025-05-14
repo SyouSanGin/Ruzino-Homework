@@ -1,5 +1,7 @@
 #pragma once
+#include "MaterialXGenShader/Library.h"
 #include "material.h"
+
 namespace pxr {
 class Hio_OpenEXRImage;
 }

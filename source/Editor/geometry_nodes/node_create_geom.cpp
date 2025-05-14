@@ -139,14 +139,28 @@ NODE_EXECUTION_FUNCTION(create_cylinder_section)
     int rows = resolution;
     int cols = resolution;
     // Generate vertices
+    float arcLength = radius * angle;  // Length of the arc
+    float aspectRatio = height / arcLength;
+    float uScale, vScale;
+
+    // Determine which dimension to scale to [0,1]
+    if (arcLength >= height) {
+        uScale = 1.0f;
+        vScale = height / arcLength;  // Scale v to maintain aspect ratio
+    }
+    else {
+        uScale = arcLength / height;  // Scale u to maintain aspect ratio
+        vScale = 1.0f;
+    }
+
     for (int i = 0; i <= rows; ++i) {
-        float v = static_cast<float>(i) / rows;
-        float z = height * v;
+        float rowFactor = static_cast<float>(i) / rows;
+        float z = height * rowFactor;
 
         for (int j = 0; j <= cols; ++j) {
-            float u = static_cast<float>(j) / cols;
+            float colFactor = static_cast<float>(j) / cols;
             // Angle goes from -angle/2 to +angle/2 to center the section
-            float theta = angle * (u - 0.5f);
+            float theta = angle * (colFactor - 0.5f);
 
             // Calculate position
             float x = radius * std::cos(theta);
@@ -159,7 +173,9 @@ NODE_EXECUTION_FUNCTION(create_cylinder_section)
             normal.Normalize();
             normals.push_back(normal);
 
-            // UV coordinates: u along the arc, v along the height
+            // Scale UV coordinates to preserve aspect ratio
+            float u = colFactor * uScale;
+            float v = rowFactor * vScale;
             texcoord.push_back(pxr::GfVec2f(u, v));
         }
     }

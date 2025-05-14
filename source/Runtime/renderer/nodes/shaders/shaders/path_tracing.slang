@@ -86,28 +86,30 @@ void ClosestHit(
 
     // Sample next ray direction
     var seed = payload.seed;
-    float pdf;
-    float3 ray_dir =
-        sample_cosine_hemisphere_concentric(random_float2(seed), pdf);
-    float3 world_ray_dir = sf.fromLocal(ray_dir);
 
     var material_header = materialHeaderBuffer[material_id];
 
     // Evaluate material
     CallableData callData;
     callData.vertexInfo = vertex;
-    callData.L = world_ray_dir;
+    callData.L = float3(0, 0, 0);
     callData.V = -WorldRayDirection();
     callData.color = float4(0, 0, 0, 1);
+    callData.seed = seed;
     callData.materialBlobID = material_header.material_blob_id;
     CallShader(material_header.material_type_id, callData);
 
+    float pdf = callData.pdf;
+
+    float3 ray_dir = callData.sampledDir;
+    float3 world_ray_dir = sf.fromLocal(ray_dir);
+
     // Update payload
-    payload.throughput *= callData.color.rgb / pdf;
+    payload.throughput *= callData.throughput.rgb / pdf;
     payload.hitPosition = vertex.posW;
     payload.hitNormal = vertex.normalW;
     payload.depth++;
-    payload.seed = seed;
+    payload.seed = callData.seed;
 
     // Trace next ray (light comes from environment/miss shader)
     if (!payload.terminated) {

@@ -1,12 +1,7 @@
 #pragma once
-#include <complex.h>
 
 #include "GPUContext/program_vars.hpp"
-#include "Logger/Logger.h"
-#include "MaterialX/SlangShaderGenerator.h"
 #include "api.h"
-#include "map.h"
-#include "pxr/imaging/garch/glApi.h"
 #include "pxr/imaging/hd/material.h"
 #include "pxr/imaging/hd/materialNetwork2Interface.h"
 #include "pxr/imaging/hdMtlx/hdMtlx.h"
@@ -80,7 +75,10 @@ class HD_USTC_CG_API Hd_USTC_CG_Material : public HdMaterial {
     DeviceMemoryPool<MaterialHeader>::MemoryHandle material_header_handle;
     MaterialDataBlob material_data;
 
-    static std::string slang_source_code;
+    std::string slang_source_code_main;
+    static std::string slang_source_code_template;
+    static std::string eval_source_code_fallback;
+    static std::string sample_source_code_fallback;
     static std::mutex texture_mutex;
     static std::mutex material_data_handle_mutex;
 };

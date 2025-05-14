@@ -109,17 +109,8 @@ void Hd_USTC_CG_MaterialX::ensure_shader_ready(const ShaderFactory& factory)
             TF_WARN("Failed to save generated shader: %s", e.what());
         }
 #endif
-        final_shader_source = eval_shader_source + slang_source_code;
-    }
-
-    // Replace the callable function name with the material name in all code
-    constexpr char FUNC_PLACEHOLDER[] = "$getColor";
-
-    // Replace in local_slang_source_code
-    auto pos = final_shader_source.find(FUNC_PLACEHOLDER);
-    if (pos != std::string::npos) {
-        final_shader_source.replace(
-            pos, strlen(FUNC_PLACEHOLDER), material_name);
+        final_shader_source = eval_shader_source + sample_source_code_fallback +
+                              slang_source_code_main;
     }
 
     // Combine shader parts into final source

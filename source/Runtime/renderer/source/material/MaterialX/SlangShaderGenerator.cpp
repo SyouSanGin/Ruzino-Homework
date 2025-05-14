@@ -810,7 +810,7 @@ void SlangShaderGenerator::emitPixelStage(
     emitLine(type + " " + HW::DIR_L + ", ", stage, false);
     emitLine(type + " " + HW::DIR_V + ", ", stage, false);
 
-    emitLine("in uint material_id, ", stage, false);
+    emitLine("in MaterialDataBlob data, ", stage, false);
     emitLine("in VertexInfo vertexInfo)", stage, false);
 
     emitFunctionBodyBegin(graph, context, stage);
