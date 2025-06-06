@@ -1,5 +1,3 @@
-#include <gtest/gtest.h>
-
 #include "GCore/GOP.h"
 #include "GCore/geom_payload.hpp"
 #include "GUI/window.h"

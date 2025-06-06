@@ -111,7 +111,10 @@ function(add_nodes)
     foreach(source ${ALL_THAT_NEEDS_TO_BE_COMPILED})
         get_filename_component(target_name ${source} NAME_WE)
         add_library(${target_name} MODULE ${source})
-        set_target_properties(${target_name} PROPERTIES ${OUTPUT_DIR})
+        set_target_properties(${target_name} PROPERTIES 
+            ${OUTPUT_DIR}
+            FOLDER "Nodes/${ARG_TARGET_NAME}"
+        )
         target_link_libraries(${target_name} PUBLIC nodes_core ${ARG_DEP_LIBS})
         if(ARG_COMPILE_DEFS)
             target_compile_definitions(${target_name} PRIVATE ${ARG_COMPILE_DEFS})
@@ -133,6 +136,7 @@ function(add_nodes)
         CONVERSIONS_FILES ${ARG_CONVERSION_FILES}
         OUTPUT_JSON ${OUT_BINARY_DIR}/${ARG_JSON_DIR}/${ARG_TARGET_NAME}.json
     )
+    set_target_properties(${ARG_TARGET_NAME}_json_target PROPERTIES FOLDER "Nodes/JSON")
 
     add_library(${ARG_TARGET_NAME} INTERFACE)
     add_dependencies(${ARG_TARGET_NAME} ${all_nodes} ${all_conversions} ${ARG_TARGET_NAME}_json_target)

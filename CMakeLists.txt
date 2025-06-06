@@ -24,6 +24,11 @@ endif()
 # For testing
 enable_testing()
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/googletest)
+set_target_properties(gtest PROPERTIES FOLDER "ThirdParty")
+set_target_properties(gtest_main PROPERTIES FOLDER "ThirdParty")
+set_target_properties(gmock PROPERTIES FOLDER "ThirdParty")
+set_target_properties(gmock_main PROPERTIES FOLDER "ThirdParty")
+
 set_target_properties(gtest PROPERTIES ${OUTPUT_DIR})
 set_target_properties(gtest_main PROPERTIES ${OUTPUT_DIR})
 

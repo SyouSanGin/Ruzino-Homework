@@ -390,10 +390,10 @@ def main():
             ["python", "--version"], stderr=subprocess.STDOUT
         ).decode("utf-8")
         print(f"The highest priority Python version is {python_version}.")
-        if "3.10.11" not in python_version:
-            # 优先级最高的python版本应为3.10.11
-            print("Please set Python version 3.10.11 as the highest priority.")
-            return
+        # if "3.10.11" not in python_version:
+        #     # 优先级最高的python版本应为3.10.11
+        #     print("Please set Python version 3.10.11 as the highest priority.")
+        #     return
         python_dir_backward_slash = os.path.dirname(where_python).replace("/", "\\")
         python_dir_forward_slash = python_dir_backward_slash.replace("\\", "/")
         framework3d_dir_backward_slash = os.getcwd().replace("/", "\\")

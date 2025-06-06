@@ -1,13 +1,13 @@
 set(OUT_BINARY_DIR ${CMAKE_SOURCE_DIR}/Binaries/${CMAKE_BUILD_TYPE})
 set(OUTPUT_DIR
-  RUNTIME_OUTPUT_DIRECTORY_DEBUG "${OUT_BINARY_DIR}"
-  RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${OUT_BINARY_DIR}"
-  RUNTIME_OUTPUT_DIRECTORY_RELEASE "${OUT_BINARY_DIR}"
-  RUNTIME_OUTPUT_DIRECTORY "${OUT_BINARY_DIR}"
-  LIBRARY_OUTPUT_DIRECTORY_DEBUG "${OUT_BINARY_DIR}"
-  LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO "${OUT_BINARY_DIR}"
-  LIBRARY_OUTPUT_DIRECTORY_RELEASE "${OUT_BINARY_DIR}"
-  LIBRARY_OUTPUT_DIRECTORY "${OUT_BINARY_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG "${OUT_BINARY_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${OUT_BINARY_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${OUT_BINARY_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY "${OUT_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY_DEBUG "${OUT_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO "${OUT_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${OUT_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY "${OUT_BINARY_DIR}"
 )
 
 if(USTC_CG_WITH_CUDA)
@@ -75,6 +75,27 @@ function(UCG_ADD_TEST)
     )
 endfunction(UCG_ADD_TEST)
 
+function(UCG_ADD_APP)
+    set(options SHARED)
+    set(oneValueArgs SRC)
+    set(multiValueArgs LIBS LIB_FLAGS EXTRA_FILES INCLUDE_DIRS)
+    cmake_parse_arguments(UCG_APP "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+
+    string(REGEX REPLACE "(.*/)([a-zA-Z0-9_ ]+)(\.cpp|\.cu)" "\\2" app_name ${UCG_APP_SRC})
+
+    add_executable(${app_name} ${UCG_APP_SRC})
+
+    set_target_properties(${app_name} PROPERTIES ${OUTPUT_DIR})
+
+    target_link_libraries(${app_name} PUBLIC ${UCG_APP_LIBS})
+    target_include_directories(${app_name} PUBLIC ${UCG_APP_INCLUDE_DIRS})
+    target_compile_definitions(${app_name} PUBLIC NOMINMAX=1)
+
+    # Check if the app source is a CUDA file and set CUDA properties if so
+    if(USTC_CG_WITH_CUDA AND UCG_APP_SRC MATCHES "\\.cu$")
+        Set_CUDA_Properties(${app_name})
+    endif()
+endfunction(UCG_ADD_APP)
 function(USTC_CG_ADD_LIB LIB_NAME)
     set(options SHARED WITH_CUDA)
     set(oneValueArgs RESOURCE_COPY_TARGET)
@@ -154,6 +175,9 @@ function(USTC_CG_ADD_LIB LIB_NAME)
         add_library(${name} STATIC ${USTC_CG_ADD_LIB_LIB_FLAGS} ${${name}_sources})
     endif()
 
+    # Set folder for the main library
+    set_target_properties(${name} PROPERTIES FOLDER "Libraries/${name}")
+
     target_compile_features(${name} PUBLIC cxx_std_20)
 
     target_include_directories(
@@ -187,6 +211,9 @@ function(USTC_CG_ADD_LIB LIB_NAME)
         nanobind_add_module(${name}_py ${USTC_CG_ADD_LIB_PYTHON_WRAP_SRC})
         target_link_libraries(${name}_py PRIVATE ${name})
 
+        # Set folder for Python wrapper
+        set_target_properties(${name}_py PROPERTIES FOLDER "Libraries/${name}")
+
         # target_link_libraries(${name}_py PRIVATE Python3::Python)
         # target_link_libraries(nanobind-static PRIVATE Python3::Python)
         if(Python3_LIBRARY MATCHES "_d.lib$")
@@ -209,6 +236,8 @@ function(USTC_CG_ADD_LIB LIB_NAME)
             PYTHON_PATH ${OUT_BINARY_DIR}
             DEPENDS ${name}_py
         )
+        # Set folder for Python stub
+        set_target_properties(${name}_py_stub PROPERTIES FOLDER "Libraries/${name}")
     endif()
 
     file(GLOB test_cpp_sources ${folder}/tests/*.cpp)
@@ -230,8 +259,6 @@ function(USTC_CG_ADD_LIB LIB_NAME)
         list(FILTER test_sources EXCLUDE REGEX "${skip_dir}/.*")
     endforeach()
 
-
-
     foreach(source ${test_sources})
         UCG_ADD_TEST(
             SRC ${source}
@@ -240,6 +267,9 @@ function(USTC_CG_ADD_LIB LIB_NAME)
             ${USTC_CG_ADD_LIB_PUBLIC_LIBS}
             ${USTC_CG_ADD_LIB_PRIVATE_LIBS}
         )
+        # Set folder for test targets
+        string(REGEX REPLACE "(.*/)([a-zA-Z0-9_ ]+)(\.cpp|\.cu)" "\\2" test_name ${source})
+        set_target_properties(${test_name}_test PROPERTIES FOLDER "Libraries/${name}/Tests")
     endforeach()
 
     # Ensure the copy target directory exists only if RESOURCE_COPY_TARGET is specified
