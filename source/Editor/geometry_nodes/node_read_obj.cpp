@@ -9,6 +9,7 @@
 #include "GCore/Components/MeshOperand.h"
 #include "igl/readOBJ.h"
 #include "nodes/core/def/node_def.hpp"
+#include "pxr/base/arch/fileSystem.h"
 
 NODE_DEF_OPEN_SCOPE
 NODE_DECLARATION_FUNCTION(read_obj_std)

@@ -105,8 +105,7 @@ NODE_EXECUTION_FUNCTION(scene_ray_launch)
     // 2. Prepare the shader
 
     ProgramDesc shader_compile_desc;
-    shader_compile_desc.set_path(
-        std::filesystem::path("shaders/ray_launch.slang"));
+    shader_compile_desc.set_path("shaders/ray_launch.slang");
     shader_compile_desc.shaderType = nvrhi::ShaderType::AllRayTracing;
 
     auto raytrace_compiled = resource_allocator.create(shader_compile_desc);

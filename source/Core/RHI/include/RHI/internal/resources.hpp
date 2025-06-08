@@ -1,10 +1,8 @@
 #pragma once
 
 #define SLANG_PRELUDE_NAMESPACE CPPPrelude
-
 #include <RHI/ShaderFactory/shader_reflection.hpp>
-#include <filesystem>
-#include <map>
+#include <stdexcept>
 
 #include "RHI/api.h"
 #include "map.h"
@@ -80,7 +78,7 @@ struct RHI_API ProgramDesc {
         macros.insert(macros.end(), _macros.begin(), _macros.end());
     }
 
-    ProgramDesc& set_path(const std::filesystem::path& path);
+    ProgramDesc& set_path(const std::string& path);
     ProgramDesc& set_shader_type(nvrhi::ShaderType shaderType);
     ProgramDesc& set_entry_name(const std::string& entry_name);
 
@@ -99,12 +97,12 @@ struct RHI_API ProgramDesc {
     bool nvapi_support = false;
 
    private:
-    void update_last_write_time(const std::filesystem::path& path);
+    void update_last_write_time(const std::string& path);
     std::vector<ShaderMacro> macros;
     std::string get_profile() const;
-    std::filesystem::path path;
+    std::string path;
     std::vector<std::string> source_code;
-    std::filesystem::file_time_type lastWriteTime;
+    long long lastWriteTime;
     std::string entry_name;
 
     friend class ShaderFactory;

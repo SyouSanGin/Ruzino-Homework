@@ -34,9 +34,7 @@ NODE_EXECUTION_FUNCTION(material_eval_sample_pdf)
     using namespace nvrhi;
 
     ProgramDesc program_desc;
-    program_desc.set_path(
-
-        std::filesystem::path("shaders/material_eval_sample_pdf.slang"));
+    program_desc.set_path("shaders/material_eval_sample_pdf.slang");
     program_desc.shaderType = nvrhi::ShaderType::AllRayTracing;
     program_desc.nvapi_support = true;
     program_desc.define(

@@ -33,7 +33,7 @@ NODE_EXECUTION_FUNCTION(path_tracing)
     using namespace nvrhi;
 
     ProgramDesc program_desc;
-    program_desc.set_path(std::filesystem::path("shaders/path_tracing.slang"));
+    program_desc.set_path("shaders/path_tracing.slang");
     program_desc.shaderType = nvrhi::ShaderType::AllRayTracing;
     program_desc.nvapi_support = true;
     program_desc.define(

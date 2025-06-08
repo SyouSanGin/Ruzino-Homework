@@ -1,9 +1,6 @@
 #pragma once
 #include <nvrhi/nvrhi.h>
 
-#include <filesystem>
-#include <map>
-
 #include "RHI/api.h"
 #include "RHI/internal/resources.hpp"
 #include "RHI/rhi.hpp"
@@ -29,7 +26,7 @@ class RHI_API ShaderFactory {
     ShaderHandle compile_shader(
         const std::string& entryName,
         nvrhi::ShaderType shader_type,
-        std::filesystem::path shader_path,
+        const std::string& shader_path,
         ShaderReflectionInfo& reflection_info,
         std::string& error_string,
         const std::vector<ShaderMacro>& macro_defines = {},
@@ -38,7 +35,7 @@ class RHI_API ShaderFactory {
     ProgramHandle compile_cpu_executable(
         const std::string& entryName,
         nvrhi::ShaderType shader_type,
-        std::filesystem::path shader_path,
+        const std::string& shader_path,
         ShaderReflectionInfo& reflection_info,
         std::string& error_string,
         const std::vector<ShaderMacro>& macro_defines = {},
@@ -60,7 +57,7 @@ class RHI_API ShaderFactory {
     std::vector<std::string> search_paths;
 
     void SlangCompile(
-        const std::filesystem::path& path,
+        const std::string& path,
         const std::vector<std::string>& sourceCodes,
         const char* entryPoint,
         nvrhi::ShaderType shaderType,
@@ -73,7 +70,7 @@ class RHI_API ShaderFactory {
         SlangCompileTarget target,
         Slang::ComPtr<slang::IComponentType>* linkedProgram1 = nullptr
 
-        ) const;
+    ) const;
 
     static void populate_vk_options(
         std::vector<slang::CompilerOptionEntry>& vk_compiler_options);

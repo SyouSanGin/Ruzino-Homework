@@ -1,5 +1,4 @@
 #pragma once
-#include "RHI/api.h"
 #include "nvrhi/nvrhi.h"
 #include "nvrhi_patch.hpp"
 #include "resources.hpp"
@@ -13,7 +12,7 @@ struct hash<USTC_CG::ProgramDesc> {
         size_t seed = 0;
         nvrhi::hash_combine(seed, s.path);
         nvrhi::hash_combine(seed, s.entry_name);
-        nvrhi::hash_combine(seed, s.lastWriteTime.time_since_epoch().count());
+        nvrhi::hash_combine(seed, s.lastWriteTime);
         nvrhi::hash_combine(seed, s.shaderType);
         nvrhi::hash_combine(seed, s.nvapi_support);
         return seed;

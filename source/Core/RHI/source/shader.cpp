@@ -47,7 +47,7 @@ const ShaderReflectionInfo& Program::get_reflection_info() const
     return reflection_info;
 }
 
-ProgramDesc& ProgramDesc::set_path(const std::filesystem::path& path)
+ProgramDesc& ProgramDesc::set_path(const std::string& path)
 {
     this->path = path;
     // #ifdef _DEBUG
@@ -73,14 +73,16 @@ ProgramDesc& ProgramDesc::set_entry_name(const std::string& entry_name)
 }
 namespace fs = std::filesystem;
 
-void ProgramDesc::update_last_write_time(const std::filesystem::path& path)
+void ProgramDesc::update_last_write_time(const std::string& path)
 {
     auto full_path =
         std::filesystem::path(ShaderFactory::shader_search_path) / path;
     if (fs::exists(full_path)) {
         auto possibly_newer_lastWriteTime = fs::last_write_time(full_path);
-        if (possibly_newer_lastWriteTime > lastWriteTime) {
-            lastWriteTime = possibly_newer_lastWriteTime;
+        if (possibly_newer_lastWriteTime.time_since_epoch().count() >
+            lastWriteTime) {
+            lastWriteTime =
+                possibly_newer_lastWriteTime.time_since_epoch().count();
         }
     }
     else {
@@ -386,7 +388,7 @@ SlangStage ConvertShaderTypeToSlangStage(nvrhi::ShaderType shaderType)
 nvrhi::ShaderHandle ShaderFactory::compile_shader(
     const std::string& entryName,
     nvrhi::ShaderType shader_type,
-    std::filesystem::path shader_path,
+    const std::string& shader_path,
     ShaderReflectionInfo& reflection_info,
     std::string& error_string,
     const std::vector<ShaderMacro>& macro_defines,
@@ -452,7 +454,7 @@ nvrhi::ShaderHandle ShaderFactory::compile_shader(
 ProgramHandle ShaderFactory::compile_cpu_executable(
     const std::string& entryName,
     nvrhi::ShaderType shader_type,
-    std::filesystem::path shader_path,
+    const std::string& shader_path,
     ShaderReflectionInfo& reflection_info,
     std::string& error_string,
     const std::vector<ShaderMacro>& macro_defines,
@@ -535,7 +537,7 @@ void ShaderFactory::populate_vk_options(
     }
 
 void ShaderFactory::SlangCompile(
-    const std::filesystem::path& path,
+    const std::string& path,
     const std::vector<std::string>& sourceCodes,
     const char* entryPoint,
     nvrhi::ShaderType shaderType,
@@ -627,8 +629,8 @@ void ShaderFactory::SlangCompile(
             slang::ISession* session) -> slang::IModule* {
         auto id = shader_id++;
         return session->loadModuleFromSourceString(
-            (std::to_string(id) + path.filename().generic_string()).c_str(),
-            (std::to_string(id) + path.generic_string()).c_str(),
+            (std::to_string(id) + path).c_str(),
+            (std::to_string(id) + path).c_str(),
             sourceCode.c_str(),
             diagnostics.writeRef());
     };

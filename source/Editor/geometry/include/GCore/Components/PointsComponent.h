@@ -1,10 +1,14 @@
 #pragma once
+#include <pxr/base/vt/array.h>
+
 #include <string>
 
 #include "GCore/Components.h"
 #include "GCore/GOP.h"
+#if USE_USD_SCRATCH_BUFFER
 #include "pxr/usd/usdGeom/points.h"
 #include "pxr/usd/usdGeom/xform.h"
+#endif
 
 USTC_CG_NAMESPACE_OPEN_SCOPE
 struct GEOMETRY_API PointsComponent : public GeometryComponent {
