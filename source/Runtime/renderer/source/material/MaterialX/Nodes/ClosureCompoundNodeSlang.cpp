@@ -213,67 +213,76 @@ float3 sample_standard_surface(
     float2 alpha;
     mx_roughness_anisotropy(specular_roughness, specular_anisotropy, alpha);
     
-    // Compute F0 for metallic-roughness workflow
-    float3 F0 = lerp(float3(0.04), base_color, metalness);
-    
-    // Compute Fresnel reflectance at normal incidence
-    float3 F = fresnel_schlick(NdotV, F0);
+    // Compute material properties for both metal and non-metal paths
+    float eta = eta_flipped != 0 ? (1.0 / specular_IOR) : specular_IOR;
+    float3 F0_dielectric = float3(pow((eta - 1.0) / (eta + 1.0), 2.0));
+    float3 F = fresnel_schlick(NdotV, F0_dielectric);
     float fresnel_avg = (F.x + F.y + F.z) / 3.0;
     
-    // Compute component weights for multiple importance sampling
-    float diffuse_weight = base * (1.0 - metalness) * (1.0 - fresnel_avg) * luminance(base_color);
-    float specular_weight = luminance(F);
-    float transmission_weight = transmission * (1.0 - metalness) * (1.0 - fresnel_avg) * luminance(transmission_color);
+    // Metal path weights
+    float metal_weight = metalness;
+    float metal_reflection_weight = 1.0; // Metal只有reflection分量
     
-    // Normalize weights
-    float total_weight = diffuse_weight + specular_weight + transmission_weight;
-    if (total_weight < M_FLOAT_EPS) {
-        pdf = 0.0;
-        return float3(0.0);
+    // Non-metal path weights
+    float nonmetal_weight = 1.0 - metalness;
+    float diffuse_weight = base * (1.0 - fresnel_avg) * luminance(base_color);
+    float reflection_weight = fresnel_avg * specular;
+    float transmission_weight = (1.0 - fresnel_avg) * transmission * luminance(transmission_color);
+    
+    float total_nonmetal_weight = diffuse_weight + reflection_weight + transmission_weight;
+    if (total_nonmetal_weight > M_FLOAT_EPS) {
+        diffuse_weight /= total_nonmetal_weight;
+        reflection_weight /= total_nonmetal_weight;
+        transmission_weight /= total_nonmetal_weight;
     }
     
-    diffuse_weight /= total_weight;
-    specular_weight /= total_weight;
-    transmission_weight /= total_weight;
-    
-    // Sample component based on weights
+    // Sample component based on first level branching
     float component_sample = random_float(seed);
     float3 L_local;
-    float component_pdf;
+    bool sampled_metal = (component_sample < metal_weight);
     
-    if (component_sample < diffuse_weight) {
-        // Sample diffuse component
+    if (sampled_metal) {
+        // Sample metal reflection
         float2 u = random_float2(seed);
-        L_local = sample_diffuse_lobe(u, component_pdf);
-    }
-    else if (component_sample < diffuse_weight + specular_weight) {
-        // Sample specular reflection
-        float2 u = random_float2(seed);
-        L_local = sample_specular_reflection(u, V_local, alpha, component_pdf);
+        L_local = sample_specular_reflection(u, V_local, alpha, pdf);
+        
+        if (pdf <= 0.0) {
+            pdf = 0.0;
+            return float3(0.0);
+        }
     }
     else {
-        // Sample transmission
-        float2 u = random_float2(seed);
-        float eta = eta_flipped != 0 ? (1.0 / specular_IOR) : specular_IOR;
-        L_local = sample_transmission(u, V_local, alpha, eta, component_pdf);
-    }
-    
-    // If sampling failed, return early
-    if (component_pdf <= 0.0) {
-        pdf = 0.0;
-        return float3(0.0);
-    }
-    
-    // Compute MIS weights for all components
-    float diffuse_pdf = 0.0;
-    float specular_pdf = 0.0;
-    float transmission_pdf = 0.0;
-    
-    if (L_local.z > M_FLOAT_EPS) {
-        // Above surface - can be diffuse or specular reflection
-        diffuse_pdf = L_local.z * M_1_PI;
+        // Sample non-metal component
+        float nonmetal_sample = (component_sample - metal_weight) / nonmetal_weight;
         
-        // Compute specular PDF using VNDF
+        if (nonmetal_sample < diffuse_weight) {
+            // Sample diffuse
+            float2 u = random_float2(seed);
+            L_local = sample_diffuse_lobe(u, pdf);
+        }
+        else if (nonmetal_sample < diffuse_weight + reflection_weight) {
+            // Sample non-metal reflection
+            float2 u = random_float2(seed);
+            L_local = sample_specular_reflection(u, V_local, alpha, pdf);
+        }
+        else {
+            // Sample transmission
+            float2 u = random_float2(seed);
+            L_local = sample_transmission(u, V_local, alpha, eta, pdf);
+        }
+        
+        if (pdf <= 0.0) {
+            pdf = 0.0;
+            return float3(0.0);
+        }
+    }
+    
+    // Calculate MIS PDF: both paths need to compute their probability for the sampled direction
+    float metal_pdf = 0.0;
+    float nonmetal_pdf = 0.0;
+    
+    // Metal path PDF (only has reflection component)
+    if (L_local.z > M_FLOAT_EPS) {
         float3 H = normalize(V_local + L_local);
         float NdotH = max(H.z, M_FLOAT_EPS);
         float VdotH = max(dot(V_local, H), M_FLOAT_EPS);
@@ -281,34 +290,54 @@ float3 sample_standard_surface(
         float D = mx_ggx_NDF(H, alpha);
         float G1 = mx_ggx_smith_G1(NdotV, mx_average_alpha(alpha));
         float vndf_pdf = D * G1 * VdotH / NdotV;
-        specular_pdf = vndf_pdf / (4.0 * VdotH);
-    }
-    else if (L_local.z < -M_FLOAT_EPS) {
-        // Below surface - transmission
-        float eta = eta_flipped == 0 ? (1.0 / specular_IOR) : specular_IOR;
-        float3 H = normalize(V_local + eta * L_local);
-        
-        float NdotH = max(H.z, M_FLOAT_EPS);
-        float VdotH = max(dot(V_local, H), M_FLOAT_EPS);
-        float LdotH = max(abs(dot(L_local, H)), M_FLOAT_EPS);
-        
-        float D = mx_ggx_NDF(H, alpha);
-        float G1 = mx_ggx_smith_G1(NdotV, mx_average_alpha(alpha));
-        float vndf_pdf = D * G1 * VdotH / NdotV;
-        
-        float denominator = abs(VdotH + eta * LdotH);
-        float jacobian = eta * eta * LdotH / (denominator * denominator);
-        transmission_pdf = vndf_pdf * jacobian;
+        metal_pdf = vndf_pdf / (4.0 * VdotH);
     }
     
-    // Compute final MIS PDF
-    pdf = diffuse_pdf * diffuse_weight + specular_pdf * specular_weight + transmission_pdf * transmission_weight;
-    pdf = max(pdf, M_FLOAT_EPS); // Avoid division by zero
+    // Non-metal path PDF (compute all three components)
+    if (total_nonmetal_weight > M_FLOAT_EPS) {
+        float diffuse_pdf = 0.0;
+        float reflection_pdf = 0.0;
+        float transmission_pdf = 0.0;
+        
+        if (L_local.z > M_FLOAT_EPS) {
+            // Diffuse PDF
+            diffuse_pdf = L_local.z * M_1_PI;
+            
+            // Reflection PDF
+            float3 H = normalize(V_local + L_local);
+            float NdotH = max(H.z, M_FLOAT_EPS);
+            float VdotH = max(dot(V_local, H), M_FLOAT_EPS);
+            
+            float D = mx_ggx_NDF(H, alpha);
+            float G1 = mx_ggx_smith_G1(NdotV, mx_average_alpha(alpha));
+            float vndf_pdf = D * G1 * VdotH / NdotV;
+            reflection_pdf = vndf_pdf / (4.0 * VdotH);
+        }
+        else if (L_local.z < -M_FLOAT_EPS) {
+            // Transmission PDF
+            float3 H = normalize(V_local + eta * L_local);
+            
+            float VdotH = max(dot(V_local, H), M_FLOAT_EPS);
+            float LdotH = max(abs(dot(L_local, H)), M_FLOAT_EPS);
+            
+            float D = mx_ggx_NDF(H, alpha);
+            float G1 = mx_ggx_smith_G1(NdotV, mx_average_alpha(alpha));
+            float vndf_pdf = D * G1 * VdotH / NdotV;
+            
+            float denominator = abs(VdotH + eta * LdotH);
+            float jacobian = eta * eta * LdotH / (denominator * denominator);
+            transmission_pdf = vndf_pdf * jacobian;
+        }
+        
+        nonmetal_pdf = diffuse_pdf * diffuse_weight + reflection_pdf * reflection_weight + transmission_pdf * transmission_weight;
+    }
+    
+    // Final MIS PDF combining both paths
+    pdf = metal_pdf * metal_weight + nonmetal_pdf * nonmetal_weight;
+    pdf = max(pdf, M_FLOAT_EPS);
     
     // Transform to world space
-    float3 sampledDir = sf.fromLocal(L_local);
-    
-    return sampledDir;
+    return sf.fromLocal(L_local);
 }
 
 )";
