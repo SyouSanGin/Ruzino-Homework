@@ -52,8 +52,73 @@ static std::string sample_source_code_standard_surface = R"(
 import pbrlib.genslang.mx_roughness_anisotropy;
 import pbrlib.genslang.lib.mx_microfacet;
 import pbrlib.genslang.lib.mx_microfacet_specular;
+import pbrlib.genslang.lib.mx_microfacet_diffuse;
 #include "utils/Math/MathConstants.slangh"
 #include "utils/random.slangh"
+
+// Calculate luminance of a color
+float luminance(float3 color)
+{
+    return dot(color, float3(0.212671, 0.715160, 0.072169));
+}
+
+// Sample diffuse component using cosine hemisphere sampling
+float3 sample_diffuse_lobe(float2 u, out float pdf)
+{
+    float3 L = sample_cosine_hemisphere_concentric(u, pdf);
+    return L;
+}
+
+// Sample specular reflection using GGX distribution
+float3 sample_specular_reflection(float2 u, float3 V, float2 roughness, out float pdf)
+{
+    // Sample microfacet normal using GGX VNDF distribution
+    float3 H = mx_ggx_importance_sample_VNDF(u, V, roughness);
+    
+    // Reflect view direction around microfacet normal
+    float3 L = reflect(-V, H);
+    
+    // Compute PDF
+    float NdotH = max(H.z, M_FLOAT_EPS);
+    float VdotH = max(dot(V, H), M_FLOAT_EPS);
+    float NdotL = max(L.z, M_FLOAT_EPS);
+    
+    float D = mx_ggx_NDF(H, roughness);
+    pdf = D * NdotH / (4.0 * VdotH);
+    
+    return L;
+}
+
+// Sample transmission using GGX distribution and Snell's law
+float3 sample_transmission(float2 u, float3 V, float2 roughness, float eta, out float pdf)
+{
+    // Sample microfacet normal using GGX VNDF distribution
+    float3 H = mx_ggx_importance_sample_VNDF(u, V, roughness);
+    
+    // Compute transmission direction using Snell's law
+    float VdotH = dot(V, H);
+    float discriminant = 1.0 - eta * eta * (1.0 - VdotH * VdotH);
+    
+    if (discriminant < 0.0) {
+        // Total internal reflection
+        pdf = 0.0;
+        return float3(0.0);
+    }
+    
+    float3 L = eta * (-V + VdotH * H) - H * sqrt(discriminant);
+    L = normalize(L);
+    
+    // Compute PDF
+    float NdotH = max(H.z, M_FLOAT_EPS);
+    float LdotH = max(dot(L, H), M_FLOAT_EPS);
+    float NdotL = max(-L.z, M_FLOAT_EPS); // Transmission is below surface
+    
+    float D = mx_ggx_NDF(H, roughness);
+    float jacobian = eta * eta * LdotH / pow(VdotH + eta * LdotH, 2.0);
+    pdf = D * NdotH * jacobian;
+    
+    return L;
+}
 
 float3 sample_standard_surface(
     VertexData vd, 
@@ -113,94 +178,83 @@ float3 sample_standard_surface(
     // Transform view direction to local space
     float3 V_local = sf.toLocal(V);
     float NdotV = clamp(V_local.z, M_FLOAT_EPS, 1.0);
-    
-    // Calculate material properties
-    float3 actualBaseColor = base_color * base;
-    float actualMetalness = clamp(metalness, 0.0, 1.0);
-    float actualSpecular = clamp(specular, 0.0, 1.0);
-    float actualSpecularRoughness = clamp(specular_roughness, M_FLOAT_EPS, 1.0);
-    
-    // Convert roughness and anisotropy to alpha values
+
+    // Compute anisotropic roughness
     float2 alpha;
-    mx_roughness_anisotropy(actualSpecularRoughness, specular_anisotropy, alpha);
-    
-    // Calculate Fresnel at normal incidence
-    float F0_dielectric = mx_ior_to_f0(specular_IOR);
-    float3 F0 = lerp(float3(F0_dielectric * actualSpecular), actualBaseColor, actualMetalness);
-    
-    // Sample random values
-    float2 Xi = random_float2(seed);
-    float xi_lobe = random_float(seed);
-    
-    // Calculate lobe weights (simplified - ignoring coat and sheen for now)
-    float diffuse_weight = (1.0 - actualMetalness) * base;
-    float specular_weight = 1.0;
-    float total_weight = diffuse_weight + specular_weight;
+    mx_roughness_anisotropy(specular_roughness, specular_anisotropy, alpha);
+      // Compute component weights for multiple importance sampling
+    float diffuse_weight = base * (1.0 - metalness) * luminance(base_color);
+    float specular_weight = specular * lerp(1.0, luminance(base_color), metalness);
+    float transmission_weight = transmission * (1.0 - metalness) * luminance(transmission_color);
     
     // Normalize weights
-    if (total_weight > M_FLOAT_EPS) {
-        diffuse_weight /= total_weight;
-        specular_weight /= total_weight;
-    } else {
-        // Fallback to uniform hemisphere sampling
-        float3 localDir = mx_uniform_sample_hemisphere(Xi);
-        float3 sampledDir = sf.fromLocal(localDir);
-        pdf = 1.0 / (2.0 * M_PI);
-        return sampledDir;
+    float total_weight = diffuse_weight + specular_weight + transmission_weight;
+    if (total_weight < M_FLOAT_EPS) {
+        pdf = 0.0;
+        return float3(0.0);
     }
-      // Choose which lobe to sample and calculate direction
+    
+    diffuse_weight /= total_weight;
+    specular_weight /= total_weight;
+    transmission_weight /= total_weight;
+    
+    // Sample component based on weights
+    float component_sample = random_float(seed);
     float3 L_local;
-    float lobe_pdf = 0.0;
+    float component_pdf;
     
-    if (xi_lobe < diffuse_weight) {
-        // Sample diffuse lobe (cosine-weighted hemisphere)
-        float cosTheta = sqrt(Xi.x);
-        float sinTheta = sqrt(1.0 - Xi.x);
-        float phi = 2.0 * M_PI * Xi.y;
-        
-        L_local = float3(
-            sinTheta * cos(phi),
-            sinTheta * sin(phi),
-            cosTheta
-        );
-        
-        lobe_pdf = cosTheta * M_PI_INV;
-    } else {
-        // Sample specular lobe using VNDF (Visible Normal Distribution Function)
-        float3 H_local = mx_ggx_importance_sample_VNDF(Xi, V_local, alpha);
-        
-        // Reflect view direction around the sampled microfacet normal
-        L_local = reflect(-V_local, H_local);
-        
-        // Check if the reflected direction is above the surface
-        if (L_local.z <= 0.0) {
-            // Fallback to cosine-weighted hemisphere sampling
-            float cosTheta = sqrt(Xi.x);
-            float sinTheta = sqrt(1.0 - Xi.x);
-            float phi = 2.0 * M_PI * Xi.y;
-            
-            L_local = float3(
-                sinTheta * cos(phi),
-                sinTheta * sin(phi),
-                cosTheta
-            );
-            
-            lobe_pdf = cosTheta * M_PI_INV;
-        } else {
-            // Calculate PDF for GGX VNDF sampling
-            float NdotH = clamp(H_local.z, M_FLOAT_EPS, 1.0);
-            float VdotH = clamp(dot(V_local, H_local), M_FLOAT_EPS, 1.0);
-            
-            float D = mx_ggx_NDF(H_local, alpha);
-            float G1 = mx_ggx_smith_G1(NdotV, mx_average_alpha(alpha));
-            
-            // PDF for VNDF sampling = D * G1 / (4 * NdotV)
-            lobe_pdf = max((D * G1) / (4.0 * NdotV), M_FLOAT_EPS);
-        }
+    if (component_sample < diffuse_weight) {
+        // Sample diffuse component
+        float2 u = random_float2(seed);
+        L_local = sample_diffuse_lobe(u, component_pdf);
+        component_pdf *= diffuse_weight;
+    }
+    else if (component_sample < diffuse_weight + specular_weight) {
+        // Sample specular reflection
+        float2 u = random_float2(seed);
+        L_local = sample_specular_reflection(u, V_local, alpha, component_pdf);
+        component_pdf *= specular_weight;
+    }
+    else {
+        // Sample transmission
+        float2 u = random_float2(seed);
+        float eta = eta_flipped == 0 ? (1.0 / specular_IOR) : specular_IOR;
+        L_local = sample_transmission(u, V_local, alpha, eta, component_pdf);
+        component_pdf *= transmission_weight;
     }
     
-    // Ensure PDF is never zero
-    pdf = max(lobe_pdf, M_FLOAT_EPS);
+    // Compute MIS weights for all components
+    float diffuse_pdf = 0.0;
+    float specular_pdf = 0.0;
+    float transmission_pdf = 0.0;
+    
+    if (L_local.z > M_FLOAT_EPS) {
+        // Above surface - can be diffuse or specular reflection
+        diffuse_pdf = L_local.z * M_1_PI * diffuse_weight;
+        
+        // Compute specular PDF
+        float3 H = normalize(V_local + L_local);
+        float NdotH = max(H.z, M_FLOAT_EPS);
+        float VdotH = max(dot(V_local, H), M_FLOAT_EPS);
+        float D = mx_ggx_NDF(H, alpha);
+        specular_pdf = D * NdotH / (4.0 * VdotH) * specular_weight;
+    }
+    else if (L_local.z < -M_FLOAT_EPS) {
+        // Below surface - transmission
+        float eta = eta_flipped == 0 ? (1.0 / specular_IOR) : specular_IOR;
+        float3 H = normalize(V_local + eta * L_local);
+        float NdotH = max(H.z, M_FLOAT_EPS);
+        float VdotH = max(dot(V_local, H), M_FLOAT_EPS);
+        float LdotH = max(dot(L_local, H), M_FLOAT_EPS);
+        float D = mx_ggx_NDF(H, alpha);
+        float jacobian = eta * eta * LdotH / pow(VdotH + eta * LdotH, 2.0);
+        transmission_pdf = D * NdotH * jacobian * transmission_weight;
+    }
+    
+    // Compute final MIS PDF
+    pdf = diffuse_pdf + specular_pdf + transmission_pdf;
+
+    pdf = max(pdf, M_FLOAT_EPS); // Avoid division by zero
     
     // Transform to world space
     float3 sampledDir = sf.fromLocal(L_local);
