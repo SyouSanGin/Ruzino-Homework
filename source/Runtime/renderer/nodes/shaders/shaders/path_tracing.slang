@@ -54,7 +54,7 @@ void ClosestHit(
     in BuiltInTriangleIntersectionAttributes attribs)
 {
     // Check if maximum depth is reached
-    if (payload.depth >= 20) {
+    if (payload.depth >= 30) {
         payload.throughput = float3(0, 0, 0);
         payload.color = float3(0, 0, 0);
         payload.terminated = true;
@@ -150,15 +150,13 @@ void ClosestHit(
     // else {
     // }
     payload.throughput *= cosine_factor * callData.throughput / pdf;
-    if (payload.depth == 2)
-    {
-        payload.color = cosine_factor * callData.throughput / pdf / 2;
-        payload.seed = callData.seed;
-        return;
-    }
-    else {
-        payload.color = 0;
-    }
+    // if (payload.depth == 1)
+    // {
+    //     payload.color = cosine_factor * callData.throughput / pdf / 2;
+    //     payload.seed = callData.seed;
+    //     return;
+    // }
+
     // payload.color = payload.throughput/2;
     // payload.seed = callData.seed;
     // return;

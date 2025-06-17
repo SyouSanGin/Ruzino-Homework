@@ -62,10 +62,22 @@ float luminance(float3 color)
     return dot(color, float3(0.212671, 0.715160, 0.072169));
 }
 
-// Fresnel reflectance using Schlick's approximation
-float3 fresnel_schlick(float cosTheta, float3 F0)
+// Exact Fresnel reflectance
+float fresnel_dielectric(float cosTheta, float eta)
 {
-    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+    float sinThetaT2 = (1.0 - cosTheta * cosTheta) / (eta * eta);
+    
+    // Check for total internal reflection
+    if (sinThetaT2 >= 1.0) {
+        return 1.0;
+    }
+    
+    float cosThetaT = sqrt(1.0 - sinThetaT2);
+    
+    float Rs = (cosTheta - eta * cosThetaT) / (cosTheta + eta * cosThetaT);
+    float Rp = (eta * cosTheta - cosThetaT) / (eta * cosTheta + cosThetaT);
+    
+    return 0.5 * (Rs * Rs + Rp * Rp);
 }
 
 // Sample diffuse component using cosine hemisphere sampling
@@ -215,11 +227,9 @@ float3 sample_standard_surface(
     float2 alpha;
     mx_roughness_anisotropy(specular_roughness, specular_anisotropy, alpha);
     
-    // Compute material properties for both metal and non-metal paths
+    // Compute material properties
     float eta = eta_flipped != 0 ? (1.0 / specular_IOR) : specular_IOR;
-    float3 F0_dielectric = float3(pow((eta - 1.0) / (eta + 1.0), 2.0));
-    float3 F = fresnel_schlick(NdotV, F0_dielectric);
-    float fresnel_avg = (F.x + F.y + F.z) / 3.0;
+    float fresnel = fresnel_dielectric(NdotV, eta);
     
     // Metal path weights
     float metal_weight = metalness;
@@ -227,9 +237,9 @@ float3 sample_standard_surface(
     
     // Non-metal path weights
     float nonmetal_weight = 1.0 - metalness;
-    float diffuse_weight = base * (1.0 - fresnel_avg) * luminance(base_color) * (1-transmission);
-    float reflection_weight = fresnel_avg * specular;
-    float transmission_weight = (1.0 - fresnel_avg) * transmission * luminance(transmission_color);
+    float diffuse_weight = base * (1.0 - fresnel) * luminance(base_color) * (1 - transmission);
+    float reflection_weight = fresnel * specular;
+    float transmission_weight = (1.0 - fresnel) * transmission * luminance(transmission_color);
     
     float total_nonmetal_weight = diffuse_weight + reflection_weight + transmission_weight;
     if (total_nonmetal_weight > M_FLOAT_EPS) {
