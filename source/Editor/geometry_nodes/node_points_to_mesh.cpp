@@ -66,7 +66,7 @@ NODE_EXECUTION_FUNCTION(points_to_mesh)
     auto points = points_geometry.get_component<PointsComponent>();
 
     if (!points || points->get_vertices().empty()) {
-        throw std::runtime_error("Input does not contain points");
+        return false;
     }
 
     auto mesh_geometry = Geometry();

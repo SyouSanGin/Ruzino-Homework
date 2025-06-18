@@ -51,17 +51,21 @@ void mx_generalized_schlick_bsdf_reflection(
     float G = mx_ggx_smith_G2(NdotL, NdotV, avgAlpha);
 
     float3 comp = mx_ggx_energy_compensation(NdotV, avgAlpha, F);
+    comp = 1.0f; // Disable energy compensation for generalized Schlick
     float3 dirAlbedo =
         mx_ggx_dir_albedo(NdotV, avgAlpha, safeColor0, safeColor90) * comp;
     float avgDirAlbedo = dot(dirAlbedo, float3(1.0 / 3.0));
     bsdf.throughput = float3(1.0 - avgDirAlbedo * weight);
 
     // Note: NdotL is cancelled out
-    bsdf.response = D * F * G * comp * occlusion * weight / (4.0 * NdotV);
+    bsdf.response = D * F * G * comp * occlusion * weight / (4.0 * NdotV * NdotL);
 }
 
 void mx_generalized_schlick_bsdf_transmission(
+    float3 L,
     float3 V,
+    float3 P,
+    float occlusion,
     float weight,
     float3 color0,
     float3 color90,
@@ -96,6 +100,8 @@ void mx_generalized_schlick_bsdf_transmission(
     float avgAlpha = mx_average_alpha(safeAlpha);
 
     float3 comp = mx_ggx_energy_compensation(NdotV, avgAlpha, F);
+
+    comp = 1.0f;
     float3 dirAlbedo =
         mx_ggx_dir_albedo(NdotV, avgAlpha, safeColor0, safeColor90) * comp;
     float avgDirAlbedo = dot(dirAlbedo, float3(1.0 / 3.0));
@@ -104,9 +110,10 @@ void mx_generalized_schlick_bsdf_transmission(
     if (scatter_mode != 0) {
         float avgF0 = dot(safeColor0, float3(1.0 / 3.0));
         fd.ior = float3(mx_f0_to_ior(avgF0));
-        bsdf.response = mx_surface_transmission(
-                            N, V, X, safeAlpha, distribution, fd, safeColor0) *
-                        weight;
+        bsdf.response =
+            mx_surface_transmission(
+                N, V, L, X, safeAlpha, distribution, fd, safeColor0) *
+            weight;
     }
 }
 

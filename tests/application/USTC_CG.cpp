@@ -71,7 +71,8 @@ int main(int argc, char* argv[])
     window->register_widget(std::move(render));
     window->register_widget(std::move(usd_file_viewer));
 
-    window->register_function_after_frame([&stage](Window* window) {
+    window->register_function_after_frame([&stage,
+                                           render_bare](Window* window) {
         pxr::SdfPath json_path;
         if (stage->consume_editor_creation(json_path)) {
             auto system = create_dynamic_loading_system();
@@ -103,16 +104,21 @@ int main(int argc, char* argv[])
 
             std::unique_ptr<IWidget> node_widget =
                 std::move(create_node_imgui_widget(desc));
-
             node_widget->SetCallBack(
-                [&stage, json_path, system](Window*, IWidget*) {
+                [&stage, json_path, system, render_bare](Window*, IWidget*) {
                     GeomPayload geom_global_params;
                     geom_global_params.stage = stage->get_usd_stage();
                     geom_global_params.prim_path = json_path;
 
                     geom_global_params.has_simulation = false;
 
+                    // Pass pick event from UI to geometry payload
+                    geom_global_params.pick = render_bare->consume_pick_event();
+
                     system->set_global_params(geom_global_params);
+                    if (geom_global_params.pick) {
+                        system->execute();
+                    }
                 });
 
             window->register_widget(std::move(node_widget));

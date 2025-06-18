@@ -3,12 +3,15 @@
 #include <memory>
 
 #include "GUI/widget.h"
+#include "pxr/base/gf/vec3d.h"
 #include "pxr/base/tf/token.h"
+#include "pxr/usd/sdf/path.h"
 #include "pxr/usd/usd/stage.h"
 #include "pxr/usdImaging/usdImagingGL/engine.h"
 #include "stage/stage.hpp"
 #include "widgets/api.h"
 
+struct PickEvent;
 USTC_CG_NAMESPACE_OPEN_SCOPE
 class BaseCamera;
 class FreeCamera;
@@ -32,12 +35,13 @@ class USDVIEW_WIDGET_API UsdviewEngine final : public IWidget {
         renderer_ui_control = nullptr;
         return temp;
     }
-
     pxr::VtValue get_renderer_setting(const pxr::TfToken& id) const;
     void set_renderer_setting(
         const pxr::TfToken& id,
         const pxr::VtValue& value);
     void finish_render();
+
+    std::shared_ptr<PickEvent> consume_pick_event();
 
    protected:
     ImGuiWindowFlags GetWindowFlag() override;
@@ -51,7 +55,7 @@ class USDVIEW_WIDGET_API UsdviewEngine final : public IWidget {
     struct Status {
         CamType cam_type =
             CamType::First;  // 0 for 1st personal, 1 for 3rd personal
-        unsigned renderer_id = 0;
+        unsigned renderer_id = 1;
     } engine_status;
 
     bool is_editing_ = false;
@@ -71,7 +75,7 @@ class USDVIEW_WIDGET_API UsdviewEngine final : public IWidget {
     const void* renderer_ui_control = nullptr;
     bool first_draw = true;
     pxr::TfHashMap<pxr::TfToken, pxr::VtValue, pxr::TfHash> settings;
-    ImVec2 mouse_pos_abs;
+    bool right_mouse_pressed = false;
 
     void DrawMenuBar();
     void OnFrame(float delta_time);
@@ -89,10 +93,11 @@ class USDVIEW_WIDGET_API UsdviewEngine final : public IWidget {
     void Animate(float elapsed_time_seconds) override;
 
     void copy_to_presentation();
-
     std::unique_ptr<UsdviewEnginePrivateData> data_;
 
     float timecode = 0;
     float time_code_max = 8;
+
+    std::shared_ptr<PickEvent> current_pick_event_;
 };
 USTC_CG_NAMESPACE_CLOSE_SCOPE

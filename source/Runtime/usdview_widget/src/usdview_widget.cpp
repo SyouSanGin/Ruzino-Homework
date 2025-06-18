@@ -1,4 +1,3 @@
-
 #ifndef IMGUI_DEFINE_MATH_OPERATORS
 #define IMGUI_DEFINE_MATH_OPERATORS
 #endif
@@ -6,6 +5,7 @@
 
 #include <pxr/imaging/hd/driver.h>
 
+#include "GCore/geom_payload.hpp"
 #include "Logger/Logger.h"
 #include "RHI/Hgi/desc_conversion.hpp"
 #include "RHI/rhi.hpp"
@@ -211,6 +211,16 @@ void UsdviewEngine::OnFrame(float delta_time)
     GfFrustum frustum =
         free_camera_->GetCamera(UsdTimeCode::Default()).GetFrustum();
 
+    double fov, aspect_ratio, near_distance, far_distance;
+
+    frustum.GetPerspective(&fov, &aspect_ratio, &near_distance, &far_distance);
+
+    frustum.SetPerspective(
+        fov,
+        float(render_buffer_size_[0]) / float(render_buffer_size_[1]),
+        near_distance,
+        far_distance);
+
     GfMatrix4d projectionMatrix = frustum.ComputeProjectionMatrix();
     GfMatrix4d viewMatrix = frustum.ComputeViewMatrix();
 
@@ -286,8 +296,13 @@ void UsdviewEngine::OnFrame(float delta_time)
     is_active = ImGui::IsWindowFocused();
     is_hovered = ImGui::IsItemHovered();
 
-    if (mouse_pos_abs.x > 0 && mouse_pos_abs.y > 0) {
+    if (right_mouse_pressed) {
         auto mouse_pos_rel = ImGui::GetMousePos() - ImGui::GetItemRectMin();
+
+        log::info(
+            "Mouse Position Relative: (%.2f, %.2f)",
+            mouse_pos_rel.x,
+            mouse_pos_rel.y);
         // Normalize the mouse position to be in the range [0, 1]
         ImVec2 mousePosNorm = ImVec2(
             mouse_pos_rel.x / render_buffer_size_[0],
@@ -309,12 +324,10 @@ void UsdviewEngine::OnFrame(float delta_time)
         SdfPath instancer;
         HdInstancerContext outInstancerContext;
         int outHitInstanceIndex;
-        GfFrustum frustum =
-            free_camera_->GetCamera(UsdTimeCode::Default()).GetFrustum();
+
         auto narrowed = frustum.ComputeNarrowedFrustum(
             { mousePosNDC[0], mousePosNDC[1] },
             { 1.0 / render_buffer_size_[0], 1.0 / render_buffer_size_[1] });
-
         if (renderer_->TestIntersection(
                 narrowed.ComputeViewMatrix(),
                 narrowed.ComputeProjectionMatrix(),
@@ -326,15 +339,9 @@ void UsdviewEngine::OnFrame(float delta_time)
                 &instancer,
                 &outHitInstanceIndex,
                 &outInstancerContext)) {
-            // pick_event = std::make_unique<PickEvent>(
-            //     point,
-            //     normal,
-            //     path,
-            //     instancer,
-            //     outInstancerContext,
-            //     outHitInstanceIndex,
-            //     narrowed.ComputePickRay(
-            //         { mousePosNDC[0], mousePosNDC[1] }));
+            // Create and store the pick event
+            current_pick_event_ =
+                std::make_shared<PickEvent>(point, normal, path, instancer);
 
             log::info("Picked prim " + path.GetAsString());
             log::info(
@@ -344,7 +351,6 @@ void UsdviewEngine::OnFrame(float delta_time)
                 point[2]);
         }
 
-        mouse_pos_abs = ImVec2(0, 0);  // Reset mouse position after picking
     }
 
     ImGui::GetIO().WantCaptureMouse = true;
@@ -456,8 +462,13 @@ bool UsdviewEngine::MouseButtonUpdate(int button, int action, int mods)
     }
     if (action == GLFW_PRESS && button == GLFW_MOUSE_BUTTON_RIGHT) {
         if (is_hovered) {
-            mouse_pos_abs = ImGui::GetMousePos();
-
+            right_mouse_pressed = true;
+            return false;
+        }
+    }
+    if (action == GLFW_RELEASE && button == GLFW_MOUSE_BUTTON_RIGHT) {
+        if (right_mouse_pressed) {
+            right_mouse_pressed = false;
             return false;
         }
     }
@@ -588,6 +599,13 @@ void UsdviewEngine::RenderBackBufferResized(float x, float y)
     texture_data_.resize(
         render_buffer_size_[0] * render_buffer_size_[1] *
         RHI::calculate_bytes_per_pixel(data_->present_format));
+}
+
+std::shared_ptr<PickEvent> UsdviewEngine::consume_pick_event()
+{
+    auto event = current_pick_event_;
+    current_pick_event_ = nullptr;
+    return event;
 }
 
 USTC_CG_NAMESPACE_CLOSE_SCOPE

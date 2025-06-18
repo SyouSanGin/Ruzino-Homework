@@ -34,16 +34,24 @@ void RayGen()
     RayInfo ray = rays[DispatchRaysIndex().x];
 
     RayPayload payload;
-    payload.color = float3(0, 0, 0);
-    payload.throughput = float3(1, 1, 1);
-    payload.depth = 0;
     payload.seed = random_seeds[DispatchRaysIndex().x];
-    payload.terminated = false;
 
-    TraceRay(
-        SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 0, 0, get_ray_desc(ray), payload);
+    float3 output_color = float3(0, 0, 0);
 
-    output[pixel] = float4(payload.color, 1.0);
+    const int spp = 1;
+
+    for (int i = 0; i < spp; i++) {
+        payload.color = float3(0, 0, 0);
+        payload.throughput = float3(1, 1, 1);
+        payload.depth = 0;
+        payload.terminated = false;
+        TraceRay(
+            SceneBVH, RAY_FLAG_NONE, 0xFF, 0, 0, 0, get_ray_desc(ray), payload);
+        output_color += payload.color;
+    }
+    output_color /= float(spp);  // Average color over multiple samples
+
+    output[pixel] = float4(output_color, 1.0);
 
     random_seeds[DispatchRaysIndex().x] = payload.seed;
 }
@@ -133,7 +141,6 @@ void ClosestHit(
     //     payload.throughput = 1.0f;
     // }    {
     float cosine_factor = abs(local_ray_dir.z);
-
 
     // For transmission, don't apply cosine factor to avoid double-counting
     // if (isTransmission) {

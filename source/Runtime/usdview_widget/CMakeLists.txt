@@ -14,7 +14,7 @@ endif()
 USTC_CG_ADD_LIB(
 	usdview_widget
 	SHARED
-	PUBLIC_LIBS stage
+	PUBLIC_LIBS stage geometry
 	PRIVATE_LIBS ${PRIVATE_LIBS}
 	COMPILE_DEFS ${COMPILE_DEFS}
 )

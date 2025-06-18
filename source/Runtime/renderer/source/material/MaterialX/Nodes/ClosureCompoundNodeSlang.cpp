@@ -40,7 +40,7 @@ float3 sample_fallback(
     float3 sampledDir = sample_cosine_hemisphere_concentric(random_float2(seed), pdf);
 
     bool valid;
-    ShadingFrame sf = ShadingFrame.createSafe(vertexInfo.normalW, float4(0, 0, 0, 1), valid);
+    ShadingFrame sf = ShadingFrame.createSafe(vertexInfo.normalW, float4(1, 0, 0, 1), valid);
     sampledDir = sf.fromLocal(sampledDir);
 
     return sampledDir;
@@ -361,6 +361,235 @@ float3 sample_standard_surface(
 
 )";
 
+static std::string sample_source_code_usd_preview_surface = R"(
+import pbrlib.genslang.mx_roughness_anisotropy;
+import pbrlib.genslang.lib.mx_microfacet;
+import pbrlib.genslang.lib.mx_microfacet_specular;
+import pbrlib.genslang.lib.mx_microfacet_diffuse;
+import utils.Math.MathHelpers;
+#include "utils/Math/MathConstants.slangh"
+#include "utils/random.slangh"
+
+// Calculate luminance of a color
+float luminance(float3 color)
+{
+    return dot(color, float3(0.212671, 0.715160, 0.072169));
+}
+
+// Exact Fresnel reflectance for USD Preview Surface
+float fresnel_dielectric(float cosTheta, float eta)
+{
+    float sinThetaT2 = (1.0 - cosTheta * cosTheta) / (eta * eta);
+    
+    // Check for total internal reflection
+    if (sinThetaT2 >= 1.0) {
+        return 1.0;
+    }
+    
+    float cosThetaT = sqrt(1.0 - sinThetaT2);
+    
+    float Rs = (cosTheta - eta * cosThetaT) / (cosTheta + eta * cosThetaT);
+    float Rp = (eta * cosTheta - cosThetaT) / (eta * cosTheta + cosThetaT);
+    
+    return 0.5 * (Rs * Rs + Rp * Rp);
+}
+
+// Sample diffuse component using cosine hemisphere sampling
+float3 sample_diffuse_lobe(float2 u, out float pdf)
+{
+    float3 L = sample_cosine_hemisphere_concentric(u, pdf);
+    return L;
+}
+
+// Sample specular reflection using GGX distribution
+float3 sample_specular_reflection(float2 u, float3 V, float roughness, out float pdf)
+{
+    float2 alpha = float2(roughness, roughness);
+    
+    // Sample microfacet normal using GGX VNDF distribution
+    float3 H = mx_ggx_importance_sample_VNDF(u, V, alpha);
+    
+    // Reflect view direction around microfacet normal
+    float3 L = reflect(-V, H);
+    
+    // Check if the reflection is valid (above surface)
+    if (L.z <= 0.0) {
+        pdf = 0.0;
+        return float3(0.0);
+    }
+    
+    // Compute PDF using correct VNDF formulation
+    float NdotH = max(H.z, M_FLOAT_EPS);
+    float VdotH = max(dot(V, H), M_FLOAT_EPS);
+    float NdotV = max(V.z, M_FLOAT_EPS);
+    
+    // VNDF PDF: D(H) * G1(V) * max(0, V·H) / NdotV
+    float D = mx_ggx_NDF(H, alpha);
+    float G1 = mx_ggx_smith_G1(NdotV, mx_average_alpha(alpha));
+    float vndf_pdf = D * G1 * VdotH / NdotV;
+    
+    // Transform to reflection direction: PDF_L = PDF_H / (4 * V·H)
+    pdf = vndf_pdf / (4.0 * VdotH);
+    
+    return L;
+}
+
+float3 sample_preview_surface(
+    VertexData vd,
+    SamplerState sampler,
+    float3 V,
+    float3 diffuseColor,
+    float3 emissiveColor,
+    int useSpecularWorkflow,
+    float3 specularColor,
+    float metallic,
+    float roughness,
+    float clearcoat,
+    float clearcoatRoughness,
+    float opacity,
+    float opacityThreshold,
+    float ior,
+    float3 normal,
+    float displacement,
+    float occlusion,
+    uint eta_flipped,
+    inout uint seed,
+    out float pdf
+)
+{
+    // Create shading frame
+    bool valid;
+    ShadingFrame sf = ShadingFrame.createSafe(vd.normalWorld, float4(1, 0, 0, 1), valid);
+
+    ////debug
+
+    //float3 cosineSample = sample_cosine_hemisphere_concentric(random_float2(seed), pdf);
+    //return sf.fromLocal(cosineSample);
+
+    // Transform view direction to local space
+    float3 V_local = sf.toLocal(V);
+    float NdotV = clamp(V_local.z, M_FLOAT_EPS, 1.0);
+
+    // Compute material properties
+    float eta = eta_flipped != 0 ? (1.0 / ior) : ior;
+    float fresnel = fresnel_dielectric(NdotV, eta);
+
+    // Determine workflow
+    bool isSpecularWorkflow = false;
+
+    // Compute final diffuse and specular colors based on workflow
+    float3 final_diffuse_color;
+    float3 final_specular_color;
+    float final_metallic;
+
+    if (isSpecularWorkflow) {
+        final_diffuse_color = diffuseColor;
+        final_specular_color = specularColor;
+        final_metallic = 0.0; // Specular workflow doesn't use metallic
+    } else {
+        // Metallic workflow
+        final_metallic = metallic;
+        final_diffuse_color = diffuseColor * (1.0 - metallic);
+        final_specular_color = lerp(float3(0.04), diffuseColor, metallic);
+    }
+
+    // Metal path weights
+    float metal_weight = final_metallic;
+
+    // Non-metal path weights
+    float nonmetal_weight = 1.0 - final_metallic;
+    float diffuse_weight = (1.0 - fresnel) * luminance(final_diffuse_color);
+    float reflection_weight = fresnel;
+
+    float total_nonmetal_weight = diffuse_weight + reflection_weight;
+    if (total_nonmetal_weight > M_FLOAT_EPS) {
+        diffuse_weight /= total_nonmetal_weight;
+        reflection_weight /= total_nonmetal_weight;
+    }
+
+    // Sample component based on first level branching
+    float component_sample = random_float(seed);
+    float3 L_local;
+    bool sampled_metal = (component_sample < metal_weight);
+
+    if (sampled_metal) {
+        // Sample metal reflection
+        float2 u = random_float2(seed);
+        L_local = sample_specular_reflection(u, V_local, roughness, pdf);
+        
+        if (pdf <= 0.0) {
+            pdf = 0.0;
+            return float3(0.0);
+        }
+    }
+    else {
+        // Sample non-metal component
+        float nonmetal_sample = (component_sample - metal_weight) / nonmetal_weight;
+        
+        if (nonmetal_sample < diffuse_weight) {
+            // Sample diffuse
+            float2 u = random_float2(seed);
+            L_local = sample_diffuse_lobe(u, pdf);
+        }
+        else {
+            // Sample non-metal reflection
+            float2 u = random_float2(seed);
+            L_local = sample_specular_reflection(u, V_local, roughness, pdf);
+        }
+        
+        if (pdf <= 0.0) {
+            pdf = 0.0;
+            return float3(0.0);
+        }
+    }
+
+    // Calculate MIS PDF: both paths need to compute their probability for the sampled direction
+    float metal_pdf = 0.0;
+    float nonmetal_pdf = 0.0;
+
+    // Metal path PDF (only has reflection component)
+    if (L_local.z > M_FLOAT_EPS) {
+        float3 H = normalize(V_local + L_local);
+        float NdotH = max(H.z, M_FLOAT_EPS);
+        float VdotH = max(dot(V_local, H), M_FLOAT_EPS);
+        
+        float2 alpha = float2(roughness, roughness);
+        float D = mx_ggx_NDF(H, alpha);
+        float G1 = mx_ggx_smith_G1(NdotV, mx_average_alpha(alpha));
+        float vndf_pdf = D * G1 * VdotH / NdotV;
+        metal_pdf = vndf_pdf / (4.0 * VdotH);
+    }
+
+    // Non-metal path PDF (compute diffuse and reflection components)
+    if (total_nonmetal_weight > M_FLOAT_EPS && L_local.z > M_FLOAT_EPS) {
+        // Diffuse PDF
+        float diffuse_pdf = L_local.z * M_1_PI;
+        
+        // Reflection PDF
+        float3 H = normalize(V_local + L_local);
+        float NdotH = max(H.z, M_FLOAT_EPS);
+        float VdotH = max(dot(V_local, H), M_FLOAT_EPS);
+        
+        float2 alpha = float2(roughness, roughness);
+        float D = mx_ggx_NDF(H, alpha);
+        float G1 = mx_ggx_smith_G1(NdotV, mx_average_alpha(alpha));
+        float vndf_pdf = D * G1 * VdotH / NdotV;
+        float reflection_pdf = vndf_pdf / (4.0 * VdotH);
+        
+        nonmetal_pdf = diffuse_pdf * diffuse_weight + reflection_pdf * reflection_weight;
+    }
+
+    // Final MIS PDF combining both paths
+    pdf = metal_pdf * metal_weight + nonmetal_pdf * nonmetal_weight;
+    pdf = max(pdf, M_FLOAT_EPS);
+
+    // Transform to world space
+    return sf.fromLocal(L_local);
+ 
+}
+
+)";
+
 void ClosureCompoundNodeSlang::emitFunctionDefinition(
     const ShaderNode& node,
     GenContext& context,
@@ -369,6 +598,11 @@ void ClosureCompoundNodeSlang::emitFunctionDefinition(
     DEFINE_SHADER_STAGE(stage, Stage::PIXEL)
     {
         const ShaderGenerator& shadergen = context.getShaderGenerator();
+
+        bool isStandardSurface =
+            _functionName.find("standard_surface") != string::npos;
+        bool isUsdPreviewSurface =
+            _functionName.find("UsdPreviewSurface") != string::npos;
 
         // Emit functions for all child nodes
         shadergen.emitFunctionDefinitions(*_rootGraph, context, stage);
@@ -385,8 +619,17 @@ void ClosureCompoundNodeSlang::emitFunctionDefinition(
                 emitFunctionDefinition(cct, context, stage);
             }
         }  // Emit the sample fallback and standard surface sampling
-        shadergen.emitLine(sample_source_code_fallback, stage, false);
-        shadergen.emitLine(sample_source_code_standard_surface, stage, false);
+
+        if (isStandardSurface) {
+            shadergen.emitLine(
+                sample_source_code_standard_surface, stage, false);
+        }
+        else if (isUsdPreviewSurface) {
+            shadergen.emitLine(
+                sample_source_code_usd_preview_surface, stage, false);
+        }
+        else
+            shadergen.emitLine(sample_source_code_fallback, stage, false);
     }
 }
 
@@ -468,7 +711,13 @@ void ClosureCompoundNodeSlang::emitFunctionDefinition(
     if (cct) {
         context.pushClosureContext(cct);
     }
-
+    bool isStandardSurface =
+        _functionName.find("standard_surface") != string::npos;
+    if (isStandardSurface) {
+        shadergen.emitLine("if (transmission > 0.0)", stage, false);
+        shadergen.emitLine("if (eta_flipped > 0.0)", stage, false);
+        shadergen.emitLine("specular_IOR = 1.0 / specular_IOR", stage);
+    }
     // Emit all texturing nodes. These are inputs to the
     // closure nodes and need to be emitted first.
     shadergen.emitFunctionCalls(
@@ -604,6 +853,8 @@ void ClosureCompoundNodeSlang::emitFunctionCall(
         // Check if this is a standard surface material
         bool isStandardSurface =
             _functionName.find("standard_surface") != string::npos;
+        bool isUsdPreviewSurface =
+            _functionName.find("UsdPreviewSurface") != string::npos;
         if (isStandardSurface) {
             // Call the standard surface sampling function
             shadergen.emitLineBegin(stage);
@@ -612,6 +863,25 @@ void ClosureCompoundNodeSlang::emitFunctionCall(
                 stage);
 
             // Emit all the standard surface parameters
+            string delim = "";
+            for (ShaderInput* input : node.getInputs()) {
+                shadergen.emitString(delim, stage);
+                shadergen.emitInput(input, context, stage);
+                delim = ", ";
+            }
+            shadergen.emitString(delim + "eta_flipped", stage);
+
+            shadergen.emitString(", seed, pdf)", stage);
+            shadergen.emitLineEnd(stage);
+        }
+        else if (isUsdPreviewSurface) {
+            // Call the USD preview surface sampling function
+            shadergen.emitLineBegin(stage);
+            shadergen.emitString(
+                "sampled_direction = sample_preview_surface(vd, sampler, V, ",
+                stage);
+
+            // Emit all the USD preview surface parameters
             string delim = "";
             for (ShaderInput* input : node.getInputs()) {
                 shadergen.emitString(delim, stage);

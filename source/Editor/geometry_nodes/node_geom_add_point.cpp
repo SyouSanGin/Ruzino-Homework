@@ -9,17 +9,7 @@ NODE_DEF_OPEN_SCOPE
 struct AddedPoints {
     pxr::VtArray<pxr::GfVec3f> points;
 
-    nlohmann::json serialize()
-    {
-        auto val = pxr::TfStringify(points);
-        nlohmann::json ret;
-        ret["points"] = val;
-        return ret;
-    }
-
-    void deserialize(const nlohmann::json& json)
-    {
-    }
+    static constexpr bool has_storage = false;
 };
 
 NODE_DECLARATION_FUNCTION(geom_add_point)
