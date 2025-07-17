@@ -163,10 +163,9 @@ void Hd_USTC_CG_Light::Sync(
         else {
             _params[HdLightTokens->shadowCollection] =
                 VtValue(HdRprimCollection());
-        }
-    }
+        }    }
 
-    *dirtyBits = Clean;
+    // Don't clear dirty bits here - let derived classes handle it
 }
 
 HdDirtyBits Hd_USTC_CG_Light::GetInitialDirtyBitsMask() const
@@ -188,6 +187,144 @@ VtValue Hd_USTC_CG_Light::Get(const TfToken& token) const
     VtValue val;
     TfMapLookup(_params, token, &val);
     return val;
+}
+
+void Hd_USTC_CG_Simple_Light::Sync(
+    HdSceneDelegate* sceneDelegate,
+    HdRenderParam* renderParam,
+    HdDirtyBits* dirtyBits)
+{
+    Hd_USTC_CG_Light::Sync(sceneDelegate, renderParam, dirtyBits);
+    
+    // Clear dirty bits
+    *dirtyBits = Clean;
+}
+
+void Hd_USTC_CG_Distant_Light::Sync(
+    HdSceneDelegate* sceneDelegate,
+    HdRenderParam* renderParam,
+    HdDirtyBits* dirtyBits)
+{
+    Hd_USTC_CG_Light::Sync(sceneDelegate, renderParam, dirtyBits);
+    
+    // Get distant light specific parameters
+    const SdfPath& id = GetId();
+    HdDirtyBits bits = *dirtyBits;
+    
+    if (bits & (DirtyTransform | DirtyParams)) {
+        auto transform = Get(HdTokens->transform).GetWithDefault<GfMatrix4d>();
+        
+        // Extract direction from transform
+        GfVec4d zDir = GfVec4f(transform.GetRow(2));
+        _direction = GfVec3f(zDir[0], zDir[1], zDir[2]);
+        
+        // Get angle parameter if available
+        VtValue angleValue = sceneDelegate->GetLightParamValue(id, HdLightTokens->angle);
+        if (!angleValue.IsEmpty()) {
+            _angle = angleValue.Get<float>();
+        }
+    }
+    
+    // Clear dirty bits
+    *dirtyBits = Clean;
+}
+
+void Hd_USTC_CG_Sphere_Light::Sync(
+    HdSceneDelegate* sceneDelegate,
+    HdRenderParam* renderParam,
+    HdDirtyBits* dirtyBits)
+{
+    Hd_USTC_CG_Light::Sync(sceneDelegate, renderParam, dirtyBits);
+    
+    // Get sphere light specific parameters
+    const SdfPath& id = GetId();
+    HdDirtyBits bits = *dirtyBits;
+    
+    if (bits & DirtyParams) {
+        VtValue radiusValue = sceneDelegate->GetLightParamValue(id, HdLightTokens->radius);
+        if (!radiusValue.IsEmpty()) {
+            _radius = radiusValue.Get<float>();
+        }
+    }
+    
+    // Clear dirty bits
+    *dirtyBits = Clean;
+}
+
+void Hd_USTC_CG_Rect_Light::Sync(
+    HdSceneDelegate* sceneDelegate,
+    HdRenderParam* renderParam,
+    HdDirtyBits* dirtyBits)
+{
+    Hd_USTC_CG_Light::Sync(sceneDelegate, renderParam, dirtyBits);
+    
+    // Get rectangle light specific parameters
+    const SdfPath& id = GetId();
+    HdDirtyBits bits = *dirtyBits;
+    
+    if (bits & DirtyParams) {
+        VtValue widthValue = sceneDelegate->GetLightParamValue(id, HdLightTokens->width);
+        if (!widthValue.IsEmpty()) {
+            _width = widthValue.Get<float>();
+        }
+        
+        VtValue heightValue = sceneDelegate->GetLightParamValue(id, HdLightTokens->height);
+        if (!heightValue.IsEmpty()) {
+            _height = heightValue.Get<float>();
+        }
+    }
+    
+    // Clear dirty bits
+    *dirtyBits = Clean;
+}
+
+void Hd_USTC_CG_Disk_Light::Sync(
+    HdSceneDelegate* sceneDelegate,
+    HdRenderParam* renderParam,
+    HdDirtyBits* dirtyBits)
+{
+    Hd_USTC_CG_Light::Sync(sceneDelegate, renderParam, dirtyBits);
+    
+    // Get disk light specific parameters
+    const SdfPath& id = GetId();
+    HdDirtyBits bits = *dirtyBits;
+    
+    if (bits & DirtyParams) {
+        VtValue radiusValue = sceneDelegate->GetLightParamValue(id, HdLightTokens->radius);
+        if (!radiusValue.IsEmpty()) {
+            _radius = radiusValue.Get<float>();
+        }
+    }
+    
+    // Clear dirty bits
+    *dirtyBits = Clean;
+}
+
+void Hd_USTC_CG_Cylinder_Light::Sync(
+    HdSceneDelegate* sceneDelegate,
+    HdRenderParam* renderParam,
+    HdDirtyBits* dirtyBits)
+{
+    Hd_USTC_CG_Light::Sync(sceneDelegate, renderParam, dirtyBits);
+    
+    // Get cylinder light specific parameters
+    const SdfPath& id = GetId();
+    HdDirtyBits bits = *dirtyBits;
+    
+    if (bits & DirtyParams) {
+        VtValue radiusValue = sceneDelegate->GetLightParamValue(id, HdLightTokens->radius);
+        if (!radiusValue.IsEmpty()) {
+            _radius = radiusValue.Get<float>();
+        }
+        
+        VtValue lengthValue = sceneDelegate->GetLightParamValue(id, HdLightTokens->length);
+        if (!lengthValue.IsEmpty()) {
+            _length = lengthValue.Get<float>();
+        }
+    }
+    
+    // Clear dirty bits
+    *dirtyBits = Clean;
 }
 
 void Hd_USTC_CG_Dome_Light::_PrepareDomeLight(
@@ -222,6 +359,9 @@ void Hd_USTC_CG_Dome_Light::Sync(
 
     auto id = GetId();
     _PrepareDomeLight(id, sceneDelegate);
+    
+    // Clear dirty bits
+    *dirtyBits = Clean;
 }
 
 void Hd_USTC_CG_Dome_Light::Finalize(HdRenderParam* renderParam)

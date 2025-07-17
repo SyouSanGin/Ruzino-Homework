@@ -287,8 +287,7 @@ HdSprim* Hd_USTC_CG_RenderDelegate::CreateSprim(
     }
     else if (typeId == HdPrimTypeTokens->extComputation) {
         return new HdExtComputation(sprimId);
-    }
-    else if (typeId == HdPrimTypeTokens->material) {
+    }    else if (typeId == HdPrimTypeTokens->material) {
         auto material = new Hd_USTC_CG_MaterialX(sprimId);
         materials[sprimId] = material;
 
@@ -296,10 +295,33 @@ HdSprim* Hd_USTC_CG_RenderDelegate::CreateSprim(
 
         return material;
     }
-    else if (
-        typeId == HdPrimTypeTokens->simpleLight ||
-        typeId == HdPrimTypeTokens->sphereLight) {
-        auto light = new Hd_USTC_CG_Light(sprimId, typeId);
+    else if (typeId == HdPrimTypeTokens->simpleLight) {
+        auto light = new Hd_USTC_CG_Simple_Light(sprimId, typeId);
+        lights.push_back(light);
+        return light;
+    }
+    else if (typeId == HdPrimTypeTokens->distantLight) {
+        auto light = new Hd_USTC_CG_Distant_Light(sprimId, typeId);
+        lights.push_back(light);
+        return light;
+    }
+    else if (typeId == HdPrimTypeTokens->sphereLight) {
+        auto light = new Hd_USTC_CG_Sphere_Light(sprimId, typeId);
+        lights.push_back(light);
+        return light;
+    }
+    else if (typeId == HdPrimTypeTokens->rectLight) {
+        auto light = new Hd_USTC_CG_Rect_Light(sprimId, typeId);
+        lights.push_back(light);
+        return light;
+    }
+    else if (typeId == HdPrimTypeTokens->diskLight) {
+        auto light = new Hd_USTC_CG_Disk_Light(sprimId, typeId);
+        lights.push_back(light);
+        return light;
+    }
+    else if (typeId == HdPrimTypeTokens->cylinderLight) {
+        auto light = new Hd_USTC_CG_Cylinder_Light(sprimId, typeId);
         lights.push_back(light);
         return light;
     }
@@ -326,8 +348,7 @@ HdSprim* Hd_USTC_CG_RenderDelegate::CreateFallbackSprim(const TfToken& typeId)
     }
     else if (typeId == HdPrimTypeTokens->extComputation) {
         return new HdExtComputation(SdfPath::EmptyPath());
-    }
-    else if (typeId == HdPrimTypeTokens->material) {
+    }    else if (typeId == HdPrimTypeTokens->material) {
         auto material = new Hd_USTC_CG_MaterialX(SdfPath::EmptyPath());
         materials[SdfPath::EmptyPath()] = material;
 
@@ -335,10 +356,33 @@ HdSprim* Hd_USTC_CG_RenderDelegate::CreateFallbackSprim(const TfToken& typeId)
 
         return material;
     }
-    else if (
-        typeId == HdPrimTypeTokens->simpleLight ||
-        typeId == HdPrimTypeTokens->sphereLight) {
-        auto light = new Hd_USTC_CG_Light(SdfPath::EmptyPath(), typeId);
+    else if (typeId == HdPrimTypeTokens->simpleLight) {
+        auto light = new Hd_USTC_CG_Simple_Light(SdfPath::EmptyPath(), typeId);
+        lights.push_back(light);
+        return light;
+    }
+    else if (typeId == HdPrimTypeTokens->distantLight) {
+        auto light = new Hd_USTC_CG_Distant_Light(SdfPath::EmptyPath(), typeId);
+        lights.push_back(light);
+        return light;
+    }
+    else if (typeId == HdPrimTypeTokens->sphereLight) {
+        auto light = new Hd_USTC_CG_Sphere_Light(SdfPath::EmptyPath(), typeId);
+        lights.push_back(light);
+        return light;
+    }
+    else if (typeId == HdPrimTypeTokens->rectLight) {
+        auto light = new Hd_USTC_CG_Rect_Light(SdfPath::EmptyPath(), typeId);
+        lights.push_back(light);
+        return light;
+    }
+    else if (typeId == HdPrimTypeTokens->diskLight) {
+        auto light = new Hd_USTC_CG_Disk_Light(SdfPath::EmptyPath(), typeId);
+        lights.push_back(light);
+        return light;
+    }
+    else if (typeId == HdPrimTypeTokens->cylinderLight) {
+        auto light = new Hd_USTC_CG_Cylinder_Light(SdfPath::EmptyPath(), typeId);
         lights.push_back(light);
         return light;
     }

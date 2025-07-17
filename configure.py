@@ -546,9 +546,7 @@ def main():
 
                         print(f"DXC files prepared in {bin_dir}")
                     except Exception as e:
-                        print(f"Error extracting DXC: {e}")
-
-            # Copy the DXC files to the binaries folder
+                        print(f"Error extracting DXC: {e}")            # Copy the DXC files to the binaries folder
             for target in targets:
                 copytree_common_to_binaries(
                     folders[lib], target=target, dry_run=dry_run
@@ -567,6 +565,39 @@ def main():
                     copytree_common_to_binaries(
                         folders[lib], target=target, dry_run=dry_run
                     )
+
+    # Copy Python DLLs from SDK to Binaries for each target in copy-only mode
+    if copy_only:
+        sdk_python_dir = os.path.join(os.path.dirname(__file__), "SDK", "python")
+        if os.path.exists(sdk_python_dir):
+            for target in targets:
+                bin_dir = os.path.join(os.getcwd(), "Binaries", target)
+                os.makedirs(bin_dir, exist_ok=True)
+                
+                # Copy Python DLLs from SDK python directory
+                for file in os.listdir(sdk_python_dir):
+                    if file.endswith(".dll"):
+                        src_file = os.path.join(sdk_python_dir, file)
+                        dst_file = os.path.join(bin_dir, file)
+                        if dry_run:
+                            print(f"[DRY RUN] Would copy {src_file} to {dst_file}")
+                        else:
+                            shutil.copy2(src_file, dst_file)
+                
+                # Also copy DLLs from SDK python/DLLs directory if exists
+                dlls_dir = os.path.join(sdk_python_dir, "DLLs")
+                if os.path.exists(dlls_dir):
+                    for file in os.listdir(dlls_dir):
+                        if file.endswith(".dll"):
+                            src_file = os.path.join(dlls_dir, file)
+                            dst_file = os.path.join(bin_dir, file)
+                            if dry_run:
+                                print(f"[DRY RUN] Would copy {src_file} to {dst_file}")
+                            else:
+                                shutil.copy2(src_file, dst_file)
+            print(f"Copied Python DLLs from SDK to Binaries for targets: {targets}")
+        else:
+            print(f"SDK Python directory not found at {sdk_python_dir}")
 
 
 if __name__ == "__main__":

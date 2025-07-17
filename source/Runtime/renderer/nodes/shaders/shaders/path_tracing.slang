@@ -233,10 +233,6 @@ void Miss(inout RayPayload payload)
     // skyColor = 0.5f;
     payload.color += payload.throughput * skyColor * 1.0;
 
-    if (payload.depth == 0) {
-        // If this is the first ray, set the output color
-        payload.color = payload.throughput * skyColor * 0.0;
-    }
     payload.terminated = true;
 }
 
