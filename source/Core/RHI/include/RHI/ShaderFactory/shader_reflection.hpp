@@ -9,9 +9,14 @@ class RHI_API ShaderReflectionInfo {
    public:
     [[nodiscard]] const nvrhi::BindingLayoutDescVector&
     get_binding_layout_descs() const;
-    unsigned get_binding_space(const std::string& name);
-    unsigned get_binding_location(const std::string& name);
-    nvrhi::ResourceType get_binding_type(const std::string& name);
+    
+    // Main interface for nested path resolution
+    unsigned get_binding_space(const std::string& path);
+    unsigned get_binding_location(const std::string& path);
+    nvrhi::ResourceType get_binding_type(const std::string& path);
+    
+    // Check if a binding exists
+    bool has_binding(const std::string& path) const;
 
     ShaderReflectionInfo operator+(const ShaderReflectionInfo& other) const;
     ShaderReflectionInfo& operator+=(const ShaderReflectionInfo& other);
@@ -19,6 +24,12 @@ class RHI_API ShaderReflectionInfo {
    private:
     nvrhi::BindingLayoutDescVector binding_spaces;
     VectorMap<std::string, std::tuple<unsigned, unsigned>> binding_locations;
+    
+    // Helper methods for path parsing
+    std::string resolve_base_name(const std::string& path) const;
+    std::string extract_array_indices(const std::string& path) const;
+    bool is_array_access(const std::string& path) const;
+    std::string normalize_path(const std::string& path) const;
 
     friend class ShaderFactory;
     friend RHI_API std::ostream& operator<<(

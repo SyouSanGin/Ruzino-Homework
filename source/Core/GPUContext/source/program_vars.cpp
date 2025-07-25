@@ -3,7 +3,56 @@
 #include <nvrhi/nvrhi.h>
 
 #include "RHI/ResourceManager/resource_allocator.hpp"
+
 USTC_CG_NAMESPACE_OPEN_SCOPE
+
+// ProgramVarsProxy implementation
+ProgramVarsProxy::ProgramVarsProxy(ProgramVars* parent, const std::string& path)
+    : parent_(parent),
+      path_(path)
+{
+}
+
+ProgramVarsProxy ProgramVarsProxy::operator[](const std::string& name)
+{
+    return ProgramVarsProxy(parent_, build_path(name));
+}
+
+ProgramVarsProxy ProgramVarsProxy::operator[](int index)
+{
+    return ProgramVarsProxy(parent_, build_path(index));
+}
+
+ProgramVarsProxy& ProgramVarsProxy::operator=(nvrhi::IResource* resource)
+{
+    parent_->get_resource_direct(path_) = resource;
+    return *this;
+}
+
+ProgramVarsProxy::operator nvrhi::IResource*&()
+{
+    return parent_->get_resource_direct(path_);
+}
+
+std::string ProgramVarsProxy::build_path(const std::string& name) const
+{
+    if (path_.empty()) {
+        return name;
+    }
+    // Handle both member access and nested structures
+    return path_ + "." + name;
+}
+
+std::string ProgramVarsProxy::build_path(int index) const
+{
+    if (path_.empty()) {
+        return "[" + std::to_string(index) + "]";
+    }
+    // Support chained array access like array[0][1] or member.array[0]
+    return path_ + "[" + std::to_string(index) + "]";
+}
+
+// ProgramVars implementation
 ProgramVars::ProgramVars(ResourceAllocator& r) : resource_allocator_(r)
 {
 }
@@ -53,11 +102,18 @@ unsigned ProgramVars::get_binding_space(const std::string& name)
     return final_reflection_info.get_binding_space(name);
 }
 
-// This is based on reflection
+// This is based on reflection  
 unsigned ProgramVars::get_binding_id(const std::string& name)
 {
     auto binding_space = get_binding_space(name);
+    if (binding_space == -1) {
+        return -1;
+    }
+    
     auto binding_location = final_reflection_info.get_binding_location(name);
+    if (binding_location == -1) {
+        return -1;
+    }
 
     auto slot = final_reflection_info.get_binding_layout_descs()[binding_space]
                     .bindings[binding_location]
@@ -121,7 +177,12 @@ std::tuple<unsigned, unsigned> ProgramVars::get_binding_location(
 
 static nvrhi::IResource* placeholder;
 
-nvrhi::IResource*& ProgramVars::operator[](const std::string& name)
+ProgramVarsProxy ProgramVars::operator[](const std::string& name)
+{
+    return ProgramVarsProxy(this, name);
+}
+
+nvrhi::IResource*& ProgramVars::get_resource_direct(const std::string& name)
 {
     auto [binding_space_id, binding_set_location] = get_binding_location(name);
 

@@ -11,37 +11,152 @@ ShaderReflectionInfo::get_binding_layout_descs() const
     return binding_spaces;
 }
 
-unsigned ShaderReflectionInfo::get_binding_space(const std::string& name)
+unsigned ShaderReflectionInfo::get_binding_space(const std::string& path)
 {
-    auto it = binding_locations.find(name);
+    std::string normalized_path = normalize_path(path);
+    
+    // First try exact match
+    auto it = binding_locations.find(normalized_path);
     if (it != binding_locations.end()) {
         return std::get<0>(it->second);
     }
-    log::warning("Binding space not found: %s", name.c_str());
+    
+    // If not found and it's an array access, try fallback to base name
+    std::string base_name = resolve_base_name(normalized_path);
+    if (base_name != normalized_path) {
+        it = binding_locations.find(base_name);
+        if (it != binding_locations.end()) {
+            return std::get<0>(it->second);
+        }
+    }
+    
+    log::warning("Binding space not found: %s (base: %s)", path.c_str(), base_name.c_str());
     return -1;
 }
 
-unsigned ShaderReflectionInfo::get_binding_location(const std::string& name)
+unsigned ShaderReflectionInfo::get_binding_location(const std::string& path)
 {
-    auto it = binding_locations.find(name);
+    std::string normalized_path = normalize_path(path);
+    
+    // First try exact match
+    auto it = binding_locations.find(normalized_path);
     if (it != binding_locations.end()) {
         return std::get<1>(it->second);
     }
-    log::error("Binding location not found: %s", name.c_str());
+    
+    // If not found and it's an array access, try fallback to base name
+    std::string base_name = resolve_base_name(normalized_path);
+    if (base_name != normalized_path) {
+        it = binding_locations.find(base_name);
+        if (it != binding_locations.end()) {
+            return std::get<1>(it->second);
+        }
+    }
+    
+    log::error("Binding location not found: %s (base: %s)", path.c_str(), base_name.c_str());
     return -1;
 }
 
-nvrhi::ResourceType ShaderReflectionInfo::get_binding_type(
-    const std::string& name)
+nvrhi::ResourceType ShaderReflectionInfo::get_binding_type(const std::string& path)
 {
-    auto it = binding_locations.find(name);
+    std::string normalized_path = normalize_path(path);
+    
+    // First try exact match
+    auto it = binding_locations.find(normalized_path);
     if (it != binding_locations.end()) {
         return binding_spaces[std::get<0>(it->second)]
             .bindings[std::get<1>(it->second)]
             .type;
     }
-    log::error("Binding type not found: %s", name.c_str());
+    
+    // If not found and it's an array access, try fallback to base name
+    std::string base_name = resolve_base_name(normalized_path);
+    if (base_name != normalized_path) {
+        it = binding_locations.find(base_name);
+        if (it != binding_locations.end()) {
+            return binding_spaces[std::get<0>(it->second)]
+                .bindings[std::get<1>(it->second)]
+                .type;
+        }
+    }
+    
+    log::error("Binding type not found: %s (base: %s)", path.c_str(), base_name.c_str());
     return nvrhi::ResourceType::None;
+}
+
+bool ShaderReflectionInfo::has_binding(const std::string& path) const
+{
+    std::string normalized_path = normalize_path(path);
+    
+    // First try exact match
+    if (binding_locations.find(normalized_path) != binding_locations.end()) {
+        return true;
+    }
+    
+    // If not found and it's an array access, try fallback to base name
+    std::string base_name = resolve_base_name(normalized_path);
+    if (base_name != normalized_path) {
+        return binding_locations.find(base_name) != binding_locations.end();
+    }
+    
+    return false;
+}
+
+std::string ShaderReflectionInfo::resolve_base_name(const std::string& path) const
+{
+    // Find the first occurrence of '[' to get the base name for arrays
+    // For now, we prioritize array access over member access
+    size_t bracket_pos = path.find('[');
+    size_t dot_pos = path.find('.');
+    
+    if (bracket_pos != std::string::npos && (dot_pos == std::string::npos || bracket_pos < dot_pos)) {
+        // Array access found first
+        return path.substr(0, bracket_pos);
+    } else if (dot_pos != std::string::npos) {
+        // Member access found
+        return path.substr(0, dot_pos);
+    }
+    
+    // No special characters found, return the whole path
+    return path;
+}
+
+std::string ShaderReflectionInfo::extract_array_indices(const std::string& path) const
+{
+    // Extract all array indices and member accesses for future use
+    size_t pos = path.find_first_of("[.");
+    if (pos == std::string::npos) {
+        return "";
+    }
+    return path.substr(pos);
+}
+
+bool ShaderReflectionInfo::is_array_access(const std::string& path) const
+{
+    return path.find('[') != std::string::npos;
+}
+
+std::string ShaderReflectionInfo::normalize_path(const std::string& path) const
+{
+    // Handle various path formats and normalize them
+    std::string normalized = path;
+    
+    // Replace consecutive dots with single dot
+    size_t pos = 0;
+    while ((pos = normalized.find("..", pos)) != std::string::npos) {
+        normalized.replace(pos, 2, ".");
+        pos += 1;
+    }
+    
+    // Remove leading/trailing dots
+    if (!normalized.empty() && normalized.front() == '.') {
+        normalized.erase(0, 1);
+    }
+    if (!normalized.empty() && normalized.back() == '.') {
+        normalized.pop_back();
+    }
+    
+    return normalized;
 }
 
 ShaderReflectionInfo ShaderReflectionInfo::operator+(

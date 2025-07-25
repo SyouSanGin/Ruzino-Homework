@@ -88,7 +88,9 @@ NODE_EXECUTION_FUNCTION(path_tracing)
         params.get_input<nvrhi::BufferHandle>("Pixel Target");
     program_vars["output"] = output;
     program_vars["random_seeds"] = random_seeds;
-    program_vars["sampler"] = sampler;
+    for (int i = 0; i < 9; ++i) {
+        program_vars["samplers"][i] = sampler;
+    }
     program_vars["rays"] = params.get_input<nvrhi::BufferHandle>("Rays");
 
     auto env_prefilter_data = EnvironmentPrefilterData{};
