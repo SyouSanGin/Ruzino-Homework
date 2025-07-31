@@ -94,16 +94,30 @@ class ICUDALinearBuffer : public nvrhi::IResource {
     [[nodiscard]] virtual const CUDALinearBufferDesc& getDesc() const = 0;
     virtual CUdeviceptr get_device_ptr() = 0;
 
+    // Smart device pointer that returns typed pointer
+    template<typename T>
+    T* get_device_ptr()
+    {
+        return reinterpret_cast<T*>(get_device_ptr());
+    }
+
+    // Const version
+    template<typename T>
+    const T* get_device_ptr() const
+    {
+        return reinterpret_cast<const T*>(
+            const_cast<ICUDALinearBuffer*>(this)->get_device_ptr());
+    }
     template<typename T>
     std::vector<T> get_host_vector()
     {
         auto host_data = get_host_data();
         auto data_ptr = host_data.data();
-        auto size = getDesc().element_size;
+        auto count = getDesc().element_count;
 
         auto ret = std::vector<T>(
             reinterpret_cast<T*>(data_ptr),
-            reinterpret_cast<T*>(data_ptr) + size);
+            reinterpret_cast<T*>(data_ptr) + count);
         return ret;
     }
 
