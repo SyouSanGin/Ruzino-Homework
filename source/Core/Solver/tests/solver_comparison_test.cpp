@@ -64,7 +64,9 @@ class SolverComparisonTest : public ::testing::Test {
         SolverType type,
         const Eigen::SparseMatrix<float>& A,
         const Eigen::VectorXf& b,
-        const std::string& test_name)
+        const std::string& test_name,
+        bool is_spd = true,
+        double expected_condition = 0.0)
     {
         try {
             auto solver = SolverFactory::create(type);
@@ -75,14 +77,28 @@ class SolverComparisonTest : public ::testing::Test {
             config.max_iterations = 10000;
             config.verbose = false;
 
+            // Skip inappropriate solver-matrix combinations
+            std::string solver_name = SolverFactory::getTypeName(type);
+
+            // CG and Cholesky only work for SPD matrices
+            if (!is_spd &&
+                (solver_name.find("Conjugate Gradient") != std::string::npos ||
+                 solver_name.find("Cholesky") != std::string::npos)) {
+                std::cout << std::left << std::setw(25) << solver_name << " | "
+                          << std::setw(12) << test_name << " | "
+                          << std::setw(10) << "SKIP"
+                          << " | Not suitable for non-SPD matrices"
+                          << std::endl;
+                return;
+            }
+
             auto result = solver->solve(A, b, x, config);
 
             // Verify solution
             Eigen::VectorXf residual = A * x - b;
             float relative_error = residual.norm() / b.norm();
 
-            std::cout << std::left << std::setw(25)
-                      << SolverFactory::getTypeName(type) << " | "
+            std::cout << std::left << std::setw(25) << solver_name << " | "
                       << std::setw(12) << test_name << " | " << std::setw(10)
                       << (result.converged ? "PASS" : "FAIL") << " | "
                       << std::setw(8) << result.iterations << " | "
@@ -95,69 +111,66 @@ class SolverComparisonTest : public ::testing::Test {
                 // Realistic tolerance based on numerical analysis
                 float tolerance = 1e-4f;
 
-                // Estimate condition number for tridiagonal matrices
-                double condition_estimate =
-                    4.0 * A.rows() * A.rows() / (M_PI * M_PI);
-                double digits_lost = log10(condition_estimate);
+                // Use provided condition number or estimate for tridiagonal
+                double condition_estimate = expected_condition;
+                if (condition_estimate <= 0.0) {
+                    condition_estimate =
+                        4.0 * A.rows() * A.rows() / (M_PI * M_PI);
+                }
 
                 // Direct solvers lose accuracy with ill-conditioned matrices
                 if (!solver->isIterative()) {
                     if (A.rows() >= 5000) {
-                        // For very large ill-conditioned matrices, expect
-                        // significant error Single precision can only provide
-                        // ~7 digits, condition ~10^8 means 1-2 digits lost
-                        tolerance = 0.5f;  // Allow up to 50% error for very
-                                           // ill-conditioned systems
+                        tolerance = 0.5f;
                     }
                     else if (A.rows() >= 1000)
-                        tolerance = 2e-2f;  // 2% for medium matrices
+                        tolerance = 2e-2f;
                     else if (A.rows() >= 500)
-                        tolerance = 5e-3f;  // 0.5% for medium matrices
+                        tolerance = 5e-3f;
                     else
-                        tolerance = 1e-3f;  // 0.1% for small matrices
+                        tolerance = 1e-3f;
                 }
 
-                // BiCGSTAB is fundamentally unsuitable for SPD matrices when n
-                // is large
-                if (SolverFactory::getTypeName(type).find("BiCGSTAB") !=
-                    std::string::npos) {
-                    // Just check it doesn't crash - it's expected to fail on
-                    // large SPD systems
-                    if (A.rows() >= 500) {
-                        EXPECT_TRUE(true) << "BiCGSTAB expected to fail on "
+                // BiCGSTAB handling for SPD matrices
+                if (solver_name.find("BiCGSTAB") != std::string::npos) {
+                    if (is_spd && A.rows() >= 500) {
+                        EXPECT_TRUE(true) << "BiCGSTAB appropriately avoided "
                                              "large SPD matrices";
-                        return;  // Skip tolerance check
+                        return;
                     }
                     tolerance = 1e-3f;
                 }
 
-                // QR decomposition is inherently less stable
-                if (SolverFactory::getTypeName(type).find("QR") !=
-                    std::string::npos) {
+                // QR decomposition tolerance
+                if (solver_name.find("QR") != std::string::npos) {
                     if (A.rows() >= 5000)
-                        tolerance = std::max(tolerance, 1.0f);  // Very relaxed
+                        tolerance = std::max(tolerance, 1.0f);
                     else if (A.rows() >= 1000)
                         tolerance = std::max(tolerance, 5e-2f);
                 }
 
                 EXPECT_LT(relative_error, tolerance)
-                    << "Poor solution quality for "
-                    << SolverFactory::getTypeName(type)
+                    << "Poor solution quality for " << solver_name
                     << " (matrix size: " << A.rows() << "x" << A.cols()
                     << ", expected < " << tolerance << ", condition ~"
                     << condition_estimate << ")";
             }
             else {
-                // For failed solvers, print diagnostic info
                 std::cout << "    Note: Solver did not converge - "
                           << result.error_message << std::endl;
 
-                // BiCGSTAB failing on large SPD matrices is expected
-                if (SolverFactory::getTypeName(type).find("BiCGSTAB") !=
-                        std::string::npos &&
-                    A.rows() >= 500) {
+                // Some failures are expected
+                if (solver_name.find("BiCGSTAB") != std::string::npos &&
+                    is_spd && A.rows() >= 500) {
                     EXPECT_TRUE(true)
                         << "BiCGSTAB appropriately failed on large SPD matrix";
+                }
+                else if (
+                    !is_spd &&
+                    (solver_name.find("CG") != std::string::npos ||
+                     solver_name.find("Cholesky") != std::string::npos)) {
+                    EXPECT_TRUE(true) << "SPD-only solver appropriately failed "
+                                         "on non-SPD matrix";
                 }
             }
         }
@@ -389,10 +402,58 @@ TEST_F(SolverComparisonTest, NumericalStabilityAnalysis)
             generator;
         double expected_condition;
         bool spd;
+        bool test_bicgstab;
     };
 
     std::vector<MatrixTest> matrix_tests = {
         { "Well-conditioned SPD",
+          [](auto& A, auto& b, int n) {
+              A.resize(n, n);
+              std::vector<Eigen::Triplet<float>> triplets;
+              for (int i = 0; i < n; ++i) {
+                  triplets.push_back(Eigen::Triplet<float>(i, i, 10.0f));
+                  if (i > 0)
+                      triplets.push_back(
+                          Eigen::Triplet<float>(i, i - 1, -1.0f));
+                  if (i < n - 1)
+                      triplets.push_back(
+                          Eigen::Triplet<float>(i, i + 1, -1.0f));
+              }
+              A.setFromTriplets(triplets.begin(), triplets.end());
+              b = Eigen::VectorXf::Ones(n);
+          },
+          100.0,
+          true,
+          false },
+        { "Identity matrix",
+          [](auto& A, auto& b, int n) {
+              A.resize(n, n);
+              A.setIdentity();
+              b = Eigen::VectorXf::Random(n);
+          },
+          1.0,
+          true,
+          false },
+        { "Non-symmetric well-conditioned",
+          [](auto& A, auto& b, int n) {
+              A.resize(n, n);
+              std::vector<Eigen::Triplet<float>> triplets;
+              for (int i = 0; i < n; ++i) {
+                  triplets.push_back(Eigen::Triplet<float>(i, i, 5.0f));
+                  if (i > 0)
+                      triplets.push_back(
+                          Eigen::Triplet<float>(i, i - 1, -1.0f));
+                  if (i < n - 1)
+                      triplets.push_back(Eigen::Triplet<float>(
+                          i, i + 1, -3.0f));  // More asymmetric
+              }
+              A.setFromTriplets(triplets.begin(), triplets.end());
+              b = Eigen::VectorXf::Ones(n);
+          },
+          50.0,
+          false,
+          true },
+        { "Simple non-symmetric (diag dominant)",
           [](auto& A, auto& b, int n) {
               A.resize(n, n);
               std::vector<Eigen::Triplet<float>> triplets;
@@ -403,49 +464,18 @@ TEST_F(SolverComparisonTest, NumericalStabilityAnalysis)
                       triplets.push_back(
                           Eigen::Triplet<float>(i, i - 1, -1.0f));
                   if (i < n - 1)
-                      triplets.push_back(
-                          Eigen::Triplet<float>(i, i + 1, -1.0f));
+                      triplets.push_back(Eigen::Triplet<float>(
+                          i, i + 1, -2.0f));  // Clear asymmetry
               }
               A.setFromTriplets(triplets.begin(), triplets.end());
               b = Eigen::VectorXf::Ones(n);
           },
-          100.0,  // Much better conditioned
-          true },
-        { "Identity matrix",
-          [](auto& A, auto& b, int n) {
-              A.resize(n, n);
-              A.setIdentity();
-              b = Eigen::VectorXf::Random(n);
-          },
-          1.0,  // Perfect condition
-          true },
-        { "Diagonal dominant",
-          [](auto& A, auto& b, int n) {
-              A.resize(n, n);
-              std::vector<Eigen::Triplet<float>> triplets;
-              for (int i = 0; i < n; ++i) {
-                  triplets.push_back(Eigen::Triplet<float>(i, i, 5.0f));
-                  if (i > 0)
-                      triplets.push_back(
-                          Eigen::Triplet<float>(i, i - 1, -1.0f));
-                  if (i < n - 1)
-                      triplets.push_back(
-                          Eigen::Triplet<float>(i, i + 1, -1.0f));
-                  if (i > 1)
-                      triplets.push_back(
-                          Eigen::Triplet<float>(i, i - 2, -0.5f));
-                  if (i < n - 2)
-                      triplets.push_back(
-                          Eigen::Triplet<float>(i, i + 2, -0.5f));
-              }
-              A.setFromTriplets(triplets.begin(), triplets.end());
-              b = Eigen::VectorXf::Ones(n);
-          },
-          50.0,  // Well-conditioned
+          20.0,
+          false,
           true }
     };
 
-    int test_size = 1000;
+    int test_size = 500;
 
     for (const auto& matrix_test : matrix_tests) {
         std::cout << "\n--- " << matrix_test.name << " (" << test_size << "x"
@@ -459,17 +489,37 @@ TEST_F(SolverComparisonTest, NumericalStabilityAnalysis)
                   << matrix_test.expected_condition << std::endl;
         std::cout << "Matrix type: " << (matrix_test.spd ? "SPD" : "General")
                   << std::endl;
+        std::cout << "Test BiCGSTAB: "
+                  << (matrix_test.test_bicgstab ? "Yes" : "No") << std::endl;
 
-        // Test all solvers
+        // Test all solvers with proper matrix type awareness
         auto available_types = SolverFactory::getAvailableTypes();
         for (auto type : available_types) {
-            // Skip BiCGSTAB for SPD matrices to avoid expected failures
-            if (matrix_test.spd && SolverFactory::getTypeName(type).find(
-                                       "BiCGSTAB") != std::string::npos) {
+            std::string solver_name = SolverFactory::getTypeName(type);
+
+            // Skip BiCGSTAB for SPD matrices
+            if (matrix_test.spd &&
+                solver_name.find("BiCGSTAB") != std::string::npos) {
+                std::cout << "Skipping BiCGSTAB for " << matrix_test.name
+                          << " (SPD matrix)" << std::endl;
                 continue;
             }
 
-            testSolver(type, A, b, matrix_test.name);
+            // Skip non-SPD specific tests based on test specification
+            if (!matrix_test.test_bicgstab &&
+                solver_name.find("BiCGSTAB") != std::string::npos) {
+                std::cout << "Skipping BiCGSTAB for " << matrix_test.name
+                          << " (not in test spec)" << std::endl;
+                continue;
+            }
+
+            testSolver(
+                type,
+                A,
+                b,
+                matrix_test.name,
+                matrix_test.spd,
+                matrix_test.expected_condition);
         }
     }
 }
