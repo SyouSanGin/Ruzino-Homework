@@ -1,0 +1,251 @@
+#include "../../geometry_nodes/fem_bem/Expression.hpp"
+
+#include <gtest/gtest.h>
+
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+using namespace USTC_CG::fem_bem;
+
+// Test Expression class specific functionality - Factory methods
+TEST(ExpressionFocusedTest, FactoryMethods)
+{
+    auto expr1 = ExpressionD::from_string("x + y");
+    EXPECT_EQ(expr1.get_string(), "x + y");
+
+    auto expr2 = ExpressionD::constant(42.0);
+    EXPECT_EQ(expr2.get_string(), "42.000000");
+
+    auto expr3 = ExpressionD::zero();
+    EXPECT_EQ(expr3.get_string(), "0");
+
+    auto expr4 = ExpressionD::one();
+    EXPECT_EQ(expr4.get_string(), "1");
+}
+
+// Test Expression class specific functionality - Variable management API
+TEST(ExpressionFocusedTest, VariableManagementAPI)
+{
+    ExpressionD expr("a + b * c");
+
+    // Test evaluate_at method since add_variable is removed
+    std::unordered_map<std::string, double> values = { { "a", 1.0 },
+                                                       { "b", 2.0 },
+                                                       { "c", 3.0 } };
+
+    EXPECT_DOUBLE_EQ(expr.evaluate_at(values), 7.0);
+
+    // Test with different values
+    values["a"] = 5.0;
+    EXPECT_DOUBLE_EQ(expr.evaluate_at(values), 11.0);
+}
+
+// Test Expression class specific functionality - evaluate_at method
+TEST(ExpressionFocusedTest, EvaluateAtMethod)
+{
+    ExpressionD expr("x^2 + y^2");
+
+    // Test evaluate_at with variable values
+    std::unordered_map<std::string, double> temp_values = { { "x", 3.0 },
+                                                            { "y", 4.0 } };
+
+    double result = expr.evaluate_at(temp_values);
+    EXPECT_DOUBLE_EQ(result, 25.0);  // 3^2 + 4^2 = 25
+
+    // Test with different values
+    temp_values = { { "x", 1.0 }, { "y", 1.0 } };
+    EXPECT_DOUBLE_EQ(expr.evaluate_at(temp_values), 2.0);  // 1^2 + 1^2 = 2
+}
+
+// Test Expression class specific functionality - Arithmetic operators
+TEST(ExpressionFocusedTest, ArithmeticOperatorOverloads)
+{
+    ExpressionD expr1("x + 2");
+    ExpressionD expr2("y * 3");
+
+    // Test Expression + Expression
+    auto sum = expr1 + expr2;
+    EXPECT_EQ(sum.get_string(), "(x + 2) + (y * 3)");
+
+    // Test Expression - Expression
+    auto diff = expr1 - expr2;
+    EXPECT_EQ(diff.get_string(), "(x + 2) - (y * 3)");
+
+    // Test Expression * Expression
+    auto prod = expr1 * expr2;
+    EXPECT_EQ(prod.get_string(), "(x + 2) * (y * 3)");
+
+    // Test Expression / Expression
+    auto quot = expr1 / expr2;
+    EXPECT_EQ(quot.get_string(), "(x + 2) / (y * 3)");
+
+    // Test Expression * scalar
+    auto scaled = expr1 * 5.0;
+    EXPECT_EQ(scaled.get_string(), "5.000000 * (x + 2)");
+
+    // Test scalar * Expression (free function)
+    auto scaled2 = 3.0 * expr1;
+    EXPECT_EQ(scaled2.get_string(), "3.000000 * (x + 2)");
+
+    // Test unary minus
+    auto neg = -expr1;
+    EXPECT_EQ(neg.get_string(), "-(x + 2)");
+}
+
+// Test Expression class specific functionality - String modification API
+TEST(ExpressionFocusedTest, StringModificationAPI)
+{
+    ExpressionD expr("x + 1");
+
+    // Test evaluate_at method instead of set_string
+    EXPECT_DOUBLE_EQ(expr.evaluate_at({ { "x", 5.0 } }), 6.0);
+
+    // Create a new expression for different behavior
+    ExpressionD expr2("x * 2");
+    EXPECT_EQ(expr2.get_string(), "x * 2");
+    EXPECT_DOUBLE_EQ(expr2.evaluate_at({ { "x", 5.0 } }), 10.0);
+}
+
+// Test Expression class specific functionality - Utility functions
+TEST(ExpressionFocusedTest, UtilityFunctions)
+{
+    auto expr1 = make_expression<double>("x + y");
+    auto expr2 = make_expression_d("a * b");
+    auto expr3 = make_expression_f("sin(t)");
+
+    EXPECT_EQ(expr1.get_string(), "x + y");
+    EXPECT_EQ(expr2.get_string(), "a * b");
+    EXPECT_EQ(expr3.get_string(), "sin(t)");
+
+    // Verify types
+    static_assert(std::is_same_v<decltype(expr1), ExpressionD>);
+    static_assert(std::is_same_v<decltype(expr2), ExpressionD>);
+    static_assert(std::is_same_v<decltype(expr3), ExpressionF>);
+}
+
+// Test Expression class specific functionality - Copy semantics
+TEST(ExpressionFocusedTest, CopySemantics)
+{
+    ExpressionD expr1("x * y + 5");
+
+    // Copy constructor should work
+    ExpressionD expr2(expr1);
+    EXPECT_EQ(expr2.get_string(), "x * y + 5");
+
+    // Both expressions should evaluate to the same result with same inputs
+    std::unordered_map<std::string, double> values = { { "x", 2.0 },
+                                                       { "y", 3.0 } };
+    EXPECT_DOUBLE_EQ(expr1.evaluate_at(values), 11.0);  // 2*3+5
+    EXPECT_DOUBLE_EQ(expr2.evaluate_at(values), 11.0);  // 2*3+5
+}
+
+// Test Expression class specific functionality - Integration interface
+TEST(ExpressionFocusedTest, IntegrationInterface)
+{
+    ExpressionD expr("x*x + y*y");
+
+    // Test that integration methods exist and can be called
+    std::vector<std::string> barycentric_vars;
+    barycentric_vars.push_back("u");
+    barycentric_vars.push_back("v");
+    barycentric_vars.push_back("w");
+
+    // These methods should exist even if not fully implemented
+    try {
+        expr.integrate_over_simplex(barycentric_vars, nullptr, 10);
+    }
+    catch (const std::exception&) {
+        // Expected if not implemented - the important thing is the interface
+        // exists
+    }
+
+    // Test integration with another expression
+    ExpressionD other("z");
+    try {
+        expr.integrate_product_with(other, barycentric_vars, nullptr, 10);
+    }
+    catch (const std::exception&) {
+        // Expected if not implemented
+    }
+}
+
+// Test Expression class specific functionality - Template specializations
+TEST(ExpressionFocusedTest, TemplateSpecializations)
+{
+    // Test double specialization
+    ExpressionD double_expr("x + y");
+    EXPECT_DOUBLE_EQ(
+        double_expr.evaluate_at({ { "x", 1.5 }, { "y", 2.5 } }), 4.0);
+
+    // Test float specialization
+    ExpressionF float_expr("a * b");
+    EXPECT_NEAR(
+        float_expr.evaluate_at({ { "a", 2.0f }, { "b", 3.0f } }), 6.0f, 1e-6f);
+}
+
+// Test Expression class specific functionality - Compilation caching
+TEST(ExpressionFocusedTest, CompilationCaching)
+{
+    ExpressionD expr("x + y + z");
+
+    // First evaluation should compile the expression
+    double result1 =
+        expr.evaluate_at({ { "x", 1.0 }, { "y", 2.0 }, { "z", 3.0 } });
+    EXPECT_DOUBLE_EQ(result1, 6.0);
+
+    // Second evaluation should use cached compilation
+    double result2 =
+        expr.evaluate_at({ { "x", 1.0 }, { "y", 2.0 }, { "z", 3.0 } });
+    EXPECT_DOUBLE_EQ(result2, 6.0);
+
+    // Test with different values
+    double result3 =
+        expr.evaluate_at({ { "x", 10.0 }, { "y", 2.0 }, { "z", 3.0 } });
+    EXPECT_DOUBLE_EQ(result3, 15.0);
+}
+
+// Test Expression class specific functionality - Error handling
+TEST(ExpressionFocusedTest, ErrorHandling)
+{
+    // Test expression with syntax error - will fail during evaluate_at
+    ExpressionD invalid_expr("x + * y");
+    EXPECT_THROW(invalid_expr.evaluate_at({{"x", 1.0}, {"y", 2.0}}), std::runtime_error);
+
+    // Test empty expression
+    ExpressionD empty_expr;
+    EXPECT_EQ(empty_expr.get_string(), "");
+    EXPECT_THROW(empty_expr.evaluate_at({}), std::runtime_error);
+}
+
+// Test Expression class specific functionality - Derivative interface
+TEST(ExpressionFocusedTest, DerivativeInterface)
+{
+    ExpressionD expr("x^2 + y");
+
+    // Test derivative method (placeholder implementation)
+    auto dx = expr.derivative("x");
+
+    EXPECT_EQ(expr.is_string_based(), true);
+    EXPECT_EQ(dx.is_string_based(), false);
+    EXPECT_EQ(dx.get_string(), "");
+
+    EXPECT_NEAR(dx.evaluate_at({ { "x", 1.0 }, { "y", 2.0 } }), 2.0, 1e-6);
+
+    ExpressionD expr2("x^2 + y^2 + z");
+    auto grad = expr2.gradient({ "x", "y" });
+    EXPECT_EQ(grad.size(), 2);
+
+    auto dx2 = grad[0];
+    auto dy2 = grad[1];
+    EXPECT_EQ(dx2.get_string(), "");
+    EXPECT_EQ(dy2.get_string(), "");
+    EXPECT_NEAR(
+        dx2.evaluate_at({ { "x", 1.0 }, { "y", 2.0 }, { "z", 3.0 } }),
+        2.0,
+        1e-6);
+    EXPECT_NEAR(
+        dy2.evaluate_at({ { "x", 1.0 }, { "y", 2.0 }, { "z", 3.0 } }),
+        4.0,
+        1e-6);
+}

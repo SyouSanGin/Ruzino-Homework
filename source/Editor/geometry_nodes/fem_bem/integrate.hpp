@@ -87,13 +87,14 @@ namespace fem_bem {
                 }
             }
         }
-        // For 3D case (tetrahedron) - uses 3 barycentric coordinates  
+        // For 3D case (tetrahedron) - uses 3 barycentric coordinates
         else if (dim == 3) {
             const T h = T(1) / number_of_intervals;
 
             for (std::size_t i = 0; i <= number_of_intervals; ++i) {
                 for (std::size_t j = 0; j <= number_of_intervals - i; ++j) {
-                    for (std::size_t k = 0; k <= number_of_intervals - i - j; ++k) {
+                    for (std::size_t k = 0; k <= number_of_intervals - i - j;
+                         ++k) {
                         const T u1 = i * h;
                         const T u2 = j * h;
                         const T u3 = k * h;
@@ -106,16 +107,22 @@ namespace fem_bem {
                             T weight = T(1);
                             // Boundary correction
                             int boundary_count = 0;
-                            if (i == 0) boundary_count++;
-                            if (j == 0) boundary_count++;
-                            if (k == 0) boundary_count++;
-                            if (i + j + k == number_of_intervals) boundary_count++;
+                            if (i == 0)
+                                boundary_count++;
+                            if (j == 0)
+                                boundary_count++;
+                            if (k == 0)
+                                boundary_count++;
+                            if (i + j + k == number_of_intervals)
+                                boundary_count++;
 
                             if (boundary_count > 0)
                                 weight = T(1) / T(1 << boundary_count);
 
-                            // Tetrahedron volume element: multiply by 6 to normalize to unit volume
-                            total_integral += weight * e.value() * h * h * h * T(6);
+                            // Tetrahedron volume element: multiply by 6 to
+                            // normalize to unit volume
+                            total_integral +=
+                                weight * e.value() * h * h * h * T(6);
                         }
                     }
                 }
@@ -394,10 +401,12 @@ namespace fem_bem {
                         barycentric_vars1[1]->ref() = u2;
                         barycentric_vars2[1]->ref() = u2;
 
-                        // Apply mapping function to get physical coordinates for expr2
+                        // Apply mapping function to get physical coordinates
+                        // for expr2
                         auto mapped_coords = mapping(u1, u2);
 
-                        // Update physical coordinate variables if they exist in expr2
+                        // Update physical coordinate variables if they exist in
+                        // expr2
                         if (x_var && mapped_coords.size() > 0)
                             x_var->ref() = mapped_coords[0];
                         if (y_var && mapped_coords.size() > 1)
