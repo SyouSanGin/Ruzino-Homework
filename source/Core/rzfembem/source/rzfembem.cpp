@@ -22,10 +22,10 @@ class FEMSolver2D : public ElementSolver {
         // For P_minus with k=0 (H1 space), we need linear shape functions on
         // triangle vertices P-1Λ0 space has linear basis functions: u1, u2, u3
         // where u3 = 1 - u1 - u2
+        basis_->add_vertex_expression(
+            "1 - u1 - u2");                   // shape function at vertex 2
         basis_->add_vertex_expression("u1");  // shape function at vertex 0
         basis_->add_vertex_expression("u2");  // shape function at vertex 1
-        basis_->add_vertex_expression(
-            "1 - u1 - u2");  // shape function at vertex 2
     }
 
     void set_geometry(const Geometry& geom) override
@@ -68,9 +68,6 @@ class FEMSolver2D : public ElementSolver {
         // Assemble system matrix and RHS
         auto [A, b] = assemble_system();
 
-        // Apply boundary conditions
-        apply_boundary_conditions(A, b);
-
         // Solve linear system
         auto solution = solve_linear_system(A, b);
 
@@ -85,45 +82,16 @@ class FEMSolver2D : public ElementSolver {
     fem_bem::ElementBasisHandle basis_;
     std::string boundary_expr_;
 
-    // Mesh data
-    std::vector<pxr::GfVec3f> vertices_;
-    std::vector<std::array<int, 3>> triangles_;
-    std::set<int> boundary_vertices_;
-
     void extract_mesh_data()
     {
         if (!mesh_comp_)
             return;
-
-        // Get vertices - ignore z coordinate for 2D solver
-        auto mesh_vertices = mesh_comp_->get_vertices();
-        vertices_.reserve(mesh_vertices.size());
-        for (const auto& v : mesh_vertices) {
-            vertices_.push_back(v);
-        }
-
-        // Get triangles
-        auto indices = mesh_comp_->get_face_vertex_indices();
-        triangles_.reserve(indices.size() / 3);
-        for (size_t i = 0; i < indices.size(); i += 3) {
-            triangles_.push_back(
-                { indices[i], indices[i + 1], indices[i + 2] });
-        }
-
-        // Find boundary vertices using OpenMesh
-        boundary_vertices_.clear();
-        for (auto v_it = openmesh_->vertices_begin();
-             v_it != openmesh_->vertices_end();
-             ++v_it) {
-            if (openmesh_->is_boundary(*v_it)) {
-                boundary_vertices_.insert(v_it->idx());
-            }
-        }
+        openmesh_ = operand_to_openmesh(&geometry_);
     }
 
     std::pair<Eigen::SparseMatrix<float>, Eigen::VectorXf> assemble_system()
     {
-        int n_vertices = vertices_.size();
+        int n_vertices = openmesh_->n_vertices();
 
         // Initialize sparse matrix and RHS vector
         Eigen::SparseMatrix<float> A(n_vertices, n_vertices);
@@ -132,75 +100,84 @@ class FEMSolver2D : public ElementSolver {
         // Triplets for sparse matrix assembly
         std::vector<Eigen::Triplet<float>> triplets;
 
-        // Assemble over all triangles
-        for (const auto& triangle : triangles_) {
-            assemble_element(triangle, triplets, b);
-        }
+        // First deal with the vertex based element.
 
-        A.setFromTriplets(triplets.begin(), triplets.end());
-        return { A, b };
-    }
+        for (auto v_it : openmesh_->vertices()) {
+            // This id
+            int vertex_id = v_it.idx();  // matrix id i
+            // if this vertex on the boundary, then delta_ij in the matrix, and
+            // RHS = boundary_value
+            if (openmesh_->is_boundary(v_it)) {
+                float boundary_value = get_boundary_value(vertex_id);
+                triplets.emplace_back(vertex_id, vertex_id, 1.0f);
+                b[vertex_id] = boundary_value;
+                continue;
+            }
 
-    void assemble_element(
-        const std::array<int, 3>& triangle,
-        std::vector<Eigen::Triplet<float>>& triplets,
-        Eigen::VectorXf& b)
-    {
-        // Get triangle vertices in 2D (ignore z)
-        std::vector<pxr::GfVec2d> tri_verts_2d;
-        for (int i = 0; i < 3; i++) {
-            auto& v = vertices_[triangle[i]];
-            tri_verts_2d.push_back(pxr::GfVec2d(v[0], v[1]));
-        }
+            // Otherwise, first find all connected faces
+            for (auto f_it : openmesh_->vf_range(v_it)) {
+                // Then, get the other two counter-clockwise vertex ids within
+                // the face.
+                auto face_vertices = openmesh_->fv_range(f_it);
+                std::vector<pxr::GfVec2d> tri_verts;
+                std::vector<int> face_vertex_ids;
 
-        // Compute gradients of shape functions in physical coordinates
-        auto gradients = compute_shape_gradients(tri_verts_2d);
+                std::vector<int> ordered_vertices;
+                for (auto fv_it : face_vertices) {
+                    ordered_vertices.push_back(fv_it.idx());
+                    tri_verts.push_back(
+                        pxr::GfVec2d(
+                            openmesh_->point(fv_it)[0],
+                            openmesh_->point(fv_it)[1]));
+                }
 
-        // Compute element area
-        float area = compute_triangle_area(tri_verts_2d);
+                // Find the position of current vertex in the face
+                int vertex_pos = -1;
+                for (int i = 0; i < 3; i++) {
+                    if (ordered_vertices[i] == vertex_id) {
+                        vertex_pos = i;
+                        break;
+                    }
+                }
 
-        // Assemble local stiffness matrix: ∫∇φᵢ·∇φⱼ dΩ
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                float local_entry = area * (gradients[i][0] * gradients[j][0] +
-                                            gradients[i][1] * gradients[j][1]);
+                // Get the other two vertices in counter-clockwise order
+                int next1 = (vertex_pos + 1) % 3;
+                int next2 = (vertex_pos + 2) % 3;
+                face_vertex_ids.push_back(ordered_vertices[next1]);
+                face_vertex_ids.push_back(ordered_vertices[next2]);
 
-                triplets.emplace_back(triangle[i], triangle[j], local_entry);
+                // Now we assemble the stiffness matrix and load vector for the
+                // triangle
+
+                auto expressions = basis_->get_vertex_expression_strings();
+
+                auto triangle_area = compute_triangle_area(tri_verts);
+
+                auto integral = basis_->integrate_vertex_against_with_mapping(
+                    "1-u1-u2", tri_verts);
+                triplets.emplace_back(
+                    vertex_id, vertex_id, integral[0] * triangle_area);
+                triplets.emplace_back(
+                    vertex_id, face_vertex_ids[0], integral[1] * triangle_area);
+                triplets.emplace_back(
+                    vertex_id, face_vertex_ids[1], integral[2] * triangle_area);
             }
         }
 
-        // For Laplace equation with zero RHS, b remains zero
-        // (RHS assembly would go here for non-homogeneous problems)
+        A.setFromTriplets(triplets.begin(), triplets.end());
+        A.makeCompressed();
+        return { A, b };
     }
 
-    std::vector<std::array<float, 2>> compute_shape_gradients(
-        const std::vector<pxr::GfVec2d>& tri_verts)
+    float get_boundary_value(int vertex_id)
     {
-        // For linear elements on triangle, gradients are constant
-        // Shape functions: φ₀ = (a₀ + b₀x + c₀y)/2A, etc.
+        // Evaluate boundary expression at vertex
+        auto& vertex = openmesh_->point(openmesh_->vertex_handle(vertex_id));
+        double x = vertex[0], y = vertex[1];
 
-        double x1 = tri_verts[0][0], y1 = tri_verts[0][1];
-        double x2 = tri_verts[1][0], y2 = tri_verts[1][1];
-        double x3 = tri_verts[2][0], y3 = tri_verts[2][1];
-
-        double det = (x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1);
-        double inv_det = 1.0 / det;
-
-        std::vector<std::array<float, 2>> gradients(3);
-
-        // ∇φ₀ = 1/(2A) * [y2-y3, x3-x2]
-        gradients[0][0] = static_cast<float>(inv_det * (y2 - y3));
-        gradients[0][1] = static_cast<float>(inv_det * (x3 - x2));
-
-        // ∇φ₁ = 1/(2A) * [y3-y1, x1-x3]
-        gradients[1][0] = static_cast<float>(inv_det * (y3 - y1));
-        gradients[1][1] = static_cast<float>(inv_det * (x1 - x3));
-
-        // ∇φ₂ = 1/(2A) * [y1-y2, x2-x1]
-        gradients[2][0] = static_cast<float>(inv_det * (y1 - y2));
-        gradients[2][1] = static_cast<float>(inv_det * (x2 - x1));
-
-        return gradients;
+        fem_bem::ExpressionD boundary_func(boundary_expr_);
+        return static_cast<float>(
+            boundary_func.evaluate_at({ { "x", x }, { "y", y } }));
     }
 
     float compute_triangle_area(const std::vector<pxr::GfVec2d>& tri_verts)
@@ -211,48 +188,6 @@ class FEMSolver2D : public ElementSolver {
 
         return static_cast<float>(
             0.5 * std::abs((x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1)));
-    }
-
-    void apply_boundary_conditions(
-        Eigen::SparseMatrix<float>& A,
-        Eigen::VectorXf& b)
-    {
-        // Parse boundary expression and apply Dirichlet conditions
-        fem_bem::ExpressionD boundary_func(boundary_expr_);
-
-        for (int vertex_id : boundary_vertices_) {
-            // Evaluate boundary condition at vertex
-            auto& vertex = vertices_[vertex_id];
-            double x = vertex[0], y = vertex[1];
-
-            double boundary_value =
-                boundary_func.evaluate_at({ { "x", x }, { "y", y } });
-
-            // Apply strong enforcement: set row to identity, RHS to boundary
-            // value Clear row
-            for (Eigen::SparseMatrix<float>::InnerIterator it(A, vertex_id); it;
-                 ++it) {
-                if (it.row() != vertex_id) {
-                    it.valueRef() = 0.0f;
-                }
-            }
-
-            // Clear column
-            for (int k = 0; k < A.outerSize(); ++k) {
-                for (Eigen::SparseMatrix<float>::InnerIterator it(A, k); it;
-                     ++it) {
-                    if (it.col() == vertex_id && it.row() != vertex_id) {
-                        it.valueRef() = 0.0f;
-                    }
-                }
-            }
-
-            // Set diagonal and RHS
-            A.coeffRef(vertex_id, vertex_id) = 1.0f;
-            b[vertex_id] = static_cast<float>(boundary_value);
-        }
-
-        A.makeCompressed();
     }
 
     pxr::VtArray<float> solve_linear_system(
