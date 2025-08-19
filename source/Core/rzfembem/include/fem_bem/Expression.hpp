@@ -167,6 +167,7 @@ namespace fem_bem {
 
        private:
         void parse_expression() const;
+        void apply_recursive_substitution();
 
         template<typename MappingFunc>
         friend real integrate_over_simplex(
