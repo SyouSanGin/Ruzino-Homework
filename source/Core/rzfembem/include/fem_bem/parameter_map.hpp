@@ -29,9 +29,9 @@ namespace USTC_CG {
 namespace fem_bem {
 
     // Global counters for profiling
-    RZFEMBEM_API extern std::atomic<std::size_t> g_insert_or_assign_calls;
-    RZFEMBEM_API extern std::atomic<std::size_t> g_insert_unchecked_calls;
-    RZFEMBEM_API extern std::atomic<std::size_t> g_evaluate_calls;
+    RZFEMBEM_API extern std::size_t g_insert_or_assign_calls;
+    RZFEMBEM_API extern std::size_t g_insert_unchecked_calls;
+    RZFEMBEM_API extern std::size_t g_evaluate_calls;
 
     // Stack-based parameter map using fixed-size array
     // Ultra-lightweight optimized for small parameter lists with no dynamic

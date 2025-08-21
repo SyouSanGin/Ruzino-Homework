@@ -72,16 +72,17 @@ namespace fem_bem {
         const Expression& outer_expr,
         const ParameterMap<Expression>& variable_substitutions)
         : outer_expression_(std::make_unique<Expression>(outer_expr)),
-          substitution_map_(variable_substitutions),
+          substitution_map_(std::make_unique<ParameterMap<Expression>>(
+              variable_substitutions)),
           is_compound_(true)
     {
         // Build compound expression string for display
         expression_string_ = outer_expr.get_string() +
                              " with "
                              "substitutions: ";
-        for (int i = 0; i < substitution_map_.size(); ++i) {
-            auto name = substitution_map_.get_name_at(i);
-            auto expr = substitution_map_.get_value_at(i).get_string();
+        for (int i = 0; i < substitution_map_->size(); ++i) {
+            auto name = substitution_map_->get_name_at(i);
+            auto expr = substitution_map_->get_value_at(i).get_string();
             expression_string_ += std::string(name) + " = " + expr + ", ";
         }
     }
@@ -89,16 +90,17 @@ namespace fem_bem {
         const Expression& outer_expr,
         std::initializer_list<std::pair<const char*, Expression>> substitutions)
         : outer_expression_(std::make_unique<Expression>(outer_expr)),
-          substitution_map_(substitutions),
+          substitution_map_(
+              std::make_unique<ParameterMap<Expression>>(substitutions)),
           is_compound_(true)
     {
         // Build compound expression string for display
         expression_string_ = outer_expr.get_string() +
                              " with "
                              "substitutions: ";
-        for (int i = 0; i < substitution_map_.size(); ++i) {
-            auto name = substitution_map_.get_name_at(i);
-            auto expr = substitution_map_.get_value_at(i).get_string();
+        for (int i = 0; i < substitution_map_->size(); ++i) {
+            auto name = substitution_map_->get_name_at(i);
+            auto expr = substitution_map_->get_value_at(i).get_string();
 
             expression_string_ += std::string(name) + " = " + expr + ", ";
         }
@@ -112,7 +114,11 @@ namespace fem_bem {
               other.outer_expression_
                   ? std::make_unique<Expression>(*other.outer_expression_)
                   : nullptr),
-          substitution_map_(other.substitution_map_),
+          substitution_map_(
+              other.substitution_map_
+                  ? std::make_unique<ParameterMap<Expression>>(
+                        *other.substitution_map_)
+                  : nullptr),
           derivative_evaluator_(other.derivative_evaluator_),
           has_derivative_evaluator_(other.has_derivative_evaluator_),
           has_bound_variable_(other.has_bound_variable_)
@@ -133,7 +139,11 @@ namespace fem_bem {
                 other.outer_expression_
                     ? std::make_unique<Expression>(*other.outer_expression_)
                     : nullptr;
-            substitution_map_ = other.substitution_map_;
+            substitution_map_ =
+                other.substitution_map_
+                    ? std::make_unique<ParameterMap<Expression>>(
+                          *other.substitution_map_)
+                    : nullptr;
             derivative_evaluator_ = other.derivative_evaluator_;
             has_derivative_evaluator_ = other.has_derivative_evaluator_;
             has_bound_variable_ = other.has_bound_variable_;
@@ -178,11 +188,11 @@ namespace fem_bem {
         has_bound_variable_ = true;
     }
 
-    void Expression::bind_variable(const char* var_name, real value)
+    void Expression::bind_variable(const char* var_name, real value) const
     {
         if (is_compound_) {
-            for (int i = 0; i < substitution_map_.size(); ++i) {
-                substitution_map_.get_value_at(i).bind_variable(
+            for (int i = 0; i < substitution_map_->size(); ++i) {
+                substitution_map_->get_value_at(i).bind_variable(
                     var_name, value);
             }
         }
@@ -191,6 +201,18 @@ namespace fem_bem {
         }
 
         has_bound_variable_ = true;
+    }
+    void Expression::set_variable(const char* var_name, real value) const
+    {
+        if (is_compound_) {
+            for (int i = 0; i < substitution_map_->size(); ++i) {
+                substitution_map_->get_value_at(i).set_variable(
+                    var_name, value);
+            }
+        }
+        else {
+            variables_.insert_or_assign(var_name, value);
+        }
     }
     bool Expression::has_bound_variables() const
     {
@@ -225,7 +247,7 @@ namespace fem_bem {
             for (std::size_t i = 0; i < variable_values.size(); ++i) {
                 const char* name = variable_values.get_name_at(i);
 
-                if (!substitution_map_.contains(name)) {
+                if (!substitution_map_->contains(name)) {
                     const real& value = variable_values.get_value_at(i);
                     outer_expression_->bind_variable(name, value);
                 }
@@ -233,10 +255,11 @@ namespace fem_bem {
 
             // Evaluate substitutions
             ParameterMap<real> outer_values = variables_;
-            for (std::size_t i = 0; i < substitution_map_.size(); ++i) {
-                const auto& name = substitution_map_.get_name_at(i);
-                real sub_result = substitution_map_.get_value_at(i).evaluate_at(
-                    variable_values);
+            for (std::size_t i = 0; i < substitution_map_->size(); ++i) {
+                const auto& name = substitution_map_->get_name_at(i);
+                real sub_result =
+                    substitution_map_->get_value_at(i).evaluate_at(
+                        variable_values);
                 outer_values.insert_or_assign(name, sub_result);
             }
 
@@ -338,8 +361,8 @@ namespace fem_bem {
         if (is_compound_ && outer_expression_) {
             // Check if any of the substitutions are derivatives
             bool has_derivative_substitution = false;
-            for (int i = 0; i < substitution_map_.size(); ++i) {
-                const auto& pair = substitution_map_.get_value_at(i);
+            for (int i = 0; i < substitution_map_->size(); ++i) {
+                const auto& pair = substitution_map_->get_value_at(i);
                 if (pair.has_derivative_evaluator_) {
                     has_derivative_substitution = true;
                     break;

@@ -72,7 +72,8 @@ namespace fem_bem {
 
         // Closure methods - bind specific variables to values
         void bind_variables(const ParameterMap<real>& bound_values);
-        void bind_variable(const char* var_name, real value);
+        void bind_variable(const char* var_name, real value) const;
+        void set_variable(const char* var_name, real value) const;
 
         // Check if expression has bound variables (is a closure)
         bool has_bound_variables() const;
@@ -96,7 +97,7 @@ namespace fem_bem {
         // Protected members for derived classes to access
         std::string expression_string_;
 
-        bool has_bound_variable_ = false;
+        mutable bool has_bound_variable_ = false;
 
         // Parsed expression components
         mutable std::unique_ptr<symbol_table_type> symbol_table_;
@@ -111,7 +112,7 @@ namespace fem_bem {
         bool is_compound_ = false;
         std::unique_ptr<Expression> outer_expression_;
         // std::vector<std::pair<const char*, Expression>> substitution_map_;
-        ParameterMap<Expression> substitution_map_;
+        mutable std::unique_ptr<ParameterMap<Expression>> substitution_map_;
 
         // Support for DerivativeExpression conversion
         std::function<real(const ParameterMap<real>&)> derivative_evaluator_;
@@ -306,19 +307,20 @@ namespace fem_bem {
         const MappingExpr& mapping_expr = nullptr,
         std::size_t intervals = 100)
     {
-        Expression final_expr = expr;
-        for (const auto& barycentric_name : barycentric_names) {
-            final_expr.bind_variable(barycentric_name.c_str(), real(0));
-        }
-
         // If mapping is provided, compose it with the expression
         if constexpr (!std::is_same_v<MappingExpr, std::nullptr_t>) {
+            Expression final_expr = expr;
             final_expr =
                 compose_with_mapping(expr, mapping_expr, barycentric_names);
+            return integrate_expression_numerically(
+                final_expr, barycentric_names, intervals);
         }
 
+        for (const auto& barycentric_name : barycentric_names) {
+            expr.set_variable(barycentric_name.c_str(), real(0));
+        }
         return integrate_expression_numerically(
-            final_expr, barycentric_names, intervals);
+            expr, barycentric_names, intervals);
     }
 
     // Helper function to compose expression with mapping

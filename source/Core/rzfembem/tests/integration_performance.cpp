@@ -38,7 +38,7 @@ class IntegrationPerformanceTest : public ::testing::Test {
     double benchmark_function(const std::string& test_name, Func&& func)
     {
         auto start = std::chrono::high_resolution_clock::now();
-        int iterations = 10;
+        int iterations = 20;
         for (int i = 0; i < iterations; ++i) {
             func();
         }
