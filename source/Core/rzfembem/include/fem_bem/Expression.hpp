@@ -5,7 +5,6 @@
 #include <vector>
 
 #include "api.h"
-#include "integrate.hpp"
 #include "parameter_map.hpp"
 #include "pxr/base/gf/vec2d.h"
 #include "pxr/base/gf/vec3d.h"
@@ -34,8 +33,7 @@ namespace fem_bem {
         // Compound expression constructor
         Expression(
             const Expression& outer_expr,
-            const std::vector<std::pair<const char*, Expression>>&
-                variable_substitutions);
+            const ParameterMap<Expression>& variable_substitutions);
 
         Expression(
             const Expression& outer_expr,
@@ -74,7 +72,7 @@ namespace fem_bem {
 
         // Closure methods - bind specific variables to values
         void bind_variables(const ParameterMap<real>& bound_values);
-        void bind_variable(const std::string& var_name, real value);
+        void bind_variable(const char* var_name, real value);
 
         // Check if expression has bound variables (is a closure)
         bool has_bound_variables() const;
@@ -112,7 +110,8 @@ namespace fem_bem {
         // Compound expression support
         bool is_compound_ = false;
         std::unique_ptr<Expression> outer_expression_;
-        std::vector<std::pair<const char*, Expression>> substitution_map_;
+        // std::vector<std::pair<const char*, Expression>> substitution_map_;
+        ParameterMap<Expression> substitution_map_;
 
         // Support for DerivativeExpression conversion
         std::function<real(const ParameterMap<real>&)> derivative_evaluator_;
@@ -122,7 +121,6 @@ namespace fem_bem {
 
        private:
         void parse_expression() const;
-        void apply_recursive_substitution();
 
         template<typename MappingFunc>
         friend real integrate_over_simplex(
@@ -177,6 +175,129 @@ namespace fem_bem {
         // Note: Integration methods are inherited from Expression base class
     };
 
+    // Direct numerical integration for expressions
+    inline real integrate_expression_numerically(
+        const Expression& expr,
+        const std::vector<std::string>& barycentric_names,
+        std::size_t intervals)
+    {
+        if (barycentric_names.empty())
+            return real(0);
+
+        const std::size_t dim = barycentric_names.size();
+        real total_integral = real(0);
+
+        // Create a ParameterMap for evaluation - reuse the same object
+        ParameterMap<real> values;
+
+        // For 1D case (line segment)
+        if (dim == 1) {
+            const real h = real(1) / intervals;
+
+            for (std::size_t i = 0; i < intervals; ++i) {
+                const real u1 = i * h;
+                const real u2 = (i + 1) * h;
+                const real u_mid = (u1 + u2) / real(2);
+
+                // Simpson's rule over [u1, u2]
+                values.clear();
+                values.insert_unchecked(barycentric_names[0].c_str(), u1);
+                const real y1 = expr.evaluate_at(values);
+
+                values.clear();
+                values.insert_unchecked(barycentric_names[0].c_str(), u_mid);
+                const real y_mid = expr.evaluate_at(values);
+
+                values.clear();
+                values.insert_unchecked(barycentric_names[0].c_str(), u2);
+                const real y2 = expr.evaluate_at(values);
+
+                total_integral += h * (y1 + real(4) * y_mid + y2) / real(6);
+            }
+        }
+        // For 2D case (triangle)
+        else if (dim == 2) {
+            const real h = real(1) / intervals;
+
+            for (std::size_t i = 0; i <= intervals; ++i) {
+                for (std::size_t j = 0; j <= intervals - i; ++j) {
+                    const real u1 = i * h;
+                    const real u2 = j * h;
+
+                    if (u1 + u2 <= real(1)) {
+                        real weight = real(1);
+                        // Corner and edge corrections for trapezoidal rule
+                        int boundary_count = 0;
+                        if (i == 0)
+                            boundary_count++;
+                        if (j == 0)
+                            boundary_count++;
+                        if (i + j == intervals)
+                            boundary_count++;
+
+                        if (boundary_count == 1)
+                            weight = real(0.5);
+                        else if (boundary_count >= 2)
+                            weight = real(0.25);
+
+                        values.clear();
+                        values.insert_unchecked(
+                            barycentric_names[0].c_str(), u1);
+                        values.insert_unchecked(
+                            barycentric_names[1].c_str(), u2);
+
+                        total_integral += weight * expr.evaluate_at(values) *
+                                          h * h * real(2.0);
+                    }
+                }
+            }
+        }
+        // For 3D case (tetrahedron)
+        else if (dim == 3) {
+            const real h = real(1) / intervals;
+
+            for (std::size_t i = 0; i <= intervals; ++i) {
+                for (std::size_t j = 0; j <= intervals - i; ++j) {
+                    for (std::size_t k = 0; k <= intervals - i - j; ++k) {
+                        const real u1 = i * h;
+                        const real u2 = j * h;
+                        const real u3 = k * h;
+
+                        if (u1 + u2 + u3 <= real(1)) {
+                            real weight = real(1);
+                            // Boundary correction
+                            int boundary_count = 0;
+                            if (i == 0)
+                                boundary_count++;
+                            if (j == 0)
+                                boundary_count++;
+                            if (k == 0)
+                                boundary_count++;
+                            if (i + j + k == intervals)
+                                boundary_count++;
+
+                            if (boundary_count > 0)
+                                weight = real(1) / real(1 << boundary_count);
+
+                            values.clear();
+                            values.insert_unchecked(
+                                barycentric_names[0].c_str(), u1);
+                            values.insert_unchecked(
+                                barycentric_names[1].c_str(), u2);
+                            values.insert_unchecked(
+                                barycentric_names[2].c_str(), u3);
+
+                            total_integral += weight *
+                                              expr.evaluate_at(values) * h * h *
+                                              h * real(6);
+                        }
+                    }
+                }
+            }
+        }
+
+        return total_integral;
+    }
     // Integration methods
     template<typename MappingExpr = std::nullptr_t>
     real integrate_over_simplex(
@@ -187,7 +308,7 @@ namespace fem_bem {
     {
         Expression final_expr = expr;
         for (const auto& barycentric_name : barycentric_names) {
-            final_expr.bind_variable(barycentric_name, real(0));
+            final_expr.bind_variable(barycentric_name.c_str(), real(0));
         }
 
         // If mapping is provided, compose it with the expression
@@ -196,33 +317,8 @@ namespace fem_bem {
                 compose_with_mapping(expr, mapping_expr, barycentric_names);
         }
 
-        // Always use numerical integration for mapped expressions or complex
-        // expressions
-        if constexpr (!std::is_same_v<MappingExpr, std::nullptr_t>) {
-            // For mapped expressions, always use numerical integration
-            auto evaluator = [&final_expr](const ParameterMap<real>& values) {
-                return final_expr.evaluate_at(values);
-            };
-            return integrate_numerical_generic(
-                evaluator, barycentric_names, intervals);
-        }
-
-        // Handle compound expressions or derivatives using numerical
-        // integration
-        if (final_expr.has_derivative_evaluator_ ||
-            (final_expr.is_compound_ && final_expr.outer_expression_) ||
-            final_expr.has_bound_variables()) {
-            auto evaluator = [&final_expr](const ParameterMap<real>& values) {
-                return final_expr.evaluate_at(values);
-            };
-            return integrate_numerical_generic(
-                evaluator, barycentric_names, intervals);
-        }
-
-        // For simple expressions, use existing integration methods
-        final_expr.ensure_parsed();
-        return integrate_simplex(
-            *final_expr.compiled_expression_, barycentric_names, intervals);
+        return integrate_expression_numerically(
+            final_expr, barycentric_names, intervals);
     }
 
     // Helper function to compose expression with mapping
@@ -284,55 +380,6 @@ namespace fem_bem {
         // For now, return the original expression as fallback
         // This would need specific implementation based on MappingExpr type
         return expr;
-    }
-
-    // Numerical integration for any expression type
-    template<typename EvaluatorFunc>
-    real integrate_numerical_generic(
-        EvaluatorFunc evaluator,
-        const std::vector<std::string>& barycentric_names,
-        std::size_t intervals)
-    {
-        // Create a unified evaluator that handles coordinate conversion
-        auto unified_evaluator = [&](const std::vector<real>& coords) -> real {
-            ParameterMap<real> values;
-
-            // Set barycentric coordinates
-            for (std::size_t i = 0;
-                 i < coords.size() && i < barycentric_names.size();
-                 ++i) {
-                values.insert_unchecked(
-                    barycentric_names[i].c_str(), coords[i]);
-            }
-
-            //// For missing barycentric coordinates, ensure they are set to 0
-            // if (barycentric_names.size() == 1) {
-            //     // 1D case: u1, and u2 = 1-u1 (implicitly)
-            //     values.insert_unchecked(
-            //         "u1", coords.size() > 0 ? coords[0] : real(0));
-            // }
-            // else if (barycentric_names.size() == 2) {
-            //     // 2D case: u1, u2, and u3 = 1-u1-u2 (implicitly)
-            //     values.insert_unchecked(
-            //         "u1", coords.size() > 0 ? coords[0] : real(0));
-            //     values.insert_unchecked(
-            //         "u2", coords.size() > 1 ? coords[1] : real(0));
-            // }
-            // else if (barycentric_names.size() == 3) {
-            //     // 3D case: u1, u2, u3, and u4 = 1-u1-u2-u3 (implicitly)
-            //     values.insert_unchecked(
-            //         "u1", coords.size() > 0 ? coords[0] : real(0));
-            //     values.insert_unchecked(
-            //         "u2", coords.size() > 1 ? coords[1] : real(0));
-            //     values.insert_unchecked(
-            //         "u3", coords.size() > 2 ? coords[2] : real(0));
-            // }
-
-            return evaluator(values);
-        };
-
-        return integrate_simplex_generic<real>(
-            unified_evaluator, barycentric_names, intervals);
     }
 
 }  // namespace fem_bem

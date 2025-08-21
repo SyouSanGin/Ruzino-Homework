@@ -70,8 +70,7 @@ namespace fem_bem {
 
     Expression::Expression(
         const Expression& outer_expr,
-        const std::vector<std::pair<const char*, Expression>>&
-            variable_substitutions)
+        const ParameterMap<Expression>& variable_substitutions)
         : outer_expression_(std::make_unique<Expression>(outer_expr)),
           substitution_map_(variable_substitutions),
           is_compound_(true)
@@ -80,32 +79,29 @@ namespace fem_bem {
         expression_string_ = outer_expr.get_string() +
                              " with "
                              "substitutions: ";
-        for (const auto& pair : substitution_map_) {
-            expression_string_ += std::string(pair.first) + " = " +
-                                  pair.second.get_string() + ", ";
+        for (int i = 0; i < substitution_map_.size(); ++i) {
+            auto name = substitution_map_.get_name_at(i);
+            auto expr = substitution_map_.get_value_at(i).get_string();
+            expression_string_ += std::string(name) + " = " + expr + ", ";
         }
-
-        // Apply recursive substitution logic
-        // apply_recursive_substitution();
     }
     Expression::Expression(
         const Expression& outer_expr,
         std::initializer_list<std::pair<const char*, Expression>> substitutions)
         : outer_expression_(std::make_unique<Expression>(outer_expr)),
-          substitution_map_(substitutions.begin(), substitutions.end()),
+          substitution_map_(substitutions),
           is_compound_(true)
     {
         // Build compound expression string for display
         expression_string_ = outer_expr.get_string() +
                              " with "
                              "substitutions: ";
-        for (const auto& pair : substitution_map_) {
-            expression_string_ += std::string(pair.first) + " = " +
-                                  pair.second.get_string() + ", ";
-        }
+        for (int i = 0; i < substitution_map_.size(); ++i) {
+            auto name = substitution_map_.get_name_at(i);
+            auto expr = substitution_map_.get_value_at(i).get_string();
 
-        // Apply recursive substitution logic
-        // apply_recursive_substitution();
+            expression_string_ += std::string(name) + " = " + expr + ", ";
+        }
     }
 
     Expression::Expression(const Expression& other)
@@ -182,15 +178,16 @@ namespace fem_bem {
         has_bound_variable_ = true;
     }
 
-    void Expression::bind_variable(const std::string& var_name, real value)
+    void Expression::bind_variable(const char* var_name, real value)
     {
         if (is_compound_) {
-            for (auto& substitution : substitution_map_) {
-                substitution.second.bind_variable(var_name, value);
+            for (int i = 0; i < substitution_map_.size(); ++i) {
+                substitution_map_.get_value_at(i).bind_variable(
+                    var_name, value);
             }
         }
         else {
-            variables_.insert_or_assign(var_name.c_str(), value);
+            variables_.insert_or_assign(var_name, value);
         }
 
         has_bound_variable_ = true;
@@ -228,12 +225,7 @@ namespace fem_bem {
             for (std::size_t i = 0; i < variable_values.size(); ++i) {
                 const char* name = variable_values.get_name_at(i);
 
-                if (std::find_if(
-                        substitution_map_.begin(),
-                        substitution_map_.end(),
-                        [&name](const auto& pair) {
-                            return std::strcmp(pair.first, name) == 0;
-                        }) == substitution_map_.end()) {
+                if (!substitution_map_.contains(name)) {
                     const real& value = variable_values.get_value_at(i);
                     outer_expression_->bind_variable(name, value);
                 }
@@ -242,9 +234,10 @@ namespace fem_bem {
             // Evaluate substitutions
             ParameterMap<real> outer_values = variables_;
             for (std::size_t i = 0; i < substitution_map_.size(); ++i) {
-                const auto& pair = substitution_map_[i];
-                real sub_result = pair.second.evaluate_at(variable_values);
-                outer_values.insert_or_assign(pair.first, sub_result);
+                const auto& name = substitution_map_.get_name_at(i);
+                real sub_result = substitution_map_.get_value_at(i).evaluate_at(
+                    variable_values);
+                outer_values.insert_or_assign(name, sub_result);
             }
 
             return outer_expression_->evaluate_at(outer_values);
@@ -345,12 +338,14 @@ namespace fem_bem {
         if (is_compound_ && outer_expression_) {
             // Check if any of the substitutions are derivatives
             bool has_derivative_substitution = false;
-            for (const auto& pair : substitution_map_) {
-                if (pair.second.has_derivative_evaluator_) {
+            for (int i = 0; i < substitution_map_.size(); ++i) {
+                const auto& pair = substitution_map_.get_value_at(i);
+                if (pair.has_derivative_evaluator_) {
                     has_derivative_substitution = true;
                     break;
                 }
             }
+
             // For compound expressions with derivatives, use significantly
             // larger step
             h = has_derivative_substitution ? real(5e-3) : real(1e-4);
@@ -425,109 +420,117 @@ namespace fem_bem {
         is_parsed_ = true;
     }
 
-    void Expression::apply_recursive_substitution()
-    {
-        // If the outer expression is not compound, nothing special to do
-        if (!outer_expression_ || !outer_expression_->is_compound_) {
-            return;
-        }
+    // void Expression::apply_recursive_substitution()
+    //{
+    //     // If the outer expression is not compound, nothing special to do
+    //     if (!outer_expression_ || !outer_expression_->is_compound_) {
+    //         return;
+    //     }
 
-        // This method implements the recursive substitution logic you
-        // described:
-        // 1. Variables that are re-substituted don't get double-substituted
-        // 2. New substitutions are applied to existing expressions recursively
-        // Example: if outer has {xx: u1+u2} and new has {xx: u2, u2: u3}
-        // Result should be {u2: u3, yy: whatever_yy_was} (xx is gone, u2
-        // becomes u3)
+    //    // This method implements the recursive substitution logic you
+    //    // described:
+    //    // 1. Variables that are re-substituted don't get double-substituted
+    //    // 2. New substitutions are applied to existing expressions
+    //    recursively
+    //    // Example: if outer has {xx: u1+u2} and new has {xx: u2, u2: u3}
+    //    // Result should be {u2: u3, yy: whatever_yy_was} (xx is gone, u2
+    //    // becomes u3)
 
-        std::vector<std::pair<const char*, Expression>> final_substitutions;
-        const auto& outer_substitutions = outer_expression_->substitution_map_;
+    //    ParameterMap<Expression> final_substitutions;
+    //    const auto& outer_substitutions =
+    //    outer_expression_->substitution_map_;
 
-        // Process each variable from the outer expression's substitution map
-        for (const auto& outer_pair : outer_substitutions) {
-            const char* var_name = outer_pair.first;
-            Expression outer_expr =
-                outer_pair.second;  // Make a copy for modification
+    //    // Process each variable from the outer expression's substitution map
+    //    for (const auto& outer_pair : outer_substitutions) {
+    //        const char* var_name = outer_pair.first;
+    //        Expression outer_expr =
+    //            outer_pair.second;  // Make a copy for modification
 
-            // Check if this variable is being re-substituted in our new
-            // substitution map
-            bool is_being_resubstituted = false;
-            for (const auto& new_pair : substitution_map_) {
-                if (std::strcmp(new_pair.first, var_name) == 0) {
-                    // This variable is being re-substituted, so we skip the
-                    // outer substitution (completed substitutions shouldn't be
-                    // re-substituted)
-                    is_being_resubstituted = true;
-                    break;
-                }
-            }
+    //        // Check if this variable is being re-substituted in our new
+    //        // substitution map
+    //        bool is_being_resubstituted = false;
+    //        for (const auto& new_pair : substitution_map_) {
+    //            if (std::strcmp(new_pair.first, var_name) == 0) {
+    //                // This variable is being re-substituted, so we skip the
+    //                // outer substitution (completed substitutions shouldn't
+    //                be
+    //                // re-substituted)
+    //                is_being_resubstituted = true;
+    //                break;
+    //            }
+    //        }
 
-            if (!is_being_resubstituted) {
-                // Apply any relevant new substitutions to this outer expression
-                // recursively
-                for (const auto& new_pair : substitution_map_) {
-                    const char* new_var = new_pair.first;
-                    const Expression& new_expr = new_pair.second;
+    //        if (!is_being_resubstituted) {
+    //            // Apply any relevant new substitutions to this outer
+    //            expression
+    //            // recursively
+    //            for (int i = 0; i < substitution_map_.size(); ++i) {
+    //                const char* new_var = substitution_map_.get_name_at(i);
+    //                const Expression& new_expr =
+    //                    substitution_map_.get_value_at(i);
 
-                    // Check if the outer expression contains the variable we're
-                    // substituting
-                    if (outer_expr.is_compound_) {
-                        // For compound expressions, check if any substitution
-                        // uses this variable
-                        bool contains_var = false;
-                        for (const auto& sub_pair :
-                             outer_expr.substitution_map_) {
-                            if (std::strcmp(sub_pair.first, new_var) == 0) {
-                                contains_var = true;
-                                break;
-                            }
-                        }
-                        if (contains_var) {
-                            // Apply the substitution recursively
-                            outer_expr = Expression(
-                                outer_expr, { { new_var, new_expr } });
-                        }
-                    }
-                    else {
-                        // For simple expressions, check if the variable appears
-                        // in the string
-                        if (outer_expr.expression_string_.find(new_var) !=
-                            std::string::npos) {
-                            // Create a compound expression with the
-                            // substitution
-                            outer_expr = Expression(
-                                outer_expr, { { new_var, new_expr } });
-                        }
-                    }
-                }
+    //                // Check if the outer expression contains the variable
+    //                we're
+    //                // substituting
+    //                if (outer_expr.is_compound_) {
+    //                    // For compound expressions, check if any substitution
+    //                    // uses this variable
+    //                    bool contains_var = false;
+    //                    for (const auto& sub_pair :
+    //                         outer_expr.substitution_map_) {
+    //                        if (std::strcmp(sub_pair.first, new_var) == 0) {
+    //                            contains_var = true;
+    //                            break;
+    //                        }
+    //                    }
+    //                    if (contains_var) {
+    //                        // Apply the substitution recursively
+    //                        outer_expr = Expression(
+    //                            outer_expr, { { new_var, new_expr } });
+    //                    }
+    //                }
+    //                else {
+    //                    // For simple expressions, check if the variable
+    //                    appears
+    //                    // in the string
+    //                    if (outer_expr.expression_string_.find(new_var) !=
+    //                        std::string::npos) {
+    //                        // Create a compound expression with the
+    //                        // substitution
+    //                        outer_expr = Expression(
+    //                            outer_expr, { { new_var, new_expr } });
+    //                    }
+    //                }
+    //            }
 
-                // Add the (possibly recursively modified) outer substitution
-                final_substitutions.emplace_back(var_name, outer_expr);
-            }
-        }
+    //            // Add the (possibly recursively modified) outer substitution
+    //            final_substitutions.insert_or_assign(var_name, outer_expr);
+    //        }
+    //    }
 
-        // Add our new substitutions
-        for (const auto& new_pair : substitution_map_) {
-            final_substitutions.emplace_back(new_pair.first, new_pair.second);
-        }
+    //    // Add our new substitutions
+    //    for (const auto& new_pair : substitution_map_) {
+    //        final_substitutions.insert_or_assign(
+    //            new_pair.first, new_pair.second);
+    //    }
 
-        // Update our substitution map with the final results
-        substitution_map_ = std::move(final_substitutions);
+    //    // Update our substitution map with the final results
+    //    substitution_map_ = std::move(final_substitutions);
 
-        // Update the outer expression to be the base expression (without its
-        // substitutions) This ensures we don't double-apply the outer
-        // substitutions
-        if (outer_expression_->outer_expression_) {
-            outer_expression_ = std::make_unique<Expression>(
-                *outer_expression_->outer_expression_);
-        }
-        else {
-            // Create a simple expression with just the string
-            Expression simple_expr(outer_expression_->expression_string_);
-            outer_expression_ = std::make_unique<Expression>(simple_expr);
-            outer_expression_->is_compound_ = false;
-        }
-    }
+    //    // Update the outer expression to be the base expression (without its
+    //    // substitutions) This ensures we don't double-apply the outer
+    //    // substitutions
+    //    if (outer_expression_->outer_expression_) {
+    //        outer_expression_ = std::make_unique<Expression>(
+    //            *outer_expression_->outer_expression_);
+    //    }
+    //    else {
+    //        // Create a simple expression with just the string
+    //        Expression simple_expr(outer_expression_->expression_string_);
+    //        outer_expression_ = std::make_unique<Expression>(simple_expr);
+    //        outer_expression_->is_compound_ = false;
+    //    }
+    //}
 
     Expression operator*(real scalar, const Expression& expr)
     {

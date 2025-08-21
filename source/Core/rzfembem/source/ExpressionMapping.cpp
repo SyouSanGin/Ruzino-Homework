@@ -380,12 +380,12 @@ namespace fem_bem {
         const std::vector<std::string>& barycentric_names)
     {
         // Create substitution map from coordinate mapping
-        std::vector<std::pair<const char*, Expression>> substitutions;
+        ParameterMap<Expression> substitutions;
 
         for (std::size_t i = 0; i < coord_mapping.size(); ++i) {
             const char* coord_name = coord_mapping.get_name_at(i);
             const Expression& coord_expr = coord_mapping.get_value_at(i);
-            substitutions.emplace_back(coord_name, coord_expr);
+            substitutions.insert_or_assign(coord_name, coord_expr);
         }
 
         // Create compound expression that substitutes physical coordinates
