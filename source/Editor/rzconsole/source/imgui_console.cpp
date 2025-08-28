@@ -47,12 +47,12 @@ SOFTWARE.
 #include <rzconsole/ConsoleInterpreter.h>
 #include <rzconsole/ConsoleObjects.h>
 #include <rzconsole/imgui_console.h>
+#include <rzconsole/spdlog_console_sink.h>
 #include <rzconsole/string_utils.h>
 
 #include <cctype>
 #include <cstdarg>
 #include <cstring>
-
 
 USTC_CG_NAMESPACE_OPEN_SCOPE
 
@@ -73,25 +73,9 @@ ImGui_Console::ImGui_Console(
     : m_Options(options),
       m_Interpreter(interpreter)
 {
+    // Only setup spdlog integration if capture_log is enabled
     if (options.capture_log) {
-        // For now, we'll create a simple spdlog sink to capture logs
-        // This would need to be implemented with spdlog custom sink
-        // auto console_sink =
-        // std::make_shared<spdlog::sinks::callback_sink_mt>(
-        //     [this](const spdlog::details::log_msg& msg) {
-        //         LogSeverity severity = LogSeverity::Info;
-        //         switch (msg.level) {
-        //             case spdlog::level::warn: severity =
-        //             LogSeverity::Warning; break; case spdlog::level::err:
-        //             severity = LogSeverity::Error; break; default: severity =
-        //             LogSeverity::Info; break;
-        //         }
-        //         LogItem item;
-        //         item.severity = severity;
-        //         item.textColor = getSeverityColor(severity);
-        //         item.text = std::string(msg.payload.begin(),
-        //         msg.payload.end()); m_ItemsLog.push_back(item);
-        //     });
+        setup_console_logging(this);
     }
 }
 ImGui_Console::~ImGui_Console()
@@ -150,7 +134,8 @@ bool ImGui_Console::BuildUI()
 
     if (ImGui::BeginPopupContextItem()) {
         if (ImGui::MenuItem("Close Console")) {
-            // For IWidget, we don't directly control closing, return false to indicate widget should close
+            // For IWidget, we don't directly control closing, return false to
+            // indicate widget should close
         }
         ImGui::EndPopup();
     }
@@ -449,6 +434,21 @@ int ImGui_Console::TextEditCallback(ImGuiInputTextCallbackData* data)
             return HistoryKeyCallback(data);
     }
     return 0;
+}
+
+void ImGui_Console::SetLogCapture(bool enable)
+{
+    if (enable && !m_Options.capture_log) {
+        // Enable logging capture
+        setup_console_logging(this);
+        m_Options.capture_log = true;
+    }
+    else if (!enable && m_Options.capture_log) {
+        // Disable logging capture by setting console to nullptr
+        auto sink = get_global_console_sink();
+        sink->set_console(nullptr);
+        m_Options.capture_log = false;
+    }
 }
 
 USTC_CG_NAMESPACE_CLOSE_SCOPE

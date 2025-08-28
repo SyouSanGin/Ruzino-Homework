@@ -100,6 +100,9 @@ class RZCONSOLE_API ImGui_Console : public IWidget {
 
     void ClearHistory();
 
+    // Enable or disable spdlog capture
+    void SetLogCapture(bool enable);
+
     // Override IWidget methods
     bool BuildUI() override;
 

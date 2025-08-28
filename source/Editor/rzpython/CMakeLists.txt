@@ -12,4 +12,3 @@ target_include_directories(rzpython PUBLIC ${NB_DIR}/include)
 
 target_link_libraries(rzpython_runtime_test PUBLIC RHI usd)
 target_link_libraries(rzpython_performance_test PUBLIC RHI usd)
-target_link_libraries(vtarray_profile_test PUBLIC RHI usd)

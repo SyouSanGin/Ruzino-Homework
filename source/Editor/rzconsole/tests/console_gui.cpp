@@ -40,22 +40,20 @@ class ConsoleWidgetFactory : public IWidgetFactory {
         };
         console::RegisterCommand(log_test_cmd);
 
-        // Create console with interpreter
+        // Create console with capture_log enabled
         ImGui_Console::Options opts;
         opts.show_info = true;
         opts.show_warnings = true;
         opts.show_errors = true;
+        opts.capture_log = true;  // Enable spdlog integration
 
         auto console = std::make_unique<ImGui_Console>(interpreter, opts);
 
-        // Setup spdlog integration AFTER creating console
-        setup_console_logging(console.get());
-
         // Add some initial messages
         console->Print("Console initialized successfully!");
+        console->Print(
+            "Spdlog capture is enabled - try 'log_test' to see captured logs");
         console->Print("Type 'help' for available commands");
-        console->Print("Try 'test' or 'log_test' commands");
-        console->Print("Console is ready for use!");
 
         return std::move(console);
     }
@@ -63,7 +61,7 @@ class ConsoleWidgetFactory : public IWidgetFactory {
 
 int main()
 {
-    // Create console directly
+    // Create console with capture disabled to demonstrate the difference
     auto interpreter = std::make_shared<console::Interpreter>();
 
     // Register a simple test command
@@ -81,12 +79,19 @@ int main()
     console::RegisterCommand(echo_cmd);
 
     ImGui_Console::Options opts;
+    opts.capture_log = true;  // Disable spdlog integration initially
     auto console = std::make_unique<ImGui_Console>(interpreter, opts);
 
     console->Print("Direct widget console test");
+    console->Print(
+        "Spdlog capture is DISABLED - spdlog messages won't appear here");
+    console->Print(
+        "Use 'enable_capture' command or console->SetLogCapture(true) to "
+        "enable");
 
     Window window;
-    setup_console_logging(console.get());
+    // Don't setup console logging since capture_log is false
+    // setup_console_logging(console.get());  // Remove this line
 
     window.register_widget(std::move(console));
     window.run();
