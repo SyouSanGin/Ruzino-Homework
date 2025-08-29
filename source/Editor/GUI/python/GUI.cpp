@@ -18,7 +18,14 @@ NB_MODULE(GUI_py, m)
         .def(
             "get_elapsed_time",
             &Window::get_elapsed_time,
-            "Get elapsed time in seconds");
+            "Get elapsed time in seconds")
+        .def("get_size_x", &Window::get_size_x, "Get window width in pixels")
+        .def("get_size_y", &Window::get_size_y, "Get window height in pixels")
+        .def("set_fullscreen", &Window::SetFullscreen, "Set fullscreen mode")
+        .def(
+            "is_fullscreen",
+            &Window::IsFullscreen,
+            "Check if window is in fullscreen mode");
 
     // Bind ImVec2 for drawing functions
     nb::class_<ImVec2>(m, "ImVec2")

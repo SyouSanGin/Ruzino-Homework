@@ -151,6 +151,7 @@ int main()
     console->Print("Try 'simple_test' first to verify console is working.");
 
     Window window;
+    python::reference("w", &window);
     window.register_widget(std::move(console));
     window.run();
 

@@ -18,6 +18,7 @@ add_dependencies(USTC_CG hd_USTC_CG)
 add_dependencies(USTC_CG render_nodes)
 # add_dependencies(USTC_CG gl_based_render_nodes)
  add_dependencies(USTC_CG RZFemBemNodes)
+ target_link_libraries(USTC_CG PUBLIC rzpython)
 
 
 if (USTC_CG_WITH_POLYSCOPE)

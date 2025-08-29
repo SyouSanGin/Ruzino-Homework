@@ -57,7 +57,6 @@ freely, subject to the following restrictions:
 #include <sstream>
 #include <thread>
 
-
 #if USTC_CG_WITH_DX11
 #include <d3d11.h>
 #endif
@@ -1076,6 +1075,73 @@ const char *DeviceManager::GetWindowTitle()
     return m_WindowTitle.c_str();
 }
 
+void DeviceManager::SetFullscreen(bool enabled)
+{
+    if (!m_Window)
+        return;
+
+    if (enabled) {
+        // Switch to fullscreen
+        GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+        const GLFWvidmode *mode = glfwGetVideoMode(monitor);
+
+        // Store current window position and size for restoring later
+        if (!glfwGetWindowMonitor(m_Window)) {
+            glfwGetWindowPos(
+                m_Window,
+                &m_DeviceParams.windowPosX,
+                &m_DeviceParams.windowPosY);
+            glfwGetWindowSize(
+                m_Window,
+                (int *)&m_DeviceParams.backBufferWidth,
+                (int *)&m_DeviceParams.backBufferHeight);
+        }
+
+        glfwSetWindowMonitor(
+            m_Window,
+            monitor,
+            0,
+            0,
+            mode->width,
+            mode->height,
+            mode->refreshRate);
+    }
+    else {
+        // Switch to windowed mode
+        int windowWidth = m_DeviceParams.backBufferWidth;
+        int windowHeight = m_DeviceParams.backBufferHeight;
+        int windowPosX = m_DeviceParams.windowPosX;
+        int windowPosY = m_DeviceParams.windowPosY;
+
+        // Use default values if stored values are invalid
+        if (windowPosX < 0)
+            windowPosX = 100;
+        if (windowPosY < 0)
+            windowPosY = 100;
+        if (windowWidth <= 0)
+            windowWidth = 1920;
+        if (windowHeight <= 0)
+            windowHeight = 1080;
+
+        glfwSetWindowMonitor(
+            m_Window,
+            nullptr,
+            windowPosX,
+            windowPosY,
+            windowWidth,
+            windowHeight,
+            0);
+    }
+}
+
+bool DeviceManager::IsFullscreen() const
+{
+    if (!m_Window)
+        return false;
+
+    return glfwGetWindowMonitor(m_Window) != nullptr;
+}
+
 DeviceManager *DeviceManager::Create(nvrhi::GraphicsAPI api)
 {
     switch (api) {
@@ -1084,8 +1150,7 @@ DeviceManager *DeviceManager::Create(nvrhi::GraphicsAPI api)
 #endif
         case nvrhi::GraphicsAPI::VULKAN: return CreateVK();
         default:
-            spdlog::error(
-                "DeviceManager::Create: Unsupported Graphics API");
+            spdlog::error("DeviceManager::Create: Unsupported Graphics API");
             return nullptr;
     }
 }

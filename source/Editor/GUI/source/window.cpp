@@ -214,9 +214,9 @@ void DockingImguiRenderer::drawMenuBar()
         // Reset padding for menu items to default size
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 4.0f));
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 4.0f));
-        
+
         recursive_draw(menu_tree);
-        
+
         ImGui::PopStyleVar(2);
         ImGui::EndMenuBar();
     }
@@ -243,9 +243,9 @@ void DockingImguiRenderer::buildUI()
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 
     ImGui::Begin(("DockSpace" + std::to_string(0)).c_str(), 0, window_flags);
-    
+
     // Temporarily restore normal padding for menu bar
-    ImGui::PopStyleVar(1); // Pop the WindowPadding
+    ImGui::PopStyleVar(1);  // Pop the WindowPadding
     drawMenuBar();
 
     ImGui::PopStyleVar(2);
@@ -254,10 +254,10 @@ void DockingImguiRenderer::buildUI()
     ImGui::DockSpace(
         dockspace_id,
         ImVec2(0.0f, 0.0f),
-        ImGuiDockNodeFlags_PassthruCentralNode);    std::vector<IWidget*> widget_to_remove;
+        ImGuiDockNodeFlags_PassthruCentralNode);
+    std::vector<IWidget*> widget_to_remove;
     for (auto& widget : widgets_) {
         if (widget->Begin()) {
-
             // Draw widget-specific menu bar if it has one
             if (widget->HasMenuBar()) {
                 if (ImGui::BeginMenuBar()) {
@@ -410,6 +410,33 @@ void Window::set_all_node_system_dirty()
             widget->SetNodeSystemDirty(true);
         }
     }
+}
+int Window::get_size_x() const
+{
+    int x, y;
+    imguiRenderPass->GetDeviceManager()->GetWindowDimensions(x, y);
+    return x;
+}
+int Window::get_size_y() const
+{
+    int x, y;
+    imguiRenderPass->GetDeviceManager()->GetWindowDimensions(x, y);
+    return y;
+}
+
+void Window::SetFullscreen(bool enabled)
+{
+    auto manager = imguiRenderPass->GetDeviceManager();
+    manager->SetFullscreen(enabled);
+}
+
+bool Window::IsFullscreen() const
+{
+    auto manager = imguiRenderPass->GetDeviceManager();
+    if (!manager)
+        return false;
+
+    return manager->IsFullscreen();
 }
 
 USTC_CG_NAMESPACE_CLOSE_SCOPE

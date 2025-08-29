@@ -288,6 +288,8 @@ class RHI_API DeviceManager {
     {
         m_RequestedVSync = enabled; /* will be processed later */
     }
+    virtual void SetFullscreen(bool enabled);
+    [[nodiscard]] bool IsFullscreen() const;
     virtual void ReportLiveObjects()
     {
     }

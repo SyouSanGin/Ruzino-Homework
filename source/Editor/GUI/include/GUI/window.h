@@ -41,11 +41,16 @@ class GUI_API Window {
 
     void set_all_node_system_dirty();
 
+    int get_size_x() const;
+    int get_size_y() const;
+
+    virtual void SetFullscreen(bool enabled);
+    [[nodiscard]] bool IsFullscreen() const;
+
    protected:
     std::unique_ptr<DockingImguiRenderer> imguiRenderPass;
     float elapsedTimeSeconds = 0.0f;
     friend class DockingImguiRenderer;
 };
-
 
 USTC_CG_NAMESPACE_CLOSE_SCOPE
