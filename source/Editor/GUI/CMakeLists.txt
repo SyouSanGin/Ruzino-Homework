@@ -2,8 +2,8 @@
 USTC_CG_ADD_LIB(
 	GUI
 	SHARED
-	PUBLIC_LIBS imgui
-	PRIVATE_LIBS spdlog::spdlog RHI stb_image
+	PUBLIC_LIBS imgui RHI
+	PRIVATE_LIBS spdlog::spdlog stb_image
 	COMPILE_DEFS
 	NOMINMAX
 	VULKAN_HPP_STORAGE_SHARED

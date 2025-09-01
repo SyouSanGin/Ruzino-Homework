@@ -12,6 +12,11 @@ class GUI_API ImageWidget : public IWidget {
    public:
     explicit ImageWidget(nvrhi::ITexture* texture);
     explicit ImageWidget(nvrhi::TextureHandle texture_handle);
+
+    bool borderless() override
+    {
+        return true;
+    }
     ~ImageWidget() override = default;
 
     bool BuildUI() override;
