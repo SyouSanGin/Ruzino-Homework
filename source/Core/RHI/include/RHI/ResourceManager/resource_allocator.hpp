@@ -470,7 +470,7 @@ class ResourceAllocator {
     static constexpr bool mEnabled = true;
 
 #ifdef USTC_CG_BACKEND_NVRHI
-    std::unordered_multimap<nvrhi::IResource*, nvrhi::BindingSetDesc>
+    std::unordered_map<nvrhi::IResource*, nvrhi::BindingSetDesc>
         mRelatedBindingSets;
 #endif
 };

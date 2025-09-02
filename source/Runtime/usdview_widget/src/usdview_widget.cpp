@@ -289,9 +289,9 @@ void UsdviewEngine::OnFrame(float delta_time)
             ImVec2(0.0f, 1.0f),
             ImVec2(1.0f, 0.0f));
     }
-    else {
-        spdlog::warn("No image!");
-    }
+    // else {
+    //     spdlog::warn("No image!");
+    // }
     is_active = ImGui::IsWindowFocused();
     is_hovered = ImGui::IsItemHovered();
 

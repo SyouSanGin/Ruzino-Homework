@@ -175,7 +175,7 @@ bool ImGui_NVRHI::init(
     this->renderer = renderer;
 
     resource_allocator_.set_device(renderer.Get());
-
+    
     m_commandList = renderer->createCommandList();
 
     m_commandList->open();
@@ -509,6 +509,8 @@ bool ImGui_NVRHI::render(nvrhi::IFramebuffer* framebuffer)
     m_commandList->endMarker();
     m_commandList->close();
     renderer->executeCommandList(m_commandList);
+
+    resource_allocator_.gc();
 
     return true;
 }

@@ -295,8 +295,8 @@ namespace fem_bem {
     real integrate_over_simplex(
         const Expression& expr,
         const std::vector<const char*>& barycentric_names,
-        const MappingExpr& mapping_expr = nullptr,
-        std::size_t intervals = 100)
+        const MappingExpr& mapping_expr,
+        std::size_t intervals)
     {
         // If mapping is provided, compose it with the expression
         if constexpr (!std::is_same_v<MappingExpr, std::nullptr_t>) {

@@ -12,7 +12,7 @@ USTC_CG_ADD_LIB(
     RZFemBem
     SHARED
     WITH_CUDA
-    PUBLIC_LIBS RZSolver exprtk geometry igl_core
+    PUBLIC_LIBS RZSolver exprtk geometry igl_core OpenVolumeMesh
     COMPILE_DEFS NOMINMAX
     SKIP_DIRS nodes
 )
