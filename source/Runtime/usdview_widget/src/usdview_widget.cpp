@@ -85,7 +85,7 @@ void UsdviewEngine::ChooseRenderer(
 {
     renderer_->SetRendererPlugin(available_renderers[i]);
     spdlog::info(
-        "Switching to renderer %s", available_renderers[i].GetString().c_str());
+        "Switching to renderer {}", available_renderers[i].GetString().c_str());
     if (available_renderers[i].GetString() == "Hd_USTC_CG_RendererPlugin") {
         renderer_ui_control =
             renderer_->GetRendererSetting(pxr::TfToken("RenderNodeSystem"))

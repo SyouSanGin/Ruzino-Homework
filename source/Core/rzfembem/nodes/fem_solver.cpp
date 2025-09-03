@@ -34,6 +34,7 @@ NODE_DECLARATION_FUNCTION(fem_solver)
         .default_val(0)
         .min(0)
         .max(1);  // Assuming a reasonable max index
+    b.add_input<std::string>("Result Name").default_val("result");
     b.add_output<Geometry>("Geometry");
 }
 
@@ -49,9 +50,17 @@ NODE_EXECUTION_FUNCTION(fem_solver)
         params.get_input<std::string>("Boundary Condition").c_str();
     int boundary_type = params.get_input<int>("Boundary Type");
     int boundary_index = params.get_input<int>("Boundary Index");
+    std::string result_name = params.get_input<std::string>("Result Name");
 
-    // 对输入几何体进行Delaunay三角化
-    auto delauneyed = geom_algorithm::delaunay(input_geometry);
+    // 根据问题维度决定是否进行Delaunay三角化
+    Geometry processed_geometry;
+    if (problem_dim == 2) {
+        // 2D问题：对输入几何体进行Delaunay三角化
+        processed_geometry = geom_algorithm::delaunay(input_geometry);
+    } else {
+        // 3D问题：直接使用输入几何体（假设已经是四面体网格）
+        processed_geometry = input_geometry;
+    }
 
     // 创建求解器描述
     ElementSolverDesc desc;
@@ -73,7 +82,7 @@ NODE_EXECUTION_FUNCTION(fem_solver)
     auto solver = create_element_solver(desc);
 
     // 设置几何体
-    solver->set_geometry(delauneyed);
+    solver->set_geometry(processed_geometry);
 
     // 获取边界数量
     auto n = solver->get_boundary_count();
@@ -93,23 +102,17 @@ NODE_EXECUTION_FUNCTION(fem_solver)
     try {
         std::vector<float> solution = solver->solve();
         // 将解添加到网格组件中
-        auto mesh_component = delauneyed.get_component<MeshComponent>();
-        mesh_component->add_vertex_scalar_quantity("solution", solution);
+        auto mesh_component = processed_geometry.get_component<MeshComponent>();
+        mesh_component->add_vertex_scalar_quantity(result_name, solution);
 
-        auto vertices = mesh_component->get_vertices();
-        for (size_t i = 0; i < vertices.size(); ++i) {
-            vertices[i][2] = solution[i];
-        }
-
-        mesh_component->set_vertices(vertices);
         // 输出结果几何体
-        params.set_output("Geometry", delauneyed);
+        params.set_output("Geometry", processed_geometry);
 
         return true;
     }
     catch (const std::exception& e) {
         // 处理异常，例如记录错误信息
-        std::cerr << "Error during FEM solve: " << e.what() << std::endl;
+        spdlog::error("Error during FEM solve: {}", e.what());
         return false;  // 或者其他适当的错误处理
     }
 }

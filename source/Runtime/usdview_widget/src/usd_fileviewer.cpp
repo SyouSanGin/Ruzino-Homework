@@ -2,11 +2,12 @@
 
 #include "widgets/usdtree/usd_fileviewer.h"
 
+#include <spdlog/spdlog.h>
+
 #include <future>
 #include <vector>
 
 #include "GUI/ImGuiFileDialog.h"
-#include <spdlog/spdlog.h>
 #include "imgui.h"
 #include "pxr/base/gf/matrix4f.h"
 #include "pxr/base/vt/typeHeaders.h"
@@ -235,11 +236,6 @@ void UsdFileViewer::EditValue()
             attr.Get(&v);
             std::string label =
                 attr.GetName().GetString() + "##" + attr.GetName().GetString();
-
-            /// print the label for dbg
-            //            spdlog::warn("%s -> %s
-            //            [%s]",prim.GetName().GetText(),label.c_str(),
-            //            attr.GetTypeName().GetCPPTypeName().c_str());
 
             if (v.IsHolding<double>()) {
                 double value = v.Get<double>();

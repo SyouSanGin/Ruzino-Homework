@@ -38,7 +38,7 @@ namespace fem_bem {
     // memory allocation
     template<
         typename T,
-        std::size_t MaxSize = 8,
+        std::size_t MaxSize = 16,
         std::size_t NameBufferSize = 4>
     class ParameterMap {
        private:

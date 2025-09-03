@@ -301,12 +301,13 @@ class FEMSolver3D : public ElementSolver {
         basis_ = fem_bem::make_fem_3d();
 
         // For P_minus with k=0 (H1 space), we need linear shape functions on
-        // tetrahedron vertices P-1Λ0 space has linear basis functions: u1, u2, u3, u4
-        // where u4 = 1 - u1 - u2 - u3
-        basis_->add_vertex_expression("1 - u1 - u2 - u3");  // shape function at vertex 3
-        basis_->add_vertex_expression("u1");                // shape function at vertex 0
-        basis_->add_vertex_expression("u2");                // shape function at vertex 1
-        basis_->add_vertex_expression("u3");                // shape function at vertex 2
+        // tetrahedron vertices P-1Λ0 space has linear basis functions: u1, u2,
+        // u3, u4 where u4 = 1 - u1 - u2 - u3
+        basis_->add_vertex_expression(
+            "1 - u1 - u2 - u3");              // shape function at vertex 3
+        basis_->add_vertex_expression("u1");  // shape function at vertex 0
+        basis_->add_vertex_expression("u2");  // shape function at vertex 1
+        basis_->add_vertex_expression("u3");  // shape function at vertex 2
     }
 
     void set_geometry(const Geometry& geom) override
@@ -318,10 +319,6 @@ class FEMSolver3D : public ElementSolver {
         if (!mesh_comp_) {
             throw std::runtime_error("Geometry must have MeshComponent");
         }
-
-        // Convert to OpenVolumeMesh for 3D operations
-        auto geom_ptr = const_cast<Geometry*>(&geometry_);
-        volumemesh_ = operand_to_openvolulemesh(geom_ptr);
 
         // Extract mesh connectivity
         extract_mesh_data();
@@ -367,12 +364,58 @@ class FEMSolver3D : public ElementSolver {
     {
         if (!mesh_comp_)
             return;
-        volumemesh_ = operand_to_openvolulemesh(&geometry_);
+        auto geom_ptr = const_cast<Geometry*>(&geometry_);
+        volumemesh_ = operand_to_openvolulemesh(geom_ptr);
+
+        // Validate the volume mesh
+        validate_volume_mesh();
+    }
+
+    void validate_volume_mesh()
+    {
+        if (!volumemesh_) {
+            throw std::runtime_error("Volume mesh is not initialized");
+        }
+
+        if (volumemesh_->n_vertices() == 0) {
+            throw std::runtime_error("Volume mesh has no vertices");
+        }
+
+        if (volumemesh_->n_cells() == 0) {
+            throw std::runtime_error("Volume mesh has no cells");
+        }
+
+        // Check that all cells are tetrahedra
+        for (auto c_it = volumemesh_->cells_begin();
+             c_it != volumemesh_->cells_end();
+             ++c_it) {
+            int vertex_count = 0;
+            for (auto cv_it = volumemesh_->cv_iter(*c_it); cv_it.valid();
+                 ++cv_it) {
+                vertex_count++;
+            }
+            if (vertex_count != 4) {
+                throw std::runtime_error(
+                    "Non-tetrahedral cell found in volume mesh");
+            }
+        }
+
+        // Check that all vertex handles are valid
+        for (int i = 0; i < volumemesh_->n_vertices(); ++i) {
+            auto vh = OpenVolumeMesh::VertexHandle(i);
+            if (!vh.is_valid()) {
+                throw std::runtime_error("Invalid vertex handle found");
+            }
+        }
     }
 
     std::pair<Eigen::SparseMatrix<float>, Eigen::VectorXf> assemble_system()
     {
         int n_vertices = volumemesh_->n_vertices();
+
+        if (n_vertices == 0) {
+            throw std::runtime_error("Volume mesh has no vertices");
+        }
 
         // Initialize sparse matrix and RHS vector
         Eigen::SparseMatrix<float> A(n_vertices, n_vertices);
@@ -386,24 +429,25 @@ class FEMSolver3D : public ElementSolver {
         assert(expressions.size() == 4);
 
         auto first = expressions[0];
-        auto gradient_first = first.gradient({"u1", "u2", "u3"});
+        auto gradient_first = first.gradient({ "u1", "u2", "u3" });
 
         auto coor1 = expressions[1];
-        auto gradient_coor1 = coor1.gradient({"u1", "u2", "u3"});
+        auto gradient_coor1 = coor1.gradient({ "u1", "u2", "u3" });
         auto coor2 = expressions[2];
-        auto gradient_coor2 = coor2.gradient({"u1", "u2", "u3"});
+        auto gradient_coor2 = coor2.gradient({ "u1", "u2", "u3" });
         auto coor3 = expressions[3];
-        auto gradient_coor3 = coor3.gradient({"u1", "u2", "u3"});
+        auto gradient_coor3 = coor3.gradient({ "u1", "u2", "u3" });
 
         fem_bem::Expression final_expressions[4];
 
         // Build stiffness matrix expressions for 3D
         for (int i = 0; i < 4; i++) {
-            auto& grad = (i == 0) ? gradient_first : 
-                        (i == 1) ? gradient_coor1 : 
-                        (i == 2) ? gradient_coor2 : gradient_coor3;
-            
-            final_expressions[i] = 
+            auto& grad = (i == 0)   ? gradient_first
+                         : (i == 1) ? gradient_coor1
+                         : (i == 2) ? gradient_coor2
+                                    : gradient_coor3;
+
+            final_expressions[i] =
                 gradient_first[0] * fem_bem::Expression("j00") * grad[0] +
                 gradient_first[0] * fem_bem::Expression("j01") * grad[1] +
                 gradient_first[0] * fem_bem::Expression("j02") * grad[2] +
@@ -427,15 +471,24 @@ class FEMSolver3D : public ElementSolver {
             }
 
             // Iterate through all cells (tetrahedra) connected to this vertex
-            for (auto vc_it = volumemesh_->vc_iter(vh); vc_it.valid(); ++vc_it) {
+            for (auto vc_it = volumemesh_->vc_iter(vh); vc_it.valid();
+                 ++vc_it) {
                 std::vector<int> tet_vertex_ids;
                 std::vector<pxr::GfVec3d> tet_coords;
 
                 // Get vertices of the cell
-                for (auto cv_it = volumemesh_->cv_iter(*vc_it); cv_it.valid(); ++cv_it) {
+                for (auto cv_it = volumemesh_->cv_iter(*vc_it); cv_it.valid();
+                     ++cv_it) {
                     tet_vertex_ids.push_back((*cv_it).idx());
                     auto point = volumemesh_->vertex(*cv_it);
-                    tet_coords.push_back(pxr::GfVec3d(point[0], point[1], point[2]));
+                    tet_coords.push_back(
+                        pxr::GfVec3d(point[0], point[1], point[2]));
+                }
+
+                // Validate tetrahedron geometry
+                if (!validate_tetrahedron(tet_coords)) {
+                    // Skip degenerate tetrahedra
+                    continue;
                 }
 
                 // Find position of current vertex in tetrahedron
@@ -445,6 +498,12 @@ class FEMSolver3D : public ElementSolver {
                         vertex_pos = i;
                         break;
                     }
+                }
+
+                if (vertex_pos == -1) {
+                    // This should never happen if the mesh is constructed
+                    // correctly
+                    continue;
                 }
 
                 // Get the other three vertices
@@ -457,32 +516,41 @@ class FEMSolver3D : public ElementSolver {
 
                 // Calculate tetrahedron volume and Jacobian
                 auto tet_volume = compute_tetrahedron_volume(tet_coords);
-                auto [j00, j01, j02, j10, j11, j12, j20, j21, j22] = 
+                auto [j00, j01, j02, j10, j11, j12, j20, j21, j22] =
                     compute_inverse_jacobian_squared(tet_coords, vertex_pos);
 
                 auto calc_inner_product = [&](int id) {
-                    final_expressions[id].bind_variables({
-                        {"j00", j00}, {"j01", j01}, {"j02", j02},
-                        {"j10", j10}, {"j11", j11}, {"j12", j12},
-                        {"j20", j20}, {"j21", j21}, {"j22", j22}
-                    });
+                    final_expressions[id].bind_variables({ { "j00", j00 },
+                                                           { "j01", j01 },
+                                                           { "j02", j02 },
+                                                           { "j10", j10 },
+                                                           { "j11", j11 },
+                                                           { "j12", j12 },
+                                                           { "j20", j20 },
+                                                           { "j21", j21 },
+                                                           { "j22", j22 } });
                     return fem_bem::integrate_over_simplex(
-                        final_expressions[id], {"u1", "u2", "u3"}, nullptr, 3);
+                        final_expressions[id],
+                        { "u1", "u2", "u3" },
+                        nullptr,
+                        3);
                 };
 
                 // Add contributions to stiffness matrix
-                triplets.emplace_back(vertex_id, vertex_id, 
-                                    calc_inner_product(0) * tet_volume);
+                triplets.emplace_back(
+                    vertex_id, vertex_id, calc_inner_product(0) * tet_volume);
                 for (int i = 0; i < 3; i++) {
-                    triplets.emplace_back(vertex_id, other_vertices[i], 
-                                        calc_inner_product(i + 1) * tet_volume);
+                    triplets.emplace_back(
+                        vertex_id,
+                        other_vertices[i],
+                        calc_inner_product(i + 1) * tet_volume);
                 }
             }
         }
 
         A.setFromTriplets(triplets.begin(), triplets.end());
         A.makeCompressed();
-        return {A, b};
+        return { A, b };
     }
 
     bool is_boundary_vertex(const OpenVolumeMesh::VertexHandle& vh)
@@ -498,15 +566,17 @@ class FEMSolver3D : public ElementSolver {
 
     float get_boundary_value(int vertex_id)
     {
-        auto vertex = volumemesh_->vertex(OpenVolumeMesh::VertexHandle(vertex_id));
+        auto vertex =
+            volumemesh_->vertex(OpenVolumeMesh::VertexHandle(vertex_id));
         double x = vertex[0], y = vertex[1], z = vertex[2];
 
         fem_bem::Expression boundary_func(boundary_expr_);
         return static_cast<float>(
-            boundary_func.evaluate_at({{"x", x}, {"y", y}, {"z", z}}));
+            boundary_func.evaluate_at({ { "x", x }, { "y", y }, { "z", z } }));
     }
 
-    float compute_tetrahedron_volume(const std::vector<pxr::GfVec3d>& tet_coords)
+    float compute_tetrahedron_volume(
+        const std::vector<pxr::GfVec3d>& tet_coords)
     {
         auto& v0 = tet_coords[0];
         auto& v1 = tet_coords[1];
@@ -524,8 +594,19 @@ class FEMSolver3D : public ElementSolver {
         return static_cast<float>(std::abs(det) / 6.0);
     }
 
-    std::tuple<double, double, double, double, double, double, double, double, double>
-    compute_inverse_jacobian_squared(const std::vector<pxr::GfVec3d>& tet_coords, int vertex_pos)
+    std::tuple<
+        double,
+        double,
+        double,
+        double,
+        double,
+        double,
+        double,
+        double,
+        double>
+    compute_inverse_jacobian_squared(
+        const std::vector<pxr::GfVec3d>& tet_coords,
+        int vertex_pos)
     {
         // Reorder vertices so that vertex_pos is at position 0
         auto v0 = tet_coords[vertex_pos];
@@ -545,21 +626,74 @@ class FEMSolver3D : public ElementSolver {
                      d1[1] * (d2[0] * d3[2] - d2[2] * d3[0]) +
                      d1[2] * (d2[0] * d3[1] - d2[1] * d3[0]);
 
+        if (std::abs(det) < 1e-12) {
+            throw std::runtime_error("Singular Jacobian matrix in tetrahedron");
+        }
+
         double det_sq = det * det;
 
-        // Compute (J^T J)^-1 elements for 3D case
-        // This is a simplified version - in practice you'd compute the full inverse
-        double j00 = (d2[1]*d2[1] + d2[2]*d2[2] + d3[1]*d3[1] + d3[2]*d3[2]) / det_sq;
-        double j01 = -(d2[0]*d2[1] + d2[2]*d2[2] + d3[0]*d3[1] + d3[2]*d3[2]) / det_sq;
-        double j02 = -(d2[0]*d2[2] + d2[1]*d2[2] + d3[0]*d3[2] + d3[1]*d3[2]) / det_sq;
-        double j10 = j01;
-        double j11 = (d1[0]*d1[0] + d1[2]*d1[2] + d3[0]*d3[0] + d3[2]*d3[2]) / det_sq;
-        double j12 = -(d1[0]*d1[2] + d1[1]*d1[2] + d3[0]*d3[2] + d3[1]*d3[2]) / det_sq;
-        double j20 = j02;
-        double j21 = j12;
-        double j22 = (d1[0]*d1[0] + d1[1]*d1[1] + d2[0]*d2[0] + d2[1]*d2[1]) / det_sq;
+        // Compute the inverse of J^T * J for the shape function gradients
+        // For a tetrahedron, this is more complex than the simplified version
+        // below Here's a proper implementation for the metric tensor (J^T *
+        // J)^-1
 
-        return {j00, j01, j02, j10, j11, j12, j20, j21, j22};
+        // J = [d1 d2 d3] (3x3 matrix)
+        // J^T * J = [[d1·d1, d1·d2, d1·d3],
+        //            [d2·d1, d2·d2, d2·d3],
+        //            [d3·d1, d3·d2, d3·d3]]
+
+        double g11 = d1[0] * d1[0] + d1[1] * d1[1] + d1[2] * d1[2];
+        double g12 = d1[0] * d2[0] + d1[1] * d2[1] + d1[2] * d2[2];
+        double g13 = d1[0] * d3[0] + d1[1] * d3[1] + d1[2] * d3[2];
+        double g22 = d2[0] * d2[0] + d2[1] * d2[1] + d2[2] * d2[2];
+        double g23 = d2[0] * d3[0] + d2[1] * d3[1] + d2[2] * d3[2];
+        double g33 = d3[0] * d3[0] + d3[1] * d3[1] + d3[2] * d3[2];
+
+        // Compute determinant of metric tensor
+        double g_det = g11 * (g22 * g33 - g23 * g23) -
+                       g12 * (g12 * g33 - g13 * g23) +
+                       g13 * (g12 * g23 - g13 * g22);
+
+        if (std::abs(g_det) < 1e-12) {
+            throw std::runtime_error("Singular metric tensor in tetrahedron");
+        }
+
+        // Compute inverse of metric tensor
+        double j00 = (g22 * g33 - g23 * g23) / g_det;
+        double j01 = (g13 * g23 - g12 * g33) / g_det;
+        double j02 = (g12 * g23 - g13 * g22) / g_det;
+        double j10 = j01;  // symmetric
+        double j11 = (g11 * g33 - g13 * g13) / g_det;
+        double j12 = (g12 * g13 - g11 * g23) / g_det;
+        double j20 = j02;  // symmetric
+        double j21 = j12;  // symmetric
+        double j22 = (g11 * g22 - g12 * g12) / g_det;
+
+        return { j00, j01, j02, j10, j11, j12, j20, j21, j22 };
+    }
+
+    bool validate_tetrahedron(const std::vector<pxr::GfVec3d>& tet_coords)
+    {
+        if (tet_coords.size() != 4) {
+            return false;
+        }
+
+        // Check for degenerate tetrahedron by computing volume
+        auto& v0 = tet_coords[0];
+        auto& v1 = tet_coords[1];
+        auto& v2 = tet_coords[2];
+        auto& v3 = tet_coords[3];
+
+        auto d1 = v1 - v0;
+        auto d2 = v2 - v0;
+        auto d3 = v3 - v0;
+
+        double det = d1[0] * (d2[1] * d3[2] - d2[2] * d3[1]) -
+                     d1[1] * (d2[0] * d3[2] - d2[2] * d3[0]) +
+                     d1[2] * (d2[0] * d3[1] - d2[1] * d3[0]);
+
+        // Volume should be positive (within tolerance)
+        return std::abs(det) > 1e-12;
     }
 
     std::vector<float> solve_linear_system(
@@ -610,7 +744,8 @@ std::shared_ptr<ElementSolver> create_element_solver(
 
     if (desc.get_problem_dim() == 2) {
         return std::make_shared<FEMSolver2D>(desc);
-    } else {
+    }
+    else {
         return std::make_shared<FEMSolver3D>(desc);
     }
 }
