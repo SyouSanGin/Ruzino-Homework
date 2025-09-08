@@ -52,7 +52,7 @@ NODE_EXECUTION_FUNCTION(curve_to_mesh)
 
         int this_vert_id = i;
         int next_vert_id = (i + 1) % vert_count;
-        int prev_vert_id = (i - 1) % vert_count;
+        int prev_vert_id = (i - 1 + vert_count) % vert_count;
 
         bool first_of_periodic = guide_curve_periodic && i == 0;
 
@@ -72,6 +72,7 @@ NODE_EXECUTION_FUNCTION(curve_to_mesh)
                       guide_curve_verts[guide_curve_verts.size() - 2];
         }
         else {
+            // For periodic curves or middle vertices, use weighted average of adjacent segments
             auto vec1 = guide_curve_verts[next_vert_id] -
                         guide_curve_verts[this_vert_id];
             auto vec2 = guide_curve_verts[this_vert_id] -
@@ -79,11 +80,16 @@ NODE_EXECUTION_FUNCTION(curve_to_mesh)
 
             auto l1 = length(vec1);
             auto l2 = length(vec2);
-            vec1 = normalize(vec1);
-            vec2 = normalize(vec2);
-            auto weight_1 = l2 / (l1 + l2);
-
-            tangent = weight_1 * vec2 + (1 - weight_1) * vec1;
+            
+            // Avoid division by zero
+            if (l1 < 1e-6f || l2 < 1e-6f) {
+                tangent = l1 > l2 ? normalize(vec1) : normalize(vec2);
+            } else {
+                vec1 = normalize(vec1);
+                vec2 = normalize(vec2);
+                auto weight_1 = l2 / (l1 + l2);
+                tangent = weight_1 * vec1 + (1 - weight_1) * vec2;
+            }
         }
         tangent = normalize(tangent);
         auto bitangent = cross(normal, tangent);
@@ -112,9 +118,14 @@ NODE_EXECUTION_FUNCTION(curve_to_mesh)
     // Build face indices and face counts from the swept vertices.
     int profileCount = profile_curve_verts.size();
     int rings = guide_curve_verts.size();
-    for (int i = 0; i < rings - 1; i++) {
+    
+    // Determine how many ring connections to make
+    int connectionCount = guide_curve_periodic ? rings : rings - 1;
+    
+    for (int i = 0; i < connectionCount; i++) {
         int ring1Index = i * profileCount;
-        int ring2Index = (i + 1) * profileCount;
+        int ring2Index = ((i + 1) % rings) * profileCount;
+        
         for (int j = 0; j < profileCount; j++) {
             int next_j = (j + 1) % profileCount;
             face_vertex_indices.push_back(ring1Index + j);
