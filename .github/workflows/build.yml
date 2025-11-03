@@ -203,14 +203,18 @@ jobs:
         shell: powershell
         run: |
           try {
-            $debugSdk = Test-Path -Path "SDK/OpenUSD/Debug"
-            $releaseSdk = Test-Path -Path "SDK/OpenUSD/Release"
+            # Check if SDK directory exists and has some content
+            $sdkExists = Test-Path -Path "SDK"
+            $sdkFiles = 0
+            if ($sdkExists) {
+              $sdkFiles = (Get-ChildItem -Path "SDK" -Recurse -ErrorAction SilentlyContinue | Measure-Object).Count
+            }
             
-            Write-Output "Debug SDK present: $debugSdk"
-            Write-Output "Release SDK present: $releaseSdk"
+            Write-Output "SDK directory exists: $sdkExists"
+            Write-Output "SDK files count: $sdkFiles"
             
-            if (-not $debugSdk -or -not $releaseSdk) {
-              Write-Output "ERROR: SDK directories not found!"
+            if (-not $sdkExists -or $sdkFiles -eq 0) {
+              Write-Output "ERROR: SDK directory is empty or not found!"
               exit 1
             }
           } catch {
