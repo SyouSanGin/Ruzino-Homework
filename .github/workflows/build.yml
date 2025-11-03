@@ -243,16 +243,25 @@ jobs:
           $tag = "sdk-${{ needs.check-sdk.outputs.configure-hash }}"
           $body = "SDK build for configure.py hash: ${{ needs.check-sdk.outputs.configure-hash }}"
           
-          # Create release and upload
-          gh release create $tag SDK/SDK.zip --title "SDK ${{ needs.check-sdk.outputs.configure-hash }}" --notes $body --repo ${{ github.repository }} 2>$null
+          try {
+            # Try to delete existing release first if it exists
+            gh release delete $tag --yes --repo ${{ github.repository }} 2>$null
+            Start-Sleep -Milliseconds 500
+          } catch {
+            Write-Output "Release doesn't exist or couldn't be deleted (that's ok)"
+          }
+          
+          # Create new release with upload
+          gh release create $tag SDK/SDK.zip --title "SDK ${{ needs.check-sdk.outputs.configure-hash }}" --notes $body --repo ${{ github.repository }}
+          
           if ($LASTEXITCODE -eq 0) {
-            Write-Output "Release created successfully"
+            Write-Output "Release created and uploaded successfully"
           } else {
-            Write-Output "Release may already exist, attempting upload to existing release..."
-            gh release upload $tag SDK/SDK.zip --clobber --repo ${{ github.repository }}
+            Write-Error "Failed to create release"
+            exit 1
           }
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   restore-sdk:
     name: Restore or build SDK
