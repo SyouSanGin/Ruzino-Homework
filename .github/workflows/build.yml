@@ -24,14 +24,6 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Restore Git cache
-        uses: actions/cache@v3
-        with:
-          path: .git
-          key: git-cache-${{ github.repository }}
-          restore-keys: |
-            git-cache-
-
       - name: Check SDK status
         id: check
         shell: powershell
@@ -97,23 +89,30 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Restore Git cache
-        uses: actions/cache@v3
-        with:
-          path: .git
-          key: git-cache-${{ github.repository }}
-          restore-keys: |
-            git-cache-
-
       - name: Restore submodule cache
         uses: actions/cache@v3
         with:
           path: |
             external/
-            .git/modules/
-          key: submodules-cache-${{ hashFiles('.gitmodules') }}
+          key: submodules-cache-${{ hashFiles('.gitmodules') }}-${{ github.sha }}
           restore-keys: |
+            submodules-cache-${{ hashFiles('.gitmodules') }}-
             submodules-cache-
+
+      - name: Setup MSVC Build Tools
+        shell: cmd
+        run: |
+          REM Try to find and initialize Visual Studio environment
+          if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          ) else (
+            echo Visual Studio not found at expected locations
+            exit /b 1
+          )
 
       - name: Clean previous build artifacts
         shell: powershell
@@ -125,20 +124,39 @@ jobs:
           }
 
       - name: Build SDK - ${{ matrix.build-variant }}
-        shell: powershell
+        shell: cmd
         run: |
-          Write-Output "Building OpenUSD SDK with variant: ${{ matrix.build-variant }}"
+          REM Initialize Visual Studio environment
+          if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          )
+          
+          REM Build SDK
+          echo Building OpenUSD SDK with variant: ${{ matrix.build-variant }}
           python configure.py --library openusd --build_variant ${{ matrix.build-variant }}
+          if %ERRORLEVEL% neq 0 (
+            echo Build failed with error code %ERRORLEVEL%
+            exit /b %ERRORLEVEL%
+          )
 
       - name: Verify build output
         shell: powershell
         run: |
-          $binDir = "Binaries/${{ matrix.build-variant }}"
-          if (Test-Path -Path $binDir) {
-            $fileCount = (Get-ChildItem -Path $binDir -Recurse).Count
-            Write-Output "Build successful - $fileCount files in $binDir"
-          } else {
-            Write-Output "ERROR: Build directory not found!"
+          try {
+            $binDir = "Binaries/${{ matrix.build-variant }}"
+            if (Test-Path -Path $binDir) {
+              $fileCount = (Get-ChildItem -Path $binDir -Recurse -ErrorAction SilentlyContinue | Measure-Object).Count
+              Write-Output "Build successful - $fileCount files in $binDir"
+            } else {
+              Write-Output "ERROR: Build directory not found!"
+              exit 1
+            }
+          } catch {
+            Write-Error "Error verifying build: $_"
             exit 1
           }
 
@@ -153,14 +171,6 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 1
-
-      - name: Restore Git cache
-        uses: actions/cache@v3
-        with:
-          path: .git
-          key: git-cache-${{ github.repository }}
-          restore-keys: |
-            git-cache-
 
       - name: Verify all binaries are present
         shell: powershell
@@ -247,14 +257,6 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Restore Git cache
-        uses: actions/cache@v3
-        with:
-          path: .git
-          key: git-cache-${{ github.repository }}
-          restore-keys: |
-            git-cache-
-
       - name: Download SDK if rebuilt
         if: needs.check-sdk.outputs.needs-rebuild == 'true'
         uses: actions/download-artifact@v4
@@ -297,14 +299,6 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Restore Git cache
-        uses: actions/cache@v3
-        with:
-          path: .git
-          key: git-cache-${{ github.repository }}
-          restore-keys: |
-            git-cache-
-
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
@@ -323,51 +317,92 @@ jobs:
             exit 1
           }
 
-      - name: Configure CMake (No CUDA)
-        shell: powershell
+      - name: Setup MSVC Build Tools
+        shell: cmd
         run: |
-          try {
-            $buildDir = "build_nocuda"
-            if (Test-Path -Path $buildDir) {
-              Remove-Item -Recurse -Force $buildDir
-            }
-            New-Item -ItemType Directory -Path $buildDir -Force | Out-Null
-            
-            Push-Location $buildDir
-            cmake -G Ninja `
-              -DCMAKE_BUILD_TYPE=Release `
-              -DENABLE_CUDA=OFF `
-              -DCMAKE_INSTALL_PREFIX="../install_nocuda" `
-              ..
-            Pop-Location
-          } catch {
-            Write-Error "CMake configuration failed: $_"
-            exit 1
-          }
+          REM Try to find and initialize Visual Studio environment
+          if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+            echo MSVC environment initialized from Community edition
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+            echo MSVC environment initialized from Professional edition
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+            echo MSVC environment initialized from Enterprise edition
+          ) else (
+            echo WARNING: Visual Studio not found at expected locations
+            echo Continuing anyway - system PATH may have compiler
+          )
+
+      - name: Configure CMake (No CUDA)
+        shell: cmd
+        run: |
+          REM Initialize MSVC environment first
+          if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          )
+          
+          REM Configure CMake
+          set buildDir=build_nocuda
+          if exist "%buildDir%" (
+            rmdir /s /q "%buildDir%"
+          )
+          mkdir "%buildDir%"
+          cd /d "%buildDir%"
+          
+          cmake -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DENABLE_CUDA=OFF ^
+            -DCMAKE_INSTALL_PREFIX="../install_nocuda" ^
+            ..
+          
+          if %ERRORLEVEL% neq 0 (
+            echo CMake configuration failed
+            exit /b %ERRORLEVEL%
+          )
 
       - name: Build (No CUDA)
-        shell: powershell
+        shell: cmd
         run: |
-          try {
-            Push-Location build_nocuda
-            cmake --build . --config Release -j
-            Pop-Location
-          } catch {
-            Write-Error "Build failed: $_"
-            exit 1
-          }
+          REM Initialize MSVC environment
+          if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          )
+          
+          cd /d build_nocuda
+          cmake --build . --config Release -j
+          if %ERRORLEVEL% neq 0 (
+            echo Build failed
+            exit /b %ERRORLEVEL%
+          )
 
       - name: Install (No CUDA)
-        shell: powershell
+        shell: cmd
         run: |
-          try {
-            Push-Location build_nocuda
-            cmake --install .
-            Pop-Location
-          } catch {
-            Write-Error "Install failed: $_"
-            exit 1
-          }
+          REM Initialize MSVC environment
+          if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          )
+          
+          cd /d build_nocuda
+          cmake --install .
+          if %ERRORLEVEL% neq 0 (
+            echo Install failed
+            exit /b %ERRORLEVEL%
+          )
 
       - name: Upload build artifacts (No CUDA)
         uses: actions/upload-artifact@v4
@@ -387,14 +422,6 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 1
-
-      - name: Restore Git cache
-        uses: actions/cache@v3
-        with:
-          path: .git
-          key: git-cache-${{ github.repository }}
-          restore-keys: |
-            git-cache-
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -432,55 +459,95 @@ jobs:
             Write-Output "CUDA check error: $_"
           }
 
+      - name: Setup MSVC Build Tools
+        shell: cmd
+        run: |
+          REM Try to find and initialize Visual Studio environment
+          if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+            echo MSVC environment initialized from Community edition
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+            echo MSVC environment initialized from Professional edition
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+            echo MSVC environment initialized from Enterprise edition
+          ) else (
+            echo WARNING: Visual Studio not found at expected locations
+            echo Continuing anyway - system PATH may have compiler
+          )
+
       - name: Configure CMake (With CUDA)
         if: steps.cuda-check.outputs.cuda-available == 'true'
-        shell: powershell
+        shell: cmd
         run: |
-          try {
-            $buildDir = "build_cuda"
-            if (Test-Path -Path $buildDir) {
-              Remove-Item -Recurse -Force $buildDir
-            }
-            New-Item -ItemType Directory -Path $buildDir -Force | Out-Null
-            
-            Push-Location $buildDir
-            cmake -G Ninja `
-              -DCMAKE_BUILD_TYPE=Release `
-              -DENABLE_CUDA=ON `
-              -DCMAKE_CUDA_ARCHITECTURES=75;86;89 `
-              -DCMAKE_INSTALL_PREFIX="../install_cuda" `
-              ..
-            Pop-Location
-          } catch {
-            Write-Error "CMake configuration failed: $_"
-            exit 1
-          }
+          REM Initialize MSVC environment
+          if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          )
+          
+          set buildDir=build_cuda
+          if exist "%buildDir%" (
+            rmdir /s /q "%buildDir%"
+          )
+          mkdir "%buildDir%"
+          cd /d "%buildDir%"
+          
+          cmake -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DENABLE_CUDA=ON ^
+            -DCMAKE_CUDA_ARCHITECTURES=75;86;89 ^
+            -DCMAKE_INSTALL_PREFIX="../install_cuda" ^
+            ..
+          
+          if %ERRORLEVEL% neq 0 (
+            echo CMake configuration failed
+            exit /b %ERRORLEVEL%
+          )
 
       - name: Build (With CUDA)
         if: steps.cuda-check.outputs.cuda-available == 'true'
-        shell: powershell
+        shell: cmd
         run: |
-          try {
-            Push-Location build_cuda
-            cmake --build . --config Release -j
-            Pop-Location
-          } catch {
-            Write-Error "Build failed: $_"
-            exit 1
-          }
+          REM Initialize MSVC environment
+          if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          )
+          
+          cd /d build_cuda
+          cmake --build . --config Release -j
+          if %ERRORLEVEL% neq 0 (
+            echo Build failed
+            exit /b %ERRORLEVEL%
+          )
 
       - name: Install (With CUDA)
         if: steps.cuda-check.outputs.cuda-available == 'true'
-        shell: powershell
+        shell: cmd
         run: |
-          try {
-            Push-Location build_cuda
-            cmake --install .
-            Pop-Location
-          } catch {
-            Write-Error "Install failed: $_"
-            exit 1
-          }
+          REM Initialize MSVC environment
+          if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+          ) else if exist "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          )
+          
+          cd /d build_cuda
+          cmake --install .
+          if %ERRORLEVEL% neq 0 (
+            echo Install failed
+            exit /b %ERRORLEVEL%
+          )
 
       - name: CUDA not available
         if: steps.cuda-check.outputs.cuda-available == 'false'
@@ -507,14 +574,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-
-      - name: Restore Git cache
-        uses: actions/cache@v3
-        with:
-          path: .git
-          key: git-cache-${{ github.repository }}
-          restore-keys: |
-            git-cache-
 
       - name: Print summary
         shell: powershell
