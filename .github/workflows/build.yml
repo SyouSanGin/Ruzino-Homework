@@ -384,6 +384,68 @@ jobs:
             echo Continuing anyway - system PATH may have compiler
           )
 
+      - name: Diagnose DLL Dependencies (No CUDA)
+        shell: powershell
+        run: |
+          Write-Output "========== DLL DEPENDENCY ANALYSIS =========="
+          
+          # Check if Binaries/Release directory exists
+          $binDir = "Binaries\Release"
+          if (-not (Test-Path -Path $binDir)) {
+            Write-Output "Directory $binDir does not exist yet"
+            exit 0
+          }
+          
+          # Find all DLL files in Binaries/Release
+          $dlls = Get-ChildItem -Path $binDir -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue
+          
+          if ($dlls.Count -eq 0) {
+            Write-Output "No DLL files found in $binDir"
+            exit 0
+          }
+          
+          Write-Output "Found $($dlls.Count) DLL files:"
+          foreach ($dll in $dlls) {
+            Write-Output "  - $($dll.Name) ($($dll.FullName))"
+          }
+          
+          Write-Output ""
+          Write-Output "Analyzing dependencies for Python modules..."
+          
+          # Look for *_py.dll files specifically (nanobind modules)
+          $pyDlls = $dlls | Where-Object { $_.Name -match "_py\.dll$" }
+          
+          if ($pyDlls.Count -gt 0) {
+            Write-Output "Found $($pyDlls.Count) Python binding DLLs:"
+            
+            foreach ($pyDll in $pyDlls) {
+              Write-Output ""
+              Write-Output "Analyzing: $($pyDll.Name)"
+              $dllPath = $pyDll.FullName
+              
+              # Try using dumpbin to check dependencies (if available)
+              try {
+                $dumpbinPath = "dumpbin.exe"
+                $output = & $dumpbinPath /dependents "$dllPath" 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                  Write-Output "Dependencies from dumpbin:"
+                  Write-Output ($output | Select-String -Pattern "\.dll" | Out-String)
+                } else {
+                  Write-Output "dumpbin not available or failed"
+                }
+              } catch {
+                Write-Output "Could not run dumpbin: $_"
+              }
+            }
+          } else {
+            Write-Output "No Python binding DLLs (*_py.dll) found yet"
+          }
+          
+          # Print system PATH to help diagnose missing dependencies
+          Write-Output ""
+          Write-Output "Current PATH:"
+          $env:PATH -split ";" | ForEach-Object { Write-Output "  $_" }
+
       - name: Configure CMake (No CUDA)
         shell: cmd
         run: |
@@ -416,6 +478,7 @@ jobs:
           )
 
       - name: Build (No CUDA)
+        id: build-nocuda
         shell: cmd
         run: |
           REM Initialize MSVC environment
@@ -430,9 +493,103 @@ jobs:
           cd /d build_nocuda
           cmake --build . --config Release -j
           if %ERRORLEVEL% neq 0 (
-            echo Build failed
+            echo Build failed with error code %ERRORLEVEL%
             exit /b %ERRORLEVEL%
           )
+
+      - name: Analyze Failed DLL Imports (if build failed)
+        if: failure() && steps.build-nocuda.outcome == 'failure'
+        shell: powershell
+        run: |
+          Write-Output "========== DLL IMPORT FAILURE ANALYSIS =========="
+          
+          # Look for Python binding DLLs
+          $binDir = "Binaries\Release"
+          $pyDlls = Get-ChildItem -Path $binDir -Filter "*_py.dll" -Recurse -ErrorAction SilentlyContinue
+          
+          Write-Output "Found $($pyDlls.Count) Python binding DLLs"
+          
+          foreach ($pyDll in $pyDlls) {
+            Write-Output ""
+            Write-Output "Checking: $($pyDll.Name)"
+            $dllPath = $pyDll.FullName
+            
+            Write-Output "Full path: $dllPath"
+            Write-Output "File size: $([Math]::Round(($pyDll.Length / 1MB), 2)) MB"
+            Write-Output "Created: $($pyDll.CreationTime)"
+            Write-Output "Modified: $($pyDll.LastWriteTime)"
+            
+            # Try to list what it depends on using Get-ChildItem in the same directory
+            $dllDir = Split-Path -Parent $dllPath
+            Write-Output ""
+            Write-Output "DLL files in same directory ($dllDir):"
+            Get-ChildItem -Path $dllDir -Filter "*.dll" | ForEach-Object {
+              Write-Output "  - $($_.Name)"
+            }
+            
+            # Try using dumpbin with full path to analyze dependencies
+            Write-Output ""
+            Write-Output "Attempting dependency analysis with dumpbin..."
+            try {
+              $dumpbinPath = "dumpbin.exe"
+              $deps = & $dumpbinPath /dependents "$dllPath" 2>&1
+              $depLines = $deps | Select-String -Pattern "\.dll"
+              if ($depLines) {
+                Write-Output "Dependencies found:"
+                $depLines | ForEach-Object { Write-Output "  $_" }
+                
+                # Check if each dependency exists
+                Write-Output ""
+                Write-Output "Checking if dependencies exist in system paths..."
+                $depLines | ForEach-Object {
+                  $depName = $_ -replace "^\s*", "" -replace "\s*$", ""
+                  $found = $false
+                  
+                  # Check in the DLL directory
+                  if (Test-Path -Path (Join-Path $dllDir $depName)) {
+                    Write-Output "  ✓ $depName found in DLL directory"
+                    $found = $true
+                  }
+                  
+                  # Check in system PATH
+                  if (-not $found) {
+                    foreach ($pathDir in ($env:PATH -split ";")) {
+                      if (Test-Path -Path (Join-Path $pathDir $depName)) {
+                        Write-Output "  ✓ $depName found in PATH: $pathDir"
+                        $found = $true
+                        break
+                      }
+                    }
+                  }
+                  
+                  if (-not $found) {
+                    Write-Output "  ✗ $depName NOT FOUND - This may cause the import failure!"
+                  }
+                }
+              } else {
+                Write-Output "No DLL dependencies found or dumpbin could not parse"
+              }
+            } catch {
+              Write-Output "Could not run dumpbin: $_"
+            }
+          }
+          
+          Write-Output ""
+          Write-Output "========== BUILD ENVIRONMENT INFO =========="
+          Write-Output "Current working directory: $(Get-Location)"
+          Write-Output "Visual Studio paths in PATH:"
+          $env:PATH -split ";" | Where-Object { $_ -match "Visual Studio|VC|MSVC" } | ForEach-Object {
+            Write-Output "  $_"
+          }
+          
+          Write-Output ""
+          Write-Output "SDK Python path: SDK\python"
+          if (Test-Path "SDK\python") {
+            Write-Output "  ✓ SDK Python exists"
+            Write-Output "  Files: $($(Get-ChildItem SDK\python -Recurse).Count) items"
+          } else {
+            Write-Output "  ✗ SDK Python NOT found"
+          }
 
       - name: Install (No CUDA)
         shell: cmd
@@ -611,6 +768,7 @@ jobs:
           )
 
       - name: Build (With CUDA)
+        id: build-cuda
         if: steps.cuda-check.outputs.cuda-available == 'true'
         shell: cmd
         run: |
@@ -626,9 +784,94 @@ jobs:
           cd /d build_cuda
           cmake --build . --config Release -j
           if %ERRORLEVEL% neq 0 (
-            echo Build failed
+            echo Build failed with error code %ERRORLEVEL%
             exit /b %ERRORLEVEL%
           )
+
+      - name: Analyze Failed DLL Imports (if CUDA build failed)
+        if: failure() && steps.build-cuda.outcome == 'failure' && steps.cuda-check.outputs.cuda-available == 'true'
+        shell: powershell
+        run: |
+          Write-Output "========== DLL IMPORT FAILURE ANALYSIS (CUDA) =========="
+          
+          # Look for Python binding DLLs
+          $binDir = "Binaries\Release"
+          $pyDlls = Get-ChildItem -Path $binDir -Filter "*_py.dll" -Recurse -ErrorAction SilentlyContinue
+          
+          Write-Output "Found $($pyDlls.Count) Python binding DLLs"
+          
+          foreach ($pyDll in $pyDlls) {
+            Write-Output ""
+            Write-Output "Checking: $($pyDll.Name)"
+            $dllPath = $pyDll.FullName
+            
+            Write-Output "Full path: $dllPath"
+            Write-Output "File size: $([Math]::Round(($pyDll.Length / 1MB), 2)) MB"
+            Write-Output "Created: $($pyDll.CreationTime)"
+            Write-Output "Modified: $($pyDll.LastWriteTime)"
+            
+            # Try to list what it depends on
+            $dllDir = Split-Path -Parent $dllPath
+            Write-Output ""
+            Write-Output "DLL files in same directory ($dllDir):"
+            Get-ChildItem -Path $dllDir -Filter "*.dll" | ForEach-Object {
+              Write-Output "  - $($_.Name)"
+            }
+            
+            # Try using dumpbin for dependency analysis
+            Write-Output ""
+            Write-Output "Attempting dependency analysis with dumpbin..."
+            try {
+              $dumpbinPath = "dumpbin.exe"
+              $deps = & $dumpbinPath /dependents "$dllPath" 2>&1
+              $depLines = $deps | Select-String -Pattern "\.dll"
+              if ($depLines) {
+                Write-Output "Dependencies found:"
+                $depLines | ForEach-Object { Write-Output "  $_" }
+                
+                Write-Output ""
+                Write-Output "Checking if dependencies exist in system paths..."
+                $depLines | ForEach-Object {
+                  $depName = $_ -replace "^\s*", "" -replace "\s*$", ""
+                  $found = $false
+                  
+                  # Check in the DLL directory
+                  if (Test-Path -Path (Join-Path $dllDir $depName)) {
+                    Write-Output "  ✓ $depName found in DLL directory"
+                    $found = $true
+                  }
+                  
+                  # Check in system PATH
+                  if (-not $found) {
+                    foreach ($pathDir in ($env:PATH -split ";")) {
+                      if (Test-Path -Path (Join-Path $pathDir $depName)) {
+                        Write-Output "  ✓ $depName found in PATH: $pathDir"
+                        $found = $true
+                        break
+                      }
+                    }
+                  }
+                  
+                  if (-not $found) {
+                    Write-Output "  ✗ $depName NOT FOUND - This may cause the import failure!"
+                  }
+                }
+              } else {
+                Write-Output "No DLL dependencies found or dumpbin could not parse"
+              }
+            } catch {
+              Write-Output "Could not run dumpbin: $_"
+            }
+          }
+          
+          Write-Output ""
+          Write-Output "========== BUILD ENVIRONMENT INFO (CUDA) =========="
+          Write-Output "Current working directory: $(Get-Location)"
+          Write-Output "CUDA_PATH: $env:CUDA_PATH"
+          Write-Output "Visual Studio paths in PATH:"
+          $env:PATH -split ";" | Where-Object { $_ -match "Visual Studio|VC|MSVC|CUDA" } | ForEach-Object {
+            Write-Output "  $_"
+          }
 
       - name: Install (With CUDA)
         if: steps.cuda-check.outputs.cuda-available == 'true'
