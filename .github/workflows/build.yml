@@ -44,16 +44,7 @@ jobs:
         shell: powershell
         run: |
           $token = "${{ secrets.GH_PAT }}"
-          $output = python configure.py --check-sdk --gh-token $token
-          Write-Output $output
-          
-          foreach ($line in $output -split "`n") {
-            if ($line -match "^([a-z-]+)=(.+)$") {
-              $key = $matches[1]
-              $value = $matches[2]
-              Write-Output "$key=$value" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            }
-          }
+          & .github/scripts/check-sdk.ps1 -GitHubToken $token
 
   build-sdk:
     name: Build SDK
