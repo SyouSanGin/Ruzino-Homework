@@ -5,6 +5,7 @@ param(
 # Calculate SHA256 hash of configure.py
 $configureHash = (Get-FileHash -Path "configure.py" -Algorithm SHA256).Hash.ToLower()
 Write-Output "configure-hash=$configureHash"
+Add-Content -Path $env:GITHUB_OUTPUT -Value "configure-hash=$configureHash"
 
 $sdkDir = "SDK"
 $hashFile = Join-Path $sdkDir ".configure_hash"
@@ -16,11 +17,13 @@ if (Test-Path $hashFile) {
         Write-Output "SDK hash matches, checking GitHub Release..."
     } else {
         Write-Output "needs-rebuild=true"
+        Add-Content -Path $env:GITHUB_OUTPUT -Value "needs-rebuild=true"
         Write-Output "configure.py changed, SDK rebuild required"
         exit 0
     }
 } else {
     Write-Output "needs-rebuild=true"
+    Add-Content -Path $env:GITHUB_OUTPUT -Value "needs-rebuild=true"
     Write-Output "No SDK hash file found, will rebuild"
     exit 0
 }
@@ -34,6 +37,7 @@ if ($GitHubToken) {
         $result = & gh release view $tagName --repo "Jerry-Shen0527/USTC_CG_24" 2>&1
         if ($LASTEXITCODE -eq 0) {
             Write-Output "needs-rebuild=false"
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "needs-rebuild=false"
             Write-Output "SDK exists in release $tagName"
             exit 0
         }
@@ -43,4 +47,5 @@ if ($GitHubToken) {
 }
 
 Write-Output "needs-rebuild=true"
+Add-Content -Path $env:GITHUB_OUTPUT -Value "needs-rebuild=true"
 Write-Output "SDK not found in release, will rebuild"
