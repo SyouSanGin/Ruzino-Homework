@@ -50,6 +50,48 @@ def copy_python_dlls_to_binaries(targets, dry_run=False):
         print(f"  Copied entire Python installation from SDK to Binaries for targets: {targets}")
 
 
+def copy_cuda_runtime_dlls_to_binaries(targets, dry_run=False):
+    """Copy CUDA runtime DLLs to Binaries/{target}/ if available"""
+    # Try to find CUDA installation from environment variable
+    cuda_path = os.environ.get("CUDA_PATH")
+    
+    # If not found, silently skip (CUDA is optional)
+    if not cuda_path:
+        print("  CUDA_PATH not set, skipping CUDA runtime DLLs")
+        return
+    
+    # Define the DLLs we need
+    cuda_dlls = [
+        "cudart64_12.dll",
+        "nvrtc64_120_0.dll",
+    ]
+    
+    # Copy each DLL to Binaries/{target}
+    for target in targets:
+        target_dir = os.path.join(os.getcwd(), "Binaries", target)
+        
+        for dll_name in cuda_dlls:
+            src_dll = os.path.join(cuda_path, "bin", dll_name)
+            
+            # Skip if DLL doesn't exist
+            if not os.path.exists(src_dll):
+                print(f"  ⚠ {dll_name} not found at {src_dll}, skipping")
+                continue
+            
+            dst_dll = os.path.join(target_dir, dll_name)
+            
+            if dry_run:
+                print(f"  [DRY RUN] Would copy {dll_name} to Binaries/{target}/")
+            else:
+                os.makedirs(target_dir, exist_ok=True)
+                try:
+                    shutil.copy2(src_dll, dst_dll)
+                    file_size_mb = os.path.getsize(dst_dll) / (1024 * 1024)
+                    print(f"  ✓ Copied {dll_name} ({file_size_mb:.2f} MB) to Binaries/{target}/")
+                except Exception as e:
+                    print(f"  ✗ Failed to copy {dll_name}: {e}")
+
+
 def download_with_progress(url, zip_path, dry_run=False):
     if dry_run: 
         print(f"[DRY RUN] Would download from {url} to {zip_path}")
@@ -307,6 +349,9 @@ def extract_and_setup_sdk(sdk_zip_path, targets=None, dry_run=False):
         
         # Copy Python DLLs
         copy_python_dlls_to_binaries(targets, dry_run=dry_run)
+        
+        # Copy CUDA runtime DLLs if available
+        copy_cuda_runtime_dlls_to_binaries(targets, dry_run=dry_run)
         
         print("✓ SDK structure setup complete")
         return True
@@ -828,6 +873,8 @@ def main():
     # Copy Python DLLs from SDK to Binaries for each target in copy-only mode
     if copy_only:
         copy_python_dlls_to_binaries(targets, dry_run=dry_run)
+        # Also copy CUDA runtime DLLs if available
+        copy_cuda_runtime_dlls_to_binaries(targets, dry_run=dry_run)
 
 
 if __name__ == "__main__":
