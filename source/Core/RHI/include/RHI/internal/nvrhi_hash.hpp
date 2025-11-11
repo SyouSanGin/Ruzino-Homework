@@ -32,20 +32,6 @@ struct hash<nvrhi::BindingLayoutItem> {
 };
 
 template<>
-struct hash<nvrhi::VariableRateShadingState> {
-    std::size_t operator()(
-        nvrhi::VariableRateShadingState const& s) const noexcept
-    {
-        std::size_t seed = 0;
-        nvrhi::hash_combine(seed, s.enabled);
-        nvrhi::hash_combine(seed, s.shadingRate);
-        nvrhi::hash_combine(seed, s.pipelinePrimitiveCombiner);
-        nvrhi::hash_combine(seed, s.imageCombiner);
-        return seed;
-    }
-};
-
-template<>
 struct hash<nvrhi::SinglePassStereoState> {
     std::size_t operator()(nvrhi::SinglePassStereoState const& s) const noexcept
     {

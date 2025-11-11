@@ -387,6 +387,8 @@ ShaderReflectionInfo ShaderFactory::shader_reflect(
         }
         
         layout_vector[space].visibility = shader_type;
+        layout_vector[space].registerSpaceIsDescriptorSet = true;
+        layout_vector[space].registerSpace = space;
     }
 
     return ret;

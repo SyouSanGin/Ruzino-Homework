@@ -4,34 +4,37 @@
 
 USTC_CG_NAMESPACE_OPEN_SCOPE
 
+using BindingSetItemArray = std::vector<nvrhi::BindingSetItem>;
+
 class ProgramVars;
 
 class GPUCONTEXT_API ProgramVarsProxy {
    public:
     ProgramVarsProxy(ProgramVars* parent, const std::string& path);
-    
+
     // Support nested access with string
     ProgramVarsProxy operator[](const std::string& name);
-    
+
     // Support array access with integer
     ProgramVarsProxy operator[](int index);
-    
+
     // Assignment operator for direct resource assignment
     ProgramVarsProxy& operator=(nvrhi::IResource* resource);
-    
+
     // Implicit conversion to nvrhi::IResource*&
     operator nvrhi::IResource*&();
-    
+
    private:
     ProgramVars* parent_;
     std::string path_;
-    
+
     std::string build_path(const std::string& name) const;
     std::string build_path(int index) const;
 };
 
 class GPUCONTEXT_API ProgramVars {
     friend class ProgramVarsProxy;
+
    public:
     ProgramVars(ResourceAllocator& r);
 
@@ -41,7 +44,8 @@ class GPUCONTEXT_API ProgramVars {
         const ProgramHandle& program,
         Args&&... args);
 
-    ~ProgramVars();    void finish_setting_vars();
+    ~ProgramVars();
+    void finish_setting_vars();
 
     ProgramVarsProxy operator[](const std::string& name);
 
@@ -66,14 +70,15 @@ class GPUCONTEXT_API ProgramVars {
    private:
     nvrhi::BindingLayoutVector binding_layouts;
 
-    nvrhi::static_vector<nvrhi::BindingSetItemArray, nvrhi::c_MaxBindingLayouts>
+    nvrhi::static_vector<BindingSetItemArray, nvrhi::c_MaxBindingLayouts>
         binding_spaces;
 
     nvrhi::static_vector<nvrhi::BindingSetHandle, nvrhi::c_MaxBindingLayouts>
         binding_sets_solid;
 
     nvrhi::static_vector<nvrhi::IDescriptorTable*, nvrhi::c_MaxBindingLayouts>
-        descriptor_tables;    ResourceAllocator& resource_allocator_;
+        descriptor_tables;
+    ResourceAllocator& resource_allocator_;
     std::vector<IProgram*> programs;
 
     unsigned get_binding_space(const std::string& name);
@@ -82,7 +87,7 @@ class GPUCONTEXT_API ProgramVars {
     nvrhi::ResourceType get_binding_type(const std::string& name);
     std::tuple<unsigned, unsigned> get_binding_location(
         const std::string& name);
-    
+
     nvrhi::IResource*& get_resource_direct(const std::string& name);
 
     ShaderReflectionInfo final_reflection_info;
