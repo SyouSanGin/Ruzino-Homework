@@ -22,7 +22,9 @@ NODE_EXECUTION_FUNCTION(instance_on_points)
 {
     // Function content omitted
     auto points = params.get_input<Geometry>("Points");
+    points.apply_transform();
     auto geometry = params.get_input<Geometry>("Geometry");
+    geometry.apply_transform();
 
     auto instancer = std::make_shared<InstancerComponent>(&geometry);
     geometry.attach_component(instancer);

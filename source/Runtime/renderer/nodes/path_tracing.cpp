@@ -137,7 +137,8 @@ NODE_EXECUTION_FUNCTION(path_tracing)
     }
     
     uint32_t lightCount = static_cast<uint32_t>(valid_lights.size());
-    
+
+    instance_collection->light_pool.compress();
     program_vars["lightBuffer"] =
         instance_collection->light_pool.get_device_buffer();
     

@@ -4,7 +4,9 @@
 
 #include <spdlog/spdlog.h>
 
+#include <cmath>
 #include <future>
+#include <map>
 #include <vector>
 
 #include "GUI/ImGuiFileDialog.h"
@@ -193,192 +195,520 @@ void UsdFileViewer::EditValue()
 {
     using namespace pxr;
     UsdPrim prim = stage->get_usd_stage()->GetPrimAtPath(selected);
-    if (prim) {
-        auto xformable =
-            UsdGeomXformable::Get(stage->get_usd_stage(), selected);
-        if (xformable) {
-            //            spdlog::warn("XFORMABLE_GET! -> %s",
-            //            prim.GetName().GetText());
+    if (!prim) {
+        ImGui::TextDisabled("No prim selected");
+        return;
+    }
+
+    // Prim Info Section
+    if (ImGui::CollapsingHeader("Prim Info", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Text("Path: %s", prim.GetPath().GetString().c_str());
+        ImGui::Text("Type: %s", prim.GetTypeName().GetText());
+        ImGui::Text("Active: %s", prim.IsActive() ? "Yes" : "No");
+        ImGui::Separator();
+    }
+
+    // Transform controls in a collapsible section
+    auto xformable = UsdGeomXformable::Get(stage->get_usd_stage(), selected);
+    if (xformable) {
+        if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
             bool rst_stack;
             auto xform_op = xformable.GetOrderedXformOps(&rst_stack);
-            if (xform_op.size() == 0) {  // no trans
-                GfMatrix4d mat =
-                    GfMatrix4d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+            
+            // Initialize transform if not exists
+            if (xform_op.size() == 0) {
+                GfMatrix4d mat = GfMatrix4d(1);
                 auto trans = xformable.AddTransformOp();
                 trans.Set(mat);
                 xformable.SetXformOpOrder({ trans });
+                xform_op = xformable.GetOrderedXformOps(&rst_stack);
             }
-            else if (
-                xform_op.size() == 1 &&
+            
+            if (xform_op.size() == 1 &&
                 xform_op[0].GetOpType() == UsdGeomXformOp::TypeTransform) {
                 auto trans = xform_op[0];
                 GfMatrix4d mat;
                 trans.Get(&mat);
-                float tmp[3] = { static_cast<float>(mat[3][0]),
-                                 static_cast<float>(mat[3][1]),
-                                 static_cast<float>(mat[3][2]) };
-                bool modified_flag = false;
-                if (ImGui::SliderFloat("translate X", tmp, -10.f, 10.f))
-                    mat[3][0] = tmp[0];
-                if (ImGui::SliderFloat("translate Y", tmp + 1, -10.f, 10.f))
-                    mat[3][1] = tmp[1];
-                if (ImGui::SliderFloat("translate Z", tmp + 2, -10.f, 10.f))
-                    mat[3][2] = tmp[2];
-                trans.Set(mat);
-                xformable.SetXformOpOrder({ trans });
+                
+                // Decompose matrix into translation, rotation, scale
+                GfVec3d translation = mat.ExtractTranslation();
+                
+                // Extract scale by getting the length of each basis vector
+                GfVec3d scaleVec(
+                    GfVec3d(mat[0][0], mat[0][1], mat[0][2]).GetLength(),
+                    GfVec3d(mat[1][0], mat[1][1], mat[1][2]).GetLength(),
+                    GfVec3d(mat[2][0], mat[2][1], mat[2][2]).GetLength()
+                );
+                
+                // Extract rotation by removing scale from the matrix
+                GfMatrix3d rotMat3 = mat.ExtractRotationMatrix();
+                
+                // Convert rotation matrix to Euler angles (XYZ order)
+                double rotX = atan2(rotMat3[2][1], rotMat3[2][2]) * 180.0 / M_PI;
+                double rotY = atan2(-rotMat3[2][0], sqrt(rotMat3[2][1] * rotMat3[2][1] + rotMat3[2][2] * rotMat3[2][2])) * 180.0 / M_PI;
+                double rotZ = atan2(rotMat3[1][0], rotMat3[0][0]) * 180.0 / M_PI;
+                
+                bool modified = false;
+                
+                ImGui::PushItemWidth(-1);
+                
+                // Translation
+                ImGui::Text("Translation");
+                float trans_tmp[3] = { 
+                    static_cast<float>(translation[0]),
+                    static_cast<float>(translation[1]),
+                    static_cast<float>(translation[2])
+                };
+                if (ImGui::DragFloat("X##trans", &trans_tmp[0], 0.1f, -1000.f, 1000.f, "%.3f")) {
+                    translation[0] = trans_tmp[0];
+                    modified = true;
+                }
+                if (ImGui::DragFloat("Y##trans", &trans_tmp[1], 0.1f, -1000.f, 1000.f, "%.3f")) {
+                    translation[1] = trans_tmp[1];
+                    modified = true;
+                }
+                if (ImGui::DragFloat("Z##trans", &trans_tmp[2], 0.1f, -1000.f, 1000.f, "%.3f")) {
+                    translation[2] = trans_tmp[2];
+                    modified = true;
+                }
+                
+                ImGui::Spacing();
+                
+                // Rotation (Euler angles in degrees)
+                ImGui::Text("Rotation (degrees)");
+                float rot_tmp[3] = {
+                    static_cast<float>(rotX),
+                    static_cast<float>(rotY),
+                    static_cast<float>(rotZ)
+                };
+                
+                if (ImGui::DragFloat("X##rot", &rot_tmp[0], 1.0f, -180.f, 180.f, "%.1f°")) {
+                    rotX = rot_tmp[0];
+                    modified = true;
+                }
+                if (ImGui::DragFloat("Y##rot", &rot_tmp[1], 1.0f, -180.f, 180.f, "%.1f°")) {
+                    rotY = rot_tmp[1];
+                    modified = true;
+                }
+                if (ImGui::DragFloat("Z##rot", &rot_tmp[2], 1.0f, -180.f, 180.f, "%.1f°")) {
+                    rotZ = rot_tmp[2];
+                    modified = true;
+                }
+                
+                ImGui::Spacing();
+                
+                // Scale
+                ImGui::Text("Scale");
+                float scale_tmp[3] = {
+                    static_cast<float>(scaleVec[0]),
+                    static_cast<float>(scaleVec[1]),
+                    static_cast<float>(scaleVec[2])
+                };
+                if (ImGui::DragFloat("X##scale", &scale_tmp[0], 0.01f, 0.001f, 100.f, "%.3f")) {
+                    scaleVec[0] = scale_tmp[0];
+                    modified = true;
+                }
+                if (ImGui::DragFloat("Y##scale", &scale_tmp[1], 0.01f, 0.001f, 100.f, "%.3f")) {
+                    scaleVec[1] = scale_tmp[1];
+                    modified = true;
+                }
+                if (ImGui::DragFloat("Z##scale", &scale_tmp[2], 0.01f, 0.001f, 100.f, "%.3f")) {
+                    scaleVec[2] = scale_tmp[2];
+                    modified = true;
+                }
+                
+                // Uniform scale button
+                if (ImGui::Button("Uniform Scale")) {
+                    float uniformScale = (scale_tmp[0] + scale_tmp[1] + scale_tmp[2]) / 3.0f;
+                    scaleVec[0] = scaleVec[1] = scaleVec[2] = uniformScale;
+                    modified = true;
+                }
+                
+                if (modified) {
+                    // Reconstruct matrix from components
+                    // First create scale matrix
+                    GfMatrix4d scaleMat(1);
+                    scaleMat[0][0] = scaleVec[0];
+                    scaleMat[1][1] = scaleVec[1];
+                    scaleMat[2][2] = scaleVec[2];
+                    
+                    // Create rotation matrix from Euler angles (XYZ order)
+                    double cx = cos(rotX * M_PI / 180.0);
+                    double sx = sin(rotX * M_PI / 180.0);
+                    double cy = cos(rotY * M_PI / 180.0);
+                    double sy = sin(rotY * M_PI / 180.0);
+                    double cz = cos(rotZ * M_PI / 180.0);
+                    double sz = sin(rotZ * M_PI / 180.0);
+                    
+                    GfMatrix4d rotMatX(1);
+                    rotMatX[1][1] = cx;
+                    rotMatX[1][2] = -sx;
+                    rotMatX[2][1] = sx;
+                    rotMatX[2][2] = cx;
+                    
+                    GfMatrix4d rotMatY(1);
+                    rotMatY[0][0] = cy;
+                    rotMatY[0][2] = sy;
+                    rotMatY[2][0] = -sy;
+                    rotMatY[2][2] = cy;
+                    
+                    GfMatrix4d rotMatZ(1);
+                    rotMatZ[0][0] = cz;
+                    rotMatZ[0][1] = -sz;
+                    rotMatZ[1][0] = sz;
+                    rotMatZ[1][1] = cz;
+                    
+                    // Combine: Scale -> RotX -> RotY -> RotZ
+                    GfMatrix4d newMat = rotMatZ * rotMatY * rotMatX * scaleMat;
+                    
+                    // Set translation
+                    newMat.SetTranslateOnly(translation);
+                    
+                    trans.Set(newMat);
+                }
+                
+                ImGui::PopItemWidth();
             }
-            // else: do nothing
+            else if (xform_op.size() > 1) {
+                ImGui::TextWrapped("Complex transform stack detected. Only simple transform editing is supported.");
+                ImGui::TextDisabled("Transform stack has %zu operations", xform_op.size());
+            }
+            
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
         }
+    }
 
-        auto attributes = prim.GetAttributes();
-        for (auto&& attr : attributes) {
-            VtValue v;
-            attr.Get(&v);
-            std::string label =
-                attr.GetName().GetString() + "##" + attr.GetName().GetString();
+    // Attributes in a collapsible section
+    if (prim) {
+        if (ImGui::CollapsingHeader("Attributes", ImGuiTreeNodeFlags_DefaultOpen)) {
+            auto attributes = prim.GetAttributes();
+            
+            // Group attributes by category
+            std::map<std::string, std::vector<UsdAttribute>> attributeGroups;
+            for (auto&& attr : attributes) {
+                std::string attrName = attr.GetName().GetString();
+                
+                // Skip xformOp attributes as they're handled in Transform section
+                if (attrName.find("xformOp") != std::string::npos) {
+                    continue;
+                }
+                
+                // Categorize by namespace
+                std::string category = "General";
+                size_t colonPos = attrName.find(':');
+                if (colonPos != std::string::npos) {
+                    category = attrName.substr(0, colonPos);
+                }
+                
+                attributeGroups[category].push_back(attr);
+            }
+            
+            // Display attributes by category
+            for (auto& [category, attrs] : attributeGroups) {
+                if (attrs.empty()) continue;
+                
+                if (ImGui::TreeNodeEx(category.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+                    for (auto&& attr : attrs) {
+                        VtValue v;
+                        attr.Get(&v);
+                        std::string attrName = attr.GetName().GetString();
+                        std::string label = attrName + "##" + attrName;
 
-            if (v.IsHolding<double>()) {
-                double value = v.Get<double>();
-                double min_double = 0;
-                double max_double = 1;
-                if (ImGui::SliderScalar(
-                        label.c_str(),
-                        ImGuiDataType_Double,
-                        &value,
-                        &min_double,
-                        &max_double)) {
-                    attr.Set(value);
-                }
-            }
-            else if (v.IsHolding<float>()) {
-                float value = v.Get<float>();
-                float min_float = 0;
-                float max_float = 1;
-                if (ImGui::SliderFloat(
-                        label.c_str(), &value, min_float, max_float)) {
-                    attr.Set(value);
-                }
-            }
-            else if (v.IsHolding<int>()) {
-                int value = v.Get<int>();
-                int min_int = -10;
-                int max_int = 10;
-                if (ImGui::SliderInt(label.c_str(), &value, min_int, max_int)) {
-                    attr.Set(value);
-                }
-            }
-            else if (v.IsHolding<unsigned int>()) {
-                unsigned int value = v.Get<unsigned int>();
-                unsigned int min_uint = 0;
-                unsigned int max_uint = 10;
-                if (ImGui::SliderScalar(
-                        label.c_str(),
-                        ImGuiDataType_U32,
-                        &value,
-                        &min_uint,
-                        &max_uint)) {
-                    attr.Set(value);
-                }
-            }
-            else if (v.IsHolding<int64_t>()) {
-                int64_t value = v.Get<int64_t>();
-                int64_t min_int64 = -10;
-                int64_t max_int64 = 10;
-                if (ImGui::SliderScalar(
-                        label.c_str(),
-                        ImGuiDataType_S64,
-                        &value,
-                        &min_int64,
-                        &max_int64)) {
-                    attr.Set(value);
-                }
-            }
-            else if (v.IsHolding<GfVec2f>()) {
-                GfVec2f value = v.Get<GfVec2f>();
-                if (ImGui::SliderFloat2(
-                        label.c_str(), value.data(), 0.0f, 1.0f)) {
-                    attr.Set(value);
-                }
-            }
-            else if (v.IsHolding<GfVec3f>()) {
-                GfVec3f value = v.Get<GfVec3f>();
-                if (ImGui::SliderFloat3(
-                        label.c_str(), value.data(), 0.0f, 1.0f)) {
-                    attr.Set(value);
-                }
-            }
-            else if (v.IsHolding<GfVec4f>()) {
-                GfVec4f value = v.Get<GfVec4f>();
-                if (ImGui::SliderFloat4(
-                        label.c_str(), value.data(), 0.0f, 1.0f)) {
-                    attr.Set(value);
-                }
-            }
-            else if (v.IsHolding<GfVec2i>()) {
-                GfVec2i value = v.Get<GfVec2i>();
-                if (ImGui::SliderInt2(label.c_str(), value.data(), -10, 10)) {
-                    attr.Set(value);
-                }
-            }
-            else if (v.IsHolding<GfVec3i>()) {
-                GfVec3i value = v.Get<GfVec3i>();
-                if (ImGui::SliderInt3(label.c_str(), value.data(), -10, 10)) {
-                    attr.Set(value);
-                }
-            }
-            else if (v.IsHolding<GfVec4i>()) {
-                GfVec4i value = v.Get<GfVec4i>();
-                if (ImGui::SliderInt4(label.c_str(), value.data(), -10, 10)) {
-                    attr.Set(value);
-                }
-                else if (v.IsHolding<GfVec2d>()) {
-                    GfVec2d value = v.Get<GfVec2d>();
-                    float tmp[2] = { static_cast<float>(value[0]),
-                                     static_cast<float>(value[1]) };
-                    if (ImGui::SliderFloat2(label.c_str(), tmp, 0.0f, 1.0f)) {
-                        value[0] = static_cast<double>(tmp[0]);
-                        value[1] = static_cast<double>(tmp[1]);
-                        attr.Set(value);
+                        ImGui::PushID(label.c_str());
+                        ImGui::AlignTextToFramePadding();
+                        ImGui::Text("%s", attrName.c_str());
+                        ImGui::SameLine(200);
+                        ImGui::SetNextItemWidth(-1);
+
+                        if (v.IsHolding<double>()) {
+                            double value = v.Get<double>();
+                            if (ImGui::DragScalar("##value", ImGuiDataType_Double, &value, 0.01, nullptr, nullptr, "%.3f")) {
+                                attr.Set(value);
+                            }
+                        }
+                        else if (v.IsHolding<float>()) {
+                            float value = v.Get<float>();
+                            if (ImGui::DragFloat("##value", &value, 0.01f, 0.0f, 0.0f, "%.3f")) {
+                                attr.Set(value);
+                            }
+                        }
+                        else if (v.IsHolding<int>()) {
+                            int value = v.Get<int>();
+                            if (ImGui::DragInt("##value", &value, 1.0f)) {
+                                attr.Set(value);
+                            }
+                        }
+                        else if (v.IsHolding<unsigned int>()) {
+                            unsigned int value = v.Get<unsigned int>();
+                            if (ImGui::DragScalar("##value", ImGuiDataType_U32, &value, 1.0f)) {
+                                attr.Set(value);
+                            }
+                        }
+                        else if (v.IsHolding<int64_t>()) {
+                            int64_t value = v.Get<int64_t>();
+                            if (ImGui::DragScalar("##value", ImGuiDataType_S64, &value, 1.0f)) {
+                                attr.Set(value);
+                            }
+                        }
+                        else if (v.IsHolding<GfVec2f>()) {
+                            GfVec2f value = v.Get<GfVec2f>();
+                            if (ImGui::DragFloat2("##value", value.data(), 0.01f)) {
+                                attr.Set(value);
+                            }
+                        }
+                        else if (v.IsHolding<GfVec3f>()) {
+                            GfVec3f value = v.Get<GfVec3f>();
+                            
+                            // Special handling for color attributes
+                            if (attrName.find("color") != std::string::npos || 
+                                attrName.find("Color") != std::string::npos) {
+                                if (ImGui::ColorEdit3("##value", value.data())) {
+                                    attr.Set(value);
+                                }
+                            } else {
+                                if (ImGui::DragFloat3("##value", value.data(), 0.01f)) {
+                                    attr.Set(value);
+                                }
+                            }
+                        }
+                        else if (v.IsHolding<GfVec4f>()) {
+                            GfVec4f value = v.Get<GfVec4f>();
+                            
+                            // Special handling for color attributes
+                            if (attrName.find("color") != std::string::npos || 
+                                attrName.find("Color") != std::string::npos) {
+                                if (ImGui::ColorEdit4("##value", value.data())) {
+                                    attr.Set(value);
+                                }
+                            } else {
+                                if (ImGui::DragFloat4("##value", value.data(), 0.01f)) {
+                                    attr.Set(value);
+                                }
+                            }
+                        }
+                        else if (v.IsHolding<GfVec2i>()) {
+                            GfVec2i value = v.Get<GfVec2i>();
+                            if (ImGui::DragInt2("##value", value.data())) {
+                                attr.Set(value);
+                            }
+                        }
+                        else if (v.IsHolding<GfVec3i>()) {
+                            GfVec3i value = v.Get<GfVec3i>();
+                            if (ImGui::DragInt3("##value", value.data())) {
+                                attr.Set(value);
+                            }
+                        }
+                        else if (v.IsHolding<GfVec4i>()) {
+                            GfVec4i value = v.Get<GfVec4i>();
+                            if (ImGui::DragInt4("##value", value.data())) {
+                                attr.Set(value);
+                            }
+                        }
+                        else if (v.IsHolding<GfVec2d>()) {
+                            GfVec2d value = v.Get<GfVec2d>();
+                            float tmp[2] = { static_cast<float>(value[0]),
+                                           static_cast<float>(value[1]) };
+                            if (ImGui::DragFloat2("##value", tmp, 0.01f)) {
+                                value[0] = static_cast<double>(tmp[0]);
+                                value[1] = static_cast<double>(tmp[1]);
+                                attr.Set(value);
+                            }
+                        }
+                        else if (v.IsHolding<GfVec3d>()) {
+                            GfVec3d value = v.Get<GfVec3d>();
+                            float tmp[3] = { static_cast<float>(value[0]),
+                                           static_cast<float>(value[1]),
+                                           static_cast<float>(value[2]) };
+
+                            // Special handling for color attributes
+                            bool isColor = attrName.find("color") != std::string::npos || 
+                                          attrName.find("Color") != std::string::npos;
+                            
+                            if (isColor) {
+                                if (ImGui::ColorEdit3("##value", tmp)) {
+                                    value[0] = static_cast<double>(tmp[0]);
+                                    value[1] = static_cast<double>(tmp[1]);
+                                    value[2] = static_cast<double>(tmp[2]);
+                                    attr.Set(value);
+                                }
+                            } else {
+                                if (ImGui::DragFloat3("##value", tmp, 0.01f)) {
+                                    value[0] = static_cast<double>(tmp[0]);
+                                    value[1] = static_cast<double>(tmp[1]);
+                                    value[2] = static_cast<double>(tmp[2]);
+                                    attr.Set(value);
+                                }
+                            }
+                        }
+                        else if (v.IsHolding<GfVec4d>()) {
+                            GfVec4d value = v.Get<GfVec4d>();
+                            float tmp[4] = { static_cast<float>(value[0]),
+                                           static_cast<float>(value[1]),
+                                           static_cast<float>(value[2]),
+                                           static_cast<float>(value[3]) };
+
+                            // Special handling for color attributes
+                            bool isColor = attrName.find("color") != std::string::npos || 
+                                          attrName.find("Color") != std::string::npos;
+                            
+                            if (isColor) {
+                                if (ImGui::ColorEdit4("##value", tmp)) {
+                                    value[0] = static_cast<double>(tmp[0]);
+                                    value[1] = static_cast<double>(tmp[1]);
+                                    value[2] = static_cast<double>(tmp[2]);
+                                    value[3] = static_cast<double>(tmp[3]);
+                                    attr.Set(value);
+                                }
+                            } else {
+                                if (ImGui::DragFloat4("##value", tmp, 0.01f)) {
+                                    value[0] = static_cast<double>(tmp[0]);
+                                    value[1] = static_cast<double>(tmp[1]);
+                                    value[2] = static_cast<double>(tmp[2]);
+                                    value[3] = static_cast<double>(tmp[3]);
+                                    attr.Set(value);
+                                }
+                            }
+                        }
+                        else {
+                            // Read-only display for unsupported types
+                            if (v.IsArrayValued()) {
+                                // For arrays, show type and size
+                                size_t arraySize = v.GetArraySize();
+                                ImGui::TextDisabled("%s [%zu elements]", v.GetTypeName().c_str(), arraySize);
+                                
+                                // Show preview of elements (first 3 and last 3)
+                                size_t previewCount = std::min<size_t>(3, arraySize);
+                                bool hasMore = arraySize > 6;
+                                
+                                ImGui::Indent();
+                                
+                                if (v.IsHolding<VtArray<float>>()) {
+                                    auto arr = v.Get<VtArray<float>>();
+                                    for (size_t i = 0; i < previewCount; ++i) {
+                                        ImGui::Text("[%zu]: %.3f", i, arr[i]);
+                                    }
+                                    if (hasMore) {
+                                        ImGui::TextDisabled("... (%zu elements omitted) ...", arraySize - 6);
+                                        for (size_t i = arraySize - previewCount; i < arraySize; ++i) {
+                                            ImGui::Text("[%zu]: %.3f", i, arr[i]);
+                                        }
+                                    }
+                                }
+                                else if (v.IsHolding<VtArray<double>>()) {
+                                    auto arr = v.Get<VtArray<double>>();
+                                    for (size_t i = 0; i < previewCount; ++i) {
+                                        ImGui::Text("[%zu]: %.3f", i, arr[i]);
+                                    }
+                                    if (hasMore) {
+                                        ImGui::TextDisabled("... (%zu elements omitted) ...", arraySize - 6);
+                                        for (size_t i = arraySize - previewCount; i < arraySize; ++i) {
+                                            ImGui::Text("[%zu]: %.3f", i, arr[i]);
+                                        }
+                                    }
+                                }
+                                else if (v.IsHolding<VtArray<int>>()) {
+                                    auto arr = v.Get<VtArray<int>>();
+                                    for (size_t i = 0; i < previewCount; ++i) {
+                                        ImGui::Text("[%zu]: %d", i, arr[i]);
+                                    }
+                                    if (hasMore) {
+                                        ImGui::TextDisabled("... (%zu elements omitted) ...", arraySize - 6);
+                                        for (size_t i = arraySize - previewCount; i < arraySize; ++i) {
+                                            ImGui::Text("[%zu]: %d", i, arr[i]);
+                                        }
+                                    }
+                                }
+                                else if (v.IsHolding<VtArray<GfVec2f>>()) {
+                                    auto arr = v.Get<VtArray<GfVec2f>>();
+                                    for (size_t i = 0; i < previewCount; ++i) {
+                                        ImGui::Text("[%zu]: (%.3f, %.3f)", i, arr[i][0], arr[i][1]);
+                                    }
+                                    if (hasMore) {
+                                        ImGui::TextDisabled("... (%zu elements omitted) ...", arraySize - 6);
+                                        for (size_t i = arraySize - previewCount; i < arraySize; ++i) {
+                                            ImGui::Text("[%zu]: (%.3f, %.3f)", i, arr[i][0], arr[i][1]);
+                                        }
+                                    }
+                                }
+                                else if (v.IsHolding<VtArray<GfVec2d>>()) {
+                                    auto arr = v.Get<VtArray<GfVec2d>>();
+                                    for (size_t i = 0; i < previewCount; ++i) {
+                                        ImGui::Text("[%zu]: (%.3f, %.3f)", i, arr[i][0], arr[i][1]);
+                                    }
+                                    if (hasMore) {
+                                        ImGui::TextDisabled("... (%zu elements omitted) ...", arraySize - 6);
+                                        for (size_t i = arraySize - previewCount; i < arraySize; ++i) {
+                                            ImGui::Text("[%zu]: (%.3f, %.3f)", i, arr[i][0], arr[i][1]);
+                                        }
+                                    }
+                                }
+                                else if (v.IsHolding<VtArray<GfVec3f>>()) {
+                                    auto arr = v.Get<VtArray<GfVec3f>>();
+                                    for (size_t i = 0; i < previewCount; ++i) {
+                                        ImGui::Text("[%zu]: (%.3f, %.3f, %.3f)", i, arr[i][0], arr[i][1], arr[i][2]);
+                                    }
+                                    if (hasMore) {
+                                        ImGui::TextDisabled("... (%zu elements omitted) ...", arraySize - 6);
+                                        for (size_t i = arraySize - previewCount; i < arraySize; ++i) {
+                                            ImGui::Text("[%zu]: (%.3f, %.3f, %.3f)", i, arr[i][0], arr[i][1], arr[i][2]);
+                                        }
+                                    }
+                                }
+                                else if (v.IsHolding<VtArray<GfVec3d>>()) {
+                                    auto arr = v.Get<VtArray<GfVec3d>>();
+                                    for (size_t i = 0; i < previewCount; ++i) {
+                                        ImGui::Text("[%zu]: (%.3f, %.3f, %.3f)", i, arr[i][0], arr[i][1], arr[i][2]);
+                                    }
+                                    if (hasMore) {
+                                        ImGui::TextDisabled("... (%zu elements omitted) ...", arraySize - 6);
+                                        for (size_t i = arraySize - previewCount; i < arraySize; ++i) {
+                                            ImGui::Text("[%zu]: (%.3f, %.3f, %.3f)", i, arr[i][0], arr[i][1], arr[i][2]);
+                                        }
+                                    }
+                                }
+                                else if (v.IsHolding<VtArray<GfVec4f>>()) {
+                                    auto arr = v.Get<VtArray<GfVec4f>>();
+                                    for (size_t i = 0; i < previewCount; ++i) {
+                                        ImGui::Text("[%zu]: (%.3f, %.3f, %.3f, %.3f)", i, arr[i][0], arr[i][1], arr[i][2], arr[i][3]);
+                                    }
+                                    if (hasMore) {
+                                        ImGui::TextDisabled("... (%zu elements omitted) ...", arraySize - 6);
+                                        for (size_t i = arraySize - previewCount; i < arraySize; ++i) {
+                                            ImGui::Text("[%zu]: (%.3f, %.3f, %.3f, %.3f)", i, arr[i][0], arr[i][1], arr[i][2], arr[i][3]);
+                                        }
+                                    }
+                                }
+                                else if (v.IsHolding<VtArray<GfVec4d>>()) {
+                                    auto arr = v.Get<VtArray<GfVec4d>>();
+                                    for (size_t i = 0; i < previewCount; ++i) {
+                                        ImGui::Text("[%zu]: (%.3f, %.3f, %.3f, %.3f)", i, arr[i][0], arr[i][1], arr[i][2], arr[i][3]);
+                                    }
+                                    if (hasMore) {
+                                        ImGui::TextDisabled("... (%zu elements omitted) ...", arraySize - 6);
+                                        for (size_t i = arraySize - previewCount; i < arraySize; ++i) {
+                                            ImGui::Text("[%zu]: (%.3f, %.3f, %.3f, %.3f)", i, arr[i][0], arr[i][1], arr[i][2], arr[i][3]);
+                                        }
+                                    }
+                                }
+                                else {
+                                    // Unknown array type
+                                    ImGui::TextDisabled("(preview not available)");
+                                }
+                                
+                                ImGui::Unindent();
+                            }
+                            else {
+                                // For scalar unsupported types, show type name
+                                ImGui::TextDisabled("[%s]", v.GetTypeName().c_str());
+                            }
+                        }
+
+                        ImGui::PopID();
                     }
+                    ImGui::TreePop();
                 }
-                else if (v.IsHolding<GfVec3d>()) {
-                    GfVec3d value = v.Get<GfVec3d>();
-                    float tmp[3] = { static_cast<float>(value[0]),
-                                     static_cast<float>(value[1]),
-                                     static_cast<float>(value[2]) };
-
-                    if (ImGui::SliderFloat3(label.c_str(), tmp, 0.0f, 1.0f)) {
-                        value[0] = static_cast<double>(tmp[0]);
-                        value[1] = static_cast<double>(tmp[1]);
-                        value[2] = static_cast<double>(tmp[2]);
-                        attr.Set(value);
-                    }
-                }
-                else if (v.IsHolding<GfVec4d>()) {
-                    GfVec4d value = v.Get<GfVec4d>();
-                    float tmp[4] = { static_cast<float>(value[0]),
-                                     static_cast<float>(value[1]),
-                                     static_cast<float>(value[2]),
-                                     static_cast<float>(value[3]) };
-
-                    if (ImGui::SliderFloat4(label.c_str(), tmp, 0.0f, 1.0f)) {
-                        value[0] = static_cast<double>(tmp[0]);
-                        value[1] = static_cast<double>(tmp[1]);
-                        value[2] = static_cast<double>(tmp[2]);
-                        value[3] = static_cast<double>(tmp[3]);
-                        attr.Set(value);
-                    }
-                }
-
-                //            if (v.IsHolding<VtArray<TfToken>>()){
-                //                std::cout << "1\n";
-                //            }
-                //
-                //            if (label=="xformOpOrder##xformOpOrder") {
-                //                std::cout << v.IsEmpty() << "\n";
-                //                spdlog::warn("[%s]", label.c_str());
-                //
-                //            }
             }
         }
     }
@@ -547,13 +877,10 @@ bool UsdFileViewer::BuildUI()
     ShowFileTree();
     ImGui::End();
 
-    ImGui::Begin("Prim Info", nullptr, ImGuiWindowFlags_None);
-    ShowPrimInfo();
-    ImGui::End();
-
-    ImGui::Begin("Edit Value", nullptr, ImGuiWindowFlags_None);
+    ImGui::Begin("Inspector", nullptr, ImGuiWindowFlags_None);
     EditValue();
     ImGui::End();
+    
     remove_prim_logic();
 
     return true;
