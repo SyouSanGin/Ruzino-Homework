@@ -1,5 +1,6 @@
 #include "stage/stage.hpp"
 
+#include <pxr/base/gf/rotation.h>
 #include <pxr/pxr.h>
 #include <pxr/usd/usd/payloads.h>
 #include <pxr/usd/usd/prim.h>
@@ -18,6 +19,7 @@
 #include "MaterialXFormat/File.h"
 #include "MaterialXFormat/Util.h"
 #include "animation.h"
+
 USTC_CG_NAMESPACE_OPEN_SCOPE
 #define SAVE_ALL_THE_TIME 0
 
@@ -199,23 +201,54 @@ pxr::UsdGeomMesh Stage::create_mesh(const pxr::SdfPath& path) const
 
 pxr::UsdLuxRectLight Stage::create_rect_light(const pxr::SdfPath& path) const
 {
-    return create_prim<pxr::UsdLuxRectLight>(path, "rect_light");
+    auto light = create_prim<pxr::UsdLuxRectLight>(path, "rect_light");
+    light.GetIntensityAttr().Set(1.0f);
+    light.GetWidthAttr().Set(2.0f);
+    light.GetHeightAttr().Set(2.0f);
+
+    auto xform = pxr::UsdGeomXformable(light);
+    pxr::GfMatrix4d matrix;
+    matrix.SetTranslate(pxr::GfVec3d(0.0, 0.0, 1.0));
+    xform.MakeMatrixXform().Set(matrix);
+
+    return light;
 }
 
 pxr::UsdLuxDistantLight Stage::create_distant_light(
     const pxr::SdfPath& path) const
 {
-    return create_prim<pxr::UsdLuxDistantLight>(path, "distant_light");
+    auto light = create_prim<pxr::UsdLuxDistantLight>(path, "distant_light");
+    light.GetIntensityAttr().Set(1.0f);
+    light.GetAngleAttr().Set(0.5f);
+
+    auto xform = pxr::UsdGeomXformable(light);
+    pxr::GfMatrix4d matrix;
+    matrix.SetRotate(pxr::GfRotation(pxr::GfVec3d(1.0, 0.0, 0.0), 180.0));
+    xform.MakeMatrixXform().Set(matrix);
+
+    return light;
 }
 
 pxr::UsdLuxDiskLight Stage::create_disk_light(const pxr::SdfPath& path) const
 {
-    return create_prim<pxr::UsdLuxDiskLight>(path, "disk_light");
+    auto light = create_prim<pxr::UsdLuxDiskLight>(path, "disk_light");
+    light.GetIntensityAttr().Set(1.0f);
+    light.GetRadiusAttr().Set(1.0f);
+
+    auto xform = pxr::UsdGeomXformable(light);
+    pxr::GfMatrix4d matrix;
+    matrix.SetTranslate(pxr::GfVec3d(0.0, 0.0, 2.0));
+    xform.MakeMatrixXform().Set(matrix);
+
+    return light;
 }
 
 pxr::UsdLuxDomeLight Stage::create_dome_light(const pxr::SdfPath& path) const
 {
-    return create_prim<pxr::UsdLuxDomeLight>(path, "dome_light");
+    auto light = create_prim<pxr::UsdLuxDomeLight>(path, "dome_light");
+    light.GetIntensityAttr().Set(1.0f);
+
+    return light;
 }
 
 void Stage::remove_prim(const pxr::SdfPath& path)
