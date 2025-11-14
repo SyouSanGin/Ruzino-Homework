@@ -18,23 +18,14 @@ USTC_CG_ADD_LIB(
 		USTC_CG_BUILD_MODULE=1
 )
 
-# Link Boost.Python for USD interoperability
-# usd_python contains Boost.Python bindings used by pxr module
-target_link_libraries(stage PRIVATE usd_python)
+# Link Boost.Python and USD Python bindings using CMake targets
+# The 'python' target is provided by OpenUSD and contains usd_python with Boost.Python
+# The 'boost' target provides Boost headers including boost/python.hpp
+target_link_libraries(stage PRIVATE python boost)
 
-# Link usd_python and geometry for stage_py (needs Boost.Python for interop + GeomPayload)
-target_link_libraries(stage_py PRIVATE usd_python geometry nodes_system)
-
-# Add usd_python library directory
-set(USD_PYTHON_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../SDK/OpenUSD/Debug/lib)
-target_link_directories(stage PRIVATE ${USD_PYTHON_LIB_DIR})
-target_link_directories(stage_py PRIVATE ${USD_PYTHON_LIB_DIR})
-
-# Add Boost include path for BOTH stage and stage_py
-# The Python wrapper needs boost/python.hpp for true interop
-set(BOOST_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../SDK/OpenUSD/Debug/include/boost-1_86)
-target_include_directories(stage PRIVATE ${BOOST_INCLUDE_DIR})
-target_include_directories(stage_py PRIVATE ${BOOST_INCLUDE_DIR})
+# Link dependencies for stage_py Python wrapper module
+# Needs python/boost for USD interop + geometry for GeomPayload + nodes_system
+target_link_libraries(stage_py PRIVATE python boost geometry nodes_system)
 
 # CRITICAL: Define NOMINMAX for stage_py to prevent Windows min/max macro issues
 # USD's robin_growth_policy.h uses std::numeric_limits<>::max() which conflicts with Windows macros
