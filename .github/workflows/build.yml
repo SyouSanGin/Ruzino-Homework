@@ -636,9 +636,45 @@ jobs:
           Write-Output "CUDA is not available on this runner"
           Write-Output "Skipping CUDA build"
 
-  summary:
-    name: Build Summary
+  run-tests:
+    name: Run Tests
     needs: [build-without-cuda, build-with-cuda]
+    if: always()
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Install Python dependencies
+        shell: powershell
+        run: |
+          Write-Output "Installing Python test dependencies..."
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+          Write-Output "✓ Test dependencies installed"
+
+      - name: Run all tests
+        id: run-tests
+        shell: powershell
+        run: |
+          Write-Output "Starting test suite..."
+          python run_all_tests.py
+          
+          if ($LASTEXITCODE -eq 0) {
+            Write-Output "test-status=success" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            Write-Output "✓ All tests passed"
+          } else {
+            Write-Output "test-status=failed" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            Write-Output "✗ Some tests failed"
+            exit 1
+          }
+
+  summary:
+    name: Build & Test Summary
+    needs: [build-without-cuda, build-with-cuda, run-tests]
     if: always()
     runs-on: self-hosted
     steps:
@@ -653,18 +689,37 @@ jobs:
           try {
             Write-Output ""
             Write-Output "======================================"
-            Write-Output "           BUILD SUMMARY"
+            Write-Output "       BUILD & TEST SUMMARY"
             Write-Output "======================================"
             Write-Output "No CUDA build: ${{ needs.build-without-cuda.result }}"
             Write-Output "CUDA build:    ${{ needs.build-with-cuda.result }}"
+            Write-Output "Tests:         ${{ needs.run-tests.result }}"
             Write-Output "======================================"
             Write-Output ""
             
-            if ("${{ needs.build-without-cuda.result }}" -eq "success" -and "${{ needs.build-with-cuda.result }}" -eq "success") {
+            $buildSuccess = ("${{ needs.build-without-cuda.result }}" -eq "success" -and "${{ needs.build-with-cuda.result }}" -eq "success")
+            $testsSuccess = ("${{ needs.run-tests.result }}" -eq "success")
+            
+            if ($buildSuccess) {
               Write-Output "✓ Both builds completed successfully"
-              exit 0
             } else {
               Write-Output "✗ Some builds failed"
+            }
+            
+            if ($testsSuccess) {
+              Write-Output "✓ All tests passed"
+            } else {
+              Write-Output "✗ Some tests failed"
+            }
+            
+            Write-Output "======================================"
+            Write-Output ""
+            
+            if ($buildSuccess -and $testsSuccess) {
+              Write-Output "✓ OVERALL: SUCCESS - All builds and tests passed!"
+              exit 0
+            } else {
+              Write-Output "✗ OVERALL: FAILED"
               exit 1
             }
           } catch {
