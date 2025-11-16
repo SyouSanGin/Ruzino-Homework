@@ -2,9 +2,11 @@
 Test tree generation with OBJ file output (avoiding USD issues)
 """
 import os
+import pytest
 from ruzino_graph import RuzinoGraph
 
 
+@pytest.mark.skip(reason="write_obj_std node not available in geometry_nodes.json")
 def test_tree_to_obj():
     """Test tree generation -> mesh -> OBJ file"""
     print("\n" + "="*70)

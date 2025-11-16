@@ -50,12 +50,12 @@ def test_full_tree_generation():
     
     # Set parameters for tree generation
     inputs = {
-        (tree_gen, "Growth Cycles"): 3,
-        (tree_gen, "Branch Length"): 1.0,
+        (tree_gen, "Growth Years"): 3,
+        (tree_gen, "Internode Length"): 1.0,
         (tree_gen, "Branch Angle"): 30.0,
         (to_mesh, "Radial Segments"): 8,
     }
-    print(f"✓ Set parameters: Cycles=3, Length=1.0, Angle=30°, Segments=8")
+    print(f"✓ Set parameters: Years=3, Internode=1.0, Angle=30°, Segments=8")
     
     # Create Stage and convert to GeomPayload
     stage = stage_py.Stage(output_file)
