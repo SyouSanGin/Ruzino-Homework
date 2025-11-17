@@ -216,7 +216,7 @@ def test_parameter_variations():
     tree1 = g.createNode("tree_generate", name="tall_tree")
     inputs1 = {
         (tree1, "Growth Years"): 5,
-        (tree1, "Random Seed"): 1,
+        (tree1, "Random Seed"): 42,
         (tree1, "Apical Control"): 4.0,
         (tree1, "Branch Angle"): 30.0,
         (tree1, "Growth Rate"): 3.0
@@ -234,7 +234,7 @@ def test_parameter_variations():
     tree2 = g.createNode("tree_generate", name="bushy_tree")
     inputs2 = {
         (tree2, "Growth Years"): 5,
-        (tree2, "Random Seed"): 1,
+        (tree2, "Random Seed"): 123,
         (tree2, "Apical Control"): 1.0,
         (tree2, "Branch Angle"): 60.0,
         (tree2, "Growth Rate"): 3.0
