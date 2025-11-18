@@ -3,6 +3,7 @@
 #include <glm/gtx/rotate_vector.hpp>
 #include <cmath>
 #include <algorithm>
+#include <unordered_map>
 
 namespace TreeGen {
 
@@ -69,8 +70,13 @@ void TreeGrowth::grow_one_cycle(TreeStructure& tree) {
     // Step 1: Update bud states (death, dormancy)
     update_bud_states(tree);
     
-    // Step 2: Calculate illumination
-    calculate_illumination(tree);
+    // Step 2: Calculate illumination (Plastic Trees - with leaf clusters)
+    if (params_.enable_plasticity) {
+        create_leaf_clusters(tree);
+        calculate_illumination_with_clusters(tree);
+    } else {
+        calculate_illumination(tree);
+    }
     
     // Step 3: Calculate auxin levels for lateral buds
     calculate_auxin_levels(tree);
@@ -91,12 +97,18 @@ void TreeGrowth::grow_one_cycle(TreeStructure& tree) {
         grow_shoot_from_bud(tree, bud);
     }
     
-    // Step 6: Update structural properties
+    // Step 6: Apply Plastic Trees environmental adaptation
+    if (params_.enable_plasticity) {
+        apply_plasticity_transform(tree);
+        apply_environmental_bending(tree);
+    }
+    
+    // Step 7: Update structural properties
     update_branch_radii(tree);
     apply_structural_bending(tree);
     prune_branches(tree);
     
-    // Step 7: Rebuild branch and bud lists
+    // Step 8: Rebuild branch and bud lists
     tree.all_branches.clear();
     tree.collect_branches(tree.root);
     tree.collect_active_buds();
@@ -182,9 +194,12 @@ void TreeGrowth::determine_bud_flushing(TreeStructure& tree) {
             ? calculate_apical_flush_probability(*bud)
             : calculate_lateral_flush_probability(*bud, tree);
         
-        if (random_uniform() > flush_prob) {
+        // If random value is less than flush probability, bud flushes (stays active)
+        // Otherwise it becomes dormant
+        if (random_uniform() >= flush_prob) {
             bud->state = BudState::Dormant;
         }
+        // else bud stays Active and will flush
     }
 }
 
@@ -653,10 +668,271 @@ float TreeGrowth::calculate_leaf_inclination(const glm::vec3& position, float he
         params_.leaf_inclination_variance
     );
     
-    // Clamp to reasonable range (10° to 80°)
-    inclination = glm::clamp(inclination, 10.0f, 80.0f);
+    // Clamp to reasonable range
+    return glm::clamp(inclination, 0.0f, 85.0f);
+}
+
+// ===== Plastic Trees Methods (Pirk et al. 2012) =====
+
+void TreeGrowth::create_leaf_clusters(TreeStructure& tree) {
+    // Clear existing clusters
+    tree.leaf_clusters.clear();
     
-    return glm::radians(inclination);
+    if (tree.all_leaves.empty()) {
+        return;
+    }
+    
+    // Simple clustering: group leaves by branch
+    std::unordered_map<TreeBranch*, std::vector<std::shared_ptr<TreeLeaf>>> branch_leaves;
+    
+    for (auto& leaf : tree.all_leaves) {
+        if (leaf && leaf->parent_branch) {
+            branch_leaves[leaf->parent_branch].push_back(leaf);
+        }
+    }
+    
+    // Create cluster for each branch with leaves
+    for (auto& [branch, leaves] : branch_leaves) {
+        if (leaves.empty()) continue;
+        
+        auto cluster = std::make_shared<LeafCluster>();
+        cluster->leaves = leaves;
+        cluster->parent_branch = branch;
+        
+        // Calculate cluster center as average of leaf positions
+        glm::vec3 center(0.0f);
+        for (auto& leaf : leaves) {
+            center += leaf->position;
+        }
+        center /= static_cast<float>(leaves.size());
+        cluster->center = center;
+        
+        // Calculate cluster radius as max distance from center
+        float max_dist = 0.0f;
+        for (auto& leaf : leaves) {
+            float dist = glm::length(leaf->position - center);
+            max_dist = std::max(max_dist, dist);
+        }
+        cluster->radius = max_dist + params_.leaf_cluster_radius;
+        
+        // Set translucency based on cluster density
+        cluster->translucency = std::pow(params_.cluster_translucency, 
+                                         cluster->radius);
+        
+        tree.leaf_clusters.push_back(cluster);
+    }
+}
+
+void TreeGrowth::calculate_illumination_with_clusters(TreeStructure& tree) {
+    // Use Plastic Trees illumination model with leaf cluster shadows
+    glm::vec3 light_dir = glm::normalize(params_.light_direction);
+    
+    // If no leaf clusters exist yet (early growth), use simple illumination
+    if (tree.leaf_clusters.empty()) {
+        calculate_illumination(tree);
+        return;
+    }
+    
+    // Calculate illumination for each bud
+    for (auto& bud : tree.all_buds) {
+        if (bud->state != BudState::Active) continue;
+        
+        bud->illumination = calculate_point_illumination(
+            bud->position, tree, light_dir);
+    }
+    
+    // Calculate illumination for each branch
+    for (auto& branch : tree.all_branches) {
+        glm::vec3 mid_pos = (branch->start_position + branch->end_position) * 0.5f;
+        branch->illumination = calculate_point_illumination(mid_pos, tree, light_dir);
+    }
+}
+
+float TreeGrowth::calculate_point_illumination(const glm::vec3& point, 
+                                               const TreeStructure& tree,
+                                               const glm::vec3& light_dir) {
+    // Equation (3) from Plastic Trees paper
+    // Simplified: we sample light from multiple directions around the sky hemisphere
+    
+    const int num_samples = 16;
+    float total_illumination = 0.0f;
+    
+    for (int i = 0; i < num_samples; ++i) {
+        // Sample hemisphere around primary light direction
+        float theta = (i / static_cast<float>(num_samples)) * glm::pi<float>() * 0.5f;
+        float phi = (i * 137.5f) * glm::pi<float>() / 180.0f;  // Golden angle
+        
+        // Convert to direction
+        glm::vec3 sample_dir(
+            std::sin(theta) * std::cos(phi),
+            std::cos(theta),
+            std::sin(theta) * std::sin(phi)
+        );
+        
+        // Rotate towards light direction
+        glm::vec3 up(0.0f, 1.0f, 0.0f);
+        if (std::abs(glm::dot(light_dir, up)) > 0.99f) {
+            up = glm::vec3(1.0f, 0.0f, 0.0f);
+        }
+        glm::vec3 right = glm::normalize(glm::cross(up, light_dir));
+        glm::vec3 forward = glm::normalize(glm::cross(right, light_dir));
+        
+        glm::vec3 direction = sample_dir.x * right + 
+                             sample_dir.y * light_dir + 
+                             sample_dir.z * forward;
+        direction = glm::normalize(direction);
+        
+        // Calculate visibility (1 - occlusion)
+        float visibility = 1.0f;
+        
+        // Check occlusion by leaf clusters
+        for (const auto& cluster : tree.leaf_clusters) {
+            // Ray-sphere intersection
+            glm::vec3 to_cluster = cluster->center - point;
+            float proj = glm::dot(to_cluster, direction);
+            
+            if (proj > 0) {  // Cluster is in direction of light
+                glm::vec3 closest = point + direction * proj;
+                float dist = glm::length(closest - cluster->center);
+                
+                if (dist < cluster->radius) {
+                    // Cluster occludes this light ray
+                    visibility *= cluster->translucency;
+                }
+            }
+        }
+        
+        // Light intensity based on angle to primary light direction
+        float angle_diff = std::acos(glm::clamp(glm::dot(direction, light_dir), -1.0f, 1.0f));
+        float intensity = std::pow(std::cos(angle_diff), 2.0f);
+        
+        total_illumination += visibility * intensity;
+    }
+    
+    return glm::clamp(total_illumination / num_samples, 0.0f, 1.0f);
+}
+
+void TreeGrowth::apply_environmental_bending(TreeStructure& tree) {
+    // Apply bending to branches based on environmental factors
+    // Similar to equation (6) from Plastic Trees paper
+    
+    glm::vec3 light_dir = glm::normalize(params_.light_direction);
+    glm::vec3 gravity_dir = glm::normalize(params_.gravity_direction);
+    
+    for (auto& branch : tree.all_branches) {
+        if (!branch || branch->level == 0) continue;  // Don't bend root
+        
+        // Calculate environmental influence
+        float phototropism_weight = params_.phototropism * 
+            params_.environmental_sensitivity * branch->illumination;
+        float gravitropism_weight = params_.gravitropism * 
+            params_.environmental_sensitivity;
+        
+        // Original direction without environmental influence
+        glm::vec3 original_dir = branch->original_direction;
+        if (glm::length(original_dir) < 0.01f) {
+            original_dir = branch->direction;
+            branch->original_direction = original_dir;
+        }
+        
+        // Calculate target direction from environmental factors
+        glm::vec3 env_direction = original_dir;
+        
+        // Apply phototropism
+        env_direction += light_dir * phototropism_weight;
+        
+        // Apply gravitropism
+        env_direction += gravity_dir * gravitropism_weight;
+        
+        // Normalize
+        env_direction = glm::normalize(env_direction);
+        
+        // Blend with current direction based on branch flexibility
+        float flexibility = params_.branch_flexibility * 
+            (1.0f / (1.0f + branch->level * 0.5f));  // Older branches less flexible
+        
+        branch->direction = glm::normalize(
+            branch->direction * (1.0f - flexibility) + 
+            env_direction * flexibility
+        );
+        
+        // Update end position based on new direction
+        branch->end_position = branch->start_position + 
+            branch->direction * branch->length;
+        
+        // Propagate to children
+        for (auto& child : branch->children) {
+            if (child) {
+                child->start_position = branch->end_position;
+            }
+        }
+    }
+}
+
+glm::vec3 TreeGrowth::calculate_inverse_tropism(const glm::vec3& bent_direction,
+                                               const glm::vec3& position,
+                                               float branch_length,
+                                               float illumination) {
+    // Equation from Plastic Trees paper to recover original direction
+    // Given bent direction, calculate what the direction would be without tropisms
+    
+    glm::vec3 light_dir = glm::normalize(params_.light_direction);
+    glm::vec3 gravity_dir = glm::normalize(params_.gravity_direction);
+    
+    // Calculate weights (same as in forward tropism)
+    float photo_weight = params_.phototropism * illumination;
+    float grav_weight = params_.gravitropism;
+    
+    float total_weight = photo_weight + grav_weight;
+    if (total_weight < 0.01f) {
+        return bent_direction;  // No tropism applied
+    }
+    
+    // Combined tropism direction
+    glm::vec3 tropism_dir = (light_dir * photo_weight + 
+                             gravity_dir * grav_weight) / total_weight;
+    
+    // Calculate original direction using equation (7) from paper
+    float segment_factor = std::pow(1.0f - total_weight, 
+                                   branch_length / params_.internode_base_length);
+    
+    // Solve for original direction
+    glm::vec3 original_dir = bent_direction - tropism_dir * (1.0f - segment_factor);
+    original_dir = glm::normalize(original_dir / segment_factor);
+    
+    return original_dir;
+}
+
+void TreeGrowth::apply_plasticity_transform(TreeStructure& tree) {
+    // Apply Plastic Trees transformations
+    // Prune branches with insufficient light
+    
+    for (auto& branch : tree.all_branches) {
+        if (!branch) continue;
+        
+        // Mark branches for pruning if illumination too low
+        if (branch->illumination < params_.min_illumination) {
+            branch->environmental_stress += 0.1f;
+            
+            if (branch->environmental_stress > 1.0f) {
+                branch->is_pruned = true;
+            }
+        } else {
+            // Recover from stress
+            branch->environmental_stress = std::max(0.0f, 
+                branch->environmental_stress - 0.05f);
+        }
+        
+        // Store inverse tropism for future adaptation
+        if (branch->level > 0) {
+            branch->original_direction = calculate_inverse_tropism(
+                branch->direction,
+                branch->start_position,
+                branch->length,
+                branch->illumination
+            );
+        }
+    }
 }
 
 } // namespace TreeGen

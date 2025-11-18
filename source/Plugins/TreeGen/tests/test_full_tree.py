@@ -15,15 +15,15 @@ def get_binary_dir():
 
 
 def test_full_tree_generation():
-    """Test complete tree generation pipeline"""
+    """Test complete Plastic Trees generation pipeline"""
     print("\n" + "="*70)
-    print("TEST: Full Tree Generation (generate -> to_mesh -> USD)")
+    print("TEST: Full Plastic Trees Pipeline (generate -> to_mesh -> USD)")
     print("="*70)
     
     binary_dir = get_binary_dir()
-    output_file = os.path.join(binary_dir, "full_tree.usdc")
+    output_file = os.path.join(binary_dir, "plastic_tree.usdc")
     
-    g = RuzinoGraph("FullTreeTest")
+    g = RuzinoGraph("PlasticTreeFullTest")
     
     # Load geometry nodes first (like test_write_usd does)
     g.loadConfiguration(os.path.join(binary_dir, "geometry_nodes.json"))
@@ -54,7 +54,7 @@ def test_full_tree_generation():
     g.addEdge(to_mesh, "Leaf Mesh", write_leaves, "Geometry")
     print(f"✓ Connected nodes")
     
-    # Set parameters for tree generation
+    # Set parameters for Plastic Trees
     inputs = {
         (tree_gen, "Growth Years"): 3,
         (tree_gen, "Internode Length"): 1.0,
@@ -67,21 +67,28 @@ def test_full_tree_generation():
         (tree_gen, "Leaf Aspect Ratio"): 2.0,
         (tree_gen, "Leaf Inclination"): 45.0,
         (tree_gen, "Leaf Phototropism"): 0.5,
+        # Plastic Trees parameters
+        (tree_gen, "Enable Plasticity"): True,
+        (tree_gen, "Environmental Sensitivity"): 0.5,
+        (tree_gen, "Phototropism"): 0.3,
+        (tree_gen, "Gravitropism"): 0.2,
+        (tree_gen, "Branch Flexibility"): 0.3,
+        (tree_gen, "Cluster Translucency"): 0.5,
         (to_mesh, "Radial Segments"): 8,
         (write_branches, "Sub Path"): "branches",
         (write_leaves, "Sub Path"): "leaves",
     }
-    print(f"✓ Set parameters: Years=3, Internode=1.0, Angle=30°, Segments=8, Leaves=ON with new leaf system")
+    print(f"✓ Set Plastic Trees parameters: Plasticity=ON, Sensitivity=0.5, Flexibility=0.3")
     
     # Create Stage and convert to GeomPayload
     stage = stage_py.Stage(output_file)
-    geom_payload = stage_py.create_payload_from_stage(stage, "/tree")
+    geom_payload = stage_py.create_payload_from_stage(stage, "/plastic_tree")
     g.setGlobalParams(geom_payload)
     
     # Execute both outputs
     g.prepare_and_execute(inputs, required_node=write_branches)
     g.prepare_and_execute(inputs, required_node=write_leaves)
-    print(f"✓ Executed graph with branches at /tree/branches and leaves at /tree/leaves")
+    print(f"✓ Executed graph with branches at /plastic_tree/branches and leaves at /plastic_tree/leaves")
     
     # Save the stage
     stage.save()
@@ -93,8 +100,9 @@ def test_full_tree_generation():
         
         if file_size > 1000:
             print("\n" + "="*70)
-            print(f"✅ TEST PASSED: Full tree USD file generated ({file_size} bytes)!")
+            print(f"✅ TEST PASSED: Plastic Tree USD file generated ({file_size} bytes)!")
             print(f"Output: {output_file}")
+            print("   Trees adapt to environment with leaf cluster illumination!")
             print("="*70)
             assert file_size > 1000, f"File too small: {file_size} bytes"
         else:

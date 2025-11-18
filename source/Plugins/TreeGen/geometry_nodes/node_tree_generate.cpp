@@ -1,7 +1,7 @@
 #include "GCore/Components/CurveComponent.h"
 #include "GCore/Components/MeshComponent.h"
 #include "geom_node_base.h"
-#include "TreeGen/TreeGrowth.h"
+#include "TreeGen/TreeGrowth.h" 
 #include "TreeGen/TreeParameters.h"
 #include "TreeGen/TreeStructure.h"
 #include <glm/gtx/rotate_vector.hpp>
@@ -13,7 +13,7 @@ NODE_DEF_OPEN_SCOPE
 NODE_DECLARATION_FUNCTION(tree_generate)
 {
     // Tree parameters
-    b.add_input<int>("Growth Years").min(1).max(50).default_val(10);
+    b.add_input<int>("Growth Years").min(1).max(10).default_val(4);
     b.add_input<int>("Random Seed").min(0).max(10000).default_val(42);
     
     // Geometric parameters
@@ -28,9 +28,14 @@ NODE_DECLARATION_FUNCTION(tree_generate)
     b.add_input<float>("Apical Dominance").min(0.0f).max(5.0f).default_val(1.0f);
     b.add_input<float>("Light Factor").min(0.0f).max(1.0f).default_val(0.6f);
     
-    // Environmental parameters
+    // Environmental parameters (Plastic Trees - Pirk et al. 2012)
+    b.add_input<bool>("Enable Plasticity").default_val(true);
+    b.add_input<float>("Environmental Sensitivity").min(0.0f).max(1.0f).default_val(0.5f);
     b.add_input<float>("Phototropism").min(0.0f).max(1.0f).default_val(0.3f);
     b.add_input<float>("Gravitropism").min(0.0f).max(1.0f).default_val(0.2f);
+    b.add_input<float>("Branch Flexibility").min(0.0f).max(1.0f).default_val(0.3f);
+    b.add_input<float>("Min Illumination").min(0.0f).max(1.0f).default_val(0.1f);
+    b.add_input<float>("Cluster Translucency").min(0.0f).max(1.0f).default_val(0.5f);
     
     // Leaf parameters
     b.add_input<bool>("Generate Leaves").default_val(true);
@@ -63,8 +68,17 @@ NODE_EXECUTION_FUNCTION(tree_generate)
     tree_params.apical_control = params.get_input<float>("Apical Control");
     tree_params.apical_dominance_base = params.get_input<float>("Apical Dominance");
     tree_params.lateral_light_factor = params.get_input<float>("Light Factor");
+    
+    // Plastic Trees parameters
+    tree_params.enable_plasticity = params.get_input<bool>("Enable Plasticity");
+    tree_params.environmental_sensitivity = params.get_input<float>("Environmental Sensitivity");
     tree_params.phototropism = params.get_input<float>("Phototropism");
     tree_params.gravitropism = params.get_input<float>("Gravitropism");
+    tree_params.branch_flexibility = params.get_input<float>("Branch Flexibility");
+    tree_params.min_illumination = params.get_input<float>("Min Illumination");
+    tree_params.cluster_translucency = params.get_input<float>("Cluster Translucency");
+    
+    // Leaf parameters
     tree_params.generate_leaves = params.get_input<bool>("Generate Leaves");
     tree_params.leaves_on_terminal_only = params.get_input<bool>("Terminal Leaves Only");
     tree_params.leaf_terminal_levels = params.get_input<int>("Leaf Terminal Levels");

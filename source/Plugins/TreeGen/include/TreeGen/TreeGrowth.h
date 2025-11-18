@@ -131,6 +131,31 @@ private:
     // Check if branch should have leaves (terminal branch check)
     bool should_have_leaves(std::shared_ptr<TreeBranch> branch, int max_tree_depth);
     
+    // ===== Plastic Trees Methods (Pirk et al. 2012) =====
+    
+    // Create leaf clusters for efficient illumination computation
+    void create_leaf_clusters(TreeStructure& tree);
+    
+    // Calculate illumination using leaf cluster shadows
+    void calculate_illumination_with_clusters(TreeStructure& tree);
+    
+    // Calculate illumination at a point considering cluster shadows
+    float calculate_point_illumination(const glm::vec3& point, 
+                                       const TreeStructure& tree,
+                                       const glm::vec3& light_dir);
+    
+    // Apply environmental bending (phototropism + gravitropism + obstacle avoidance)
+    void apply_environmental_bending(TreeStructure& tree);
+    
+    // Calculate inverse tropism - determine original direction from bent shape
+    glm::vec3 calculate_inverse_tropism(const glm::vec3& bent_direction,
+                                       const glm::vec3& position,
+                                       float branch_length,
+                                       float illumination);
+    
+    // Apply plasticity transformations to adapt to environment
+    void apply_plasticity_transform(TreeStructure& tree);
+    
     // ===== Utility Functions =====
     
     // Calculate distance along branch path between two buds

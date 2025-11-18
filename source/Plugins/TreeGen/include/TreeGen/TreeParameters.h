@@ -61,13 +61,16 @@ struct TreeParameters {
     // Apical dominance age factor
     float apical_dominance_age = 0.99f;
     
-    // ========== Environmental Parameters ==========
+    // ========== Environmental Parameters (Plastic Trees - Pirk et al. 2012) ==========
     
     // Phototropism strength (bending towards light)
     float phototropism = 0.3f;
     
     // Gravitropism strength (bending due to gravity)
     float gravitropism = 0.2f;
+    
+    // Obstacle avoidance strength
+    float obstacle_avoidance = 0.5f;
     
     // Pruning factor (shadow-induced branch death)
     float pruning_factor = 0.1f;
@@ -80,6 +83,26 @@ struct TreeParameters {
     
     // Gravity bending angle factor
     float gravity_bending_angle = 0.05f;
+    
+    // ========== Plastic Trees Specific Parameters ==========
+    
+    // Enable dynamic environmental adaptation
+    bool enable_plasticity = true;
+    
+    // Environmental sensitivity (how much environment affects growth)
+    float environmental_sensitivity = 0.5f;
+    
+    // Light clustering radius for leaf cluster generation
+    float leaf_cluster_radius = 0.5f;
+    
+    // Cluster translucency (0=opaque, 1=transparent)
+    float cluster_translucency = 0.5f;
+    
+    // Minimum illumination threshold for branch survival
+    float min_illumination = 0.1f;
+    
+    // Branch flexibility (how easily branches bend to environment)
+    float branch_flexibility = 0.3f;
     
     // ========== Leaf Parameters ==========
     

@@ -85,6 +85,12 @@ struct TreeBranch {
     // For structural bending
     float accumulated_weight = 0.0f;
     
+    // Plastic Trees specific - environmental adaptation
+    glm::vec3 original_direction = glm::vec3(0.0f, 1.0f, 0.0f);  // Direction without tropisms
+    float illumination = 1.0f;                                     // Current light level
+    float environmental_stress = 0.0f;                             // Accumulated environmental stress
+    bool is_pruned = false;                                        // Whether branch is marked for removal
+    
     // Check if this is a terminal branch (has no children or only young children)
     bool is_terminal() const {
         if (children.empty()) return true;
@@ -106,14 +112,28 @@ struct TreeBranch {
     }
 };
 
+// Leaf cluster for efficient light computation (Plastic Trees)
+struct LeafCluster {
+    glm::vec3 center = glm::vec3(0.0f);
+    float radius = 0.5f;
+    float translucency = 0.5f;  // Base translucency for light transmission
+    std::vector<std::shared_ptr<TreeLeaf>> leaves;  // Leaves in this cluster
+    TreeBranch* parent_branch = nullptr;
+};
+
 // Tree structure - root container
 struct TreeStructure {
     std::shared_ptr<TreeBranch> root;
     std::vector<std::shared_ptr<TreeBranch>> all_branches;
     std::vector<std::shared_ptr<TreeBud>> all_buds;
     std::vector<std::shared_ptr<TreeLeaf>> all_leaves;
+    std::vector<std::shared_ptr<LeafCluster>> leaf_clusters;  // For Plastic Trees illumination
     
     int current_age = 0;
+    
+    // Environmental state
+    glm::vec3 light_direction = glm::vec3(0.0f, 1.0f, 0.0f);  // Primary light direction
+    std::vector<glm::vec3> obstacles;  // Obstacle positions for avoidance
     
     // Helper to collect all branches recursively
     void collect_branches(std::shared_ptr<TreeBranch> branch) {
