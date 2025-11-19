@@ -1,7 +1,3 @@
-#ifdef GEOM_USD_EXTENSION
-
-#include <pxr/base/gf/matrix4d.h>
-
 #include "GCore/Components/InstancerComponent.h"
 #include "GCore/Components/PointsComponent.h"
 #include "GCore/GOP.h"
@@ -51,5 +47,3 @@ NODE_EXECUTION_FUNCTION(instance_on_points)
 
 NODE_DECLARATION_UI(instance_on_points);
 NODE_DEF_CLOSE_SCOPE
-
-#endif
