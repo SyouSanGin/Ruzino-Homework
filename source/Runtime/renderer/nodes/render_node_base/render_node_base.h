@@ -281,7 +281,7 @@ inline auto get_size(ExeParams& params)
 #define CHECK_PROGRAM_ERROR(program)              \
     if (!program->get_error_string().empty()) {   \
         spdlog::warn(                             \
-            "Failed to create shader %s: %s",     \
+            "Failed to create shader {}: {}",     \
             #program,                             \
             program->get_error_string().c_str()); \
         return false;                             \
