@@ -18,9 +18,9 @@ print(f"Set PXR_USD_WINDOWS_DLL_PATH={binary_dir}")
 # Add to Python path
 sys.path.insert(0, binary_dir)
 
-# Change to binary dir so DLLs can be loaded
-os.chdir(binary_dir)
-print(f"Changed working directory to: {os.getcwd()}\n")
+# DON'T change working directory here - keep it in the original location
+# This prevents MaterialX from generating absolute paths in shader imports
+print(f"Working directory: {os.getcwd()}\n")
 
 from pxr import Usd, UsdGeom, UsdShade, Sdf, UsdMtlx
 
@@ -188,20 +188,29 @@ def render_scene(usd_file, output_image, width=1920, height=1080, samples=4):
     render_exe = os.path.join(binary_dir, "headless_render.exe")
     render_nodes = r"c:\Users\Pengfei\WorkSpace\Ruzino\Assets\render_nodes_save.json"
     
+    # Convert paths to relative paths from the binary directory
+    # This matches the manual execution which uses relative paths
+    usd_file_rel = os.path.relpath(usd_file, binary_dir)
+    output_image_rel = os.path.relpath(output_image, binary_dir)
+    render_nodes_rel = os.path.relpath(render_nodes, binary_dir)
+    
     cmd = [
-        render_exe,
-        usd_file,
-        render_nodes,
-        output_image,
+        render_exe,  # Use absolute path to the exe
+        usd_file_rel,
+        render_nodes_rel,
+        output_image_rel,
         str(width),
         str(height),
         str(samples)
     ]
     
-    print(f"  Rendering: {' '.join(cmd)}")
+    print(f"  Rendering from directory: {binary_dir}")
+    print(f"  Command: {os.path.basename(render_exe)} {' '.join(cmd[1:])}")
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        # CRITICAL: Set cwd to binary_dir so relative paths work correctly
+        # This matches manual execution where you cd into binary_dir first
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, cwd=binary_dir)
         if result.returncode != 0:
             print(f"  ERROR: Render failed with code {result.returncode}")
             print(f"  STDOUT: {result.stdout}")

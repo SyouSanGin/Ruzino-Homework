@@ -163,8 +163,26 @@ void BindlessContext::emitResourceBindings(
                     data_location += 3;
                     numComponents = 3;
                 }
-                else if (type == Type::COLOR4) {
-                    if (uniform->getValue()->isA<Color4>()) {
+                else if (type == Type::COLOR4 || type == Type::VECTOR4) {
+                    // Check if uniform has a value
+                    if (!uniform->getValue()) {
+                        // No value provided, use default zero
+                        Vector4 val(0.0f, 0.0f, 0.0f, 0.0f);
+                        
+                        spdlog::info(
+                            "setting {} to default {}, {}, {}, {} (no value provided)",
+                            uniform->getVariable(),
+                            val[0],
+                            val[1],
+                            val[2],
+                            val[3]);
+
+                        memcpy(
+                            &material_data.data[data_location],
+                            &val,
+                            sizeof(Vector4));
+                    }
+                    else if (uniform->getValue()->isA<Color4>()) {
                         auto val = uniform->getValue()->asA<Color4>();
 
                         spdlog::info(
@@ -198,9 +216,14 @@ void BindlessContext::emitResourceBindings(
                     }
                     else {
                         spdlog::warn(
-                            ("Unsupported uniform type: " + type.getName())
-                                .c_str());
-                        assert(false);
+                            "Unsupported uniform value type for {}: {}",
+                            uniform->getVariable(), type.getName());
+                        // Use default zero value instead of asserting
+                        Vector4 val(0.0f, 0.0f, 0.0f, 0.0f);
+                        memcpy(
+                            &material_data.data[data_location],
+                            &val,
+                            sizeof(Vector4));
                     }
                     dataFetch = "float4(asfloat(data.data[" +
                                 std::to_string(data_location) +
