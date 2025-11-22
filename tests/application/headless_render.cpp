@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -38,6 +39,10 @@
 #include "pxr/imaging/garch/glApi.h"
 #include "stb_image_write.h"
 
+// USD Hio for HDR/EXR support
+#include "pxr/imaging/hio/image.h"
+#include "pxr/imaging/hio/types.h"
+
 #ifdef _WIN32
 #include <gl/GL.h>
 #include <windows.h>
@@ -66,7 +71,7 @@ bool ParseCommandLine(int argc, char* argv[], RenderSettings& settings)
                      "[height] [spp]\n"
                   << "  usd_file: Path to USD file to render\n"
                   << "  json_script: Path to JSON rendering script\n"
-                  << "  output_image: Output image filename (PNG format)\n"
+                  << "  output_image: Output image filename (PNG/HDR/EXR)\n"
                   << "  width: Image width (default: 1920)\n"
                   << "  height: Image height (default: 1080)\n"
                   << "  spp: Samples per pixel (default: 16)\n";
@@ -132,35 +137,93 @@ void CreateGLContext()
 }
 
 // Image utilities
+std::string GetFileExtension(const std::string& filename)
+{
+    size_t pos = filename.find_last_of('.');
+    if (pos == std::string::npos) {
+        return "";
+    }
+    std::string ext = filename.substr(pos + 1);
+    // Convert to lowercase
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    return ext;
+}
+
 bool SaveImageToFile(
     const std::string& filename,
     int width,
     int height,
     const std::vector<uint8_t>& data)
 {
-    std::vector<uint8_t> rgba_data(width * height * 4);
     const float* float_data = reinterpret_cast<const float*>(data.data());
+    std::string ext = GetFileExtension(filename);
 
-    // Flip the image vertically while converting from float to uint8
-    for (int y = 0; y < height; ++y) {
-        int flipped_y = height - 1 - y;
-        for (int x = 0; x < width; ++x) {
-            for (int c = 0; c < 4; ++c) {
-                int src_idx = (y * width + x) * 4 + c;
-                int dst_idx = (flipped_y * width + x) * 4 + c;
-                rgba_data[dst_idx] = static_cast<uint8_t>(
-                    std::clamp(float_data[src_idx] * 255.0f, 0.0f, 255.0f));
+    // Check if it's a HDR/EXR format
+    if (ext == "exr" || ext == "hdr") {
+        spdlog::info("Saving as HDR format: {}", ext);
+
+        // Create flipped float data
+        std::vector<float> flipped_data(width * height * 4);
+        for (int y = 0; y < height; ++y) {
+            int flipped_y = height - 1 - y;
+            for (int x = 0; x < width; ++x) {
+                for (int c = 0; c < 4; ++c) {
+                    int src_idx = (y * width + x) * 4 + c;
+                    int dst_idx = (flipped_y * width + x) * 4 + c;
+                    flipped_data[dst_idx] = float_data[src_idx];
+                }
             }
         }
-    }
 
-    return stbi_write_png(
-               filename.c_str(),
-               width,
-               height,
-               4,
-               rgba_data.data(),
-               width * 4) != 0;
+        // Use USD Hio to save HDR/EXR
+        HioImage::StorageSpec storage;
+        storage.width = width;
+        storage.height = height;
+        storage.format = HioFormatFloat32Vec4;
+        storage.flipped = false;  // Already flipped above
+        storage.data = flipped_data.data();
+
+        auto image = HioImage::OpenForWriting(filename);
+        if (!image) {
+            spdlog::error("Could not create image output for {}", filename);
+            return false;
+        }
+
+        if (!image->Write(storage)) {
+            spdlog::error("Failed to write HDR image to {}", filename);
+            return false;
+        }
+
+        spdlog::info("Successfully saved HDR image to {}", filename);
+        return true;
+    }
+    else {
+        // PNG and other LDR formats - use STB
+        spdlog::info("Saving as LDR format (PNG)");
+
+        std::vector<uint8_t> rgba_data(width * height * 4);
+
+        // Flip the image vertically while converting from float to uint8
+        for (int y = 0; y < height; ++y) {
+            int flipped_y = height - 1 - y;
+            for (int x = 0; x < width; ++x) {
+                for (int c = 0; c < 4; ++c) {
+                    int src_idx = (y * width + x) * 4 + c;
+                    int dst_idx = (flipped_y * width + x) * 4 + c;
+                    rgba_data[dst_idx] = static_cast<uint8_t>(
+                        std::clamp(float_data[src_idx] * 255.0f, 0.0f, 255.0f));
+                }
+            }
+        }
+
+        return stbi_write_png(
+                   filename.c_str(),
+                   width,
+                   height,
+                   4,
+                   rgba_data.data(),
+                   width * 4) != 0;
+    }
 }
 // Texture reading methods
 bool ReadTextureDirectly(
