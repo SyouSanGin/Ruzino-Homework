@@ -14,7 +14,8 @@ StaticVertexData load_vertex(MeshDesc mesh_data, uint vertex_id)
     var normal_offset = mesh_data.normalOffset;
     var bindlessIndex = mesh_data.bindlessIndex;
 
-    ByteAddressBuffer vertex_buffer = t_BindlessBuffers[bindlessIndex];
+    ByteAddressBuffer vertex_buffer =
+        t_BindlessBuffers[NonUniformResourceIndex(bindlessIndex)];
     var id = vertex_id;
     if (mesh_data.ibOffset > 0) {
         vertex_id = vertex_buffer.Load(mesh_data.ibOffset + vertex_id * 4);
