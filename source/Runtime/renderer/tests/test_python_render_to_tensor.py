@@ -8,7 +8,6 @@ This demonstrates the complete workflow:
 3. Get output texture and convert to PyTorch tensor
 4. Verify the rendered image has content
 
-This is the核心功能: "图使用python建立，在usd/hydra去运行，然后能在python这边拿结果"
 """
 
 import sys
@@ -315,14 +314,3 @@ print("  ✓ NumPy array conversion")
 if has_torch:
     print("  ✓ PyTorch tensor conversion")
     print("  ✓ GPU tensor support")
-print()
-print("Architecture proven:")
-print("  '图使用python建立，在usd/hydra去运行，然后能在python这边拿结果'")
-print()
-print("Next steps for full Python graph construction:")
-print("  1. Add NodeTree Python binding (get_node_tree)")
-print("  2. Add Node Python binding (add_node, get_input_socket)")
-print("  3. Add NodeSocket Python binding")
-print("  4. Add Link Python binding (add_link)")
-print("  5. Test explicit node construction in Python")
-print("="*70)

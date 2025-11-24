@@ -36,13 +36,29 @@ Example:
 """
 
 import os
+import sys
 from pathlib import Path
 from typing import Any, Optional, Union, Dict, List
 
+# Import base graph class
+try:
+    # Try to import from the Core module
+    import sys
+    core_python_path = Path(__file__).parent.parent.parent.parent / "Core" / "rznode" / "python"
+    if core_python_path.exists():
+        sys.path.insert(0, str(core_python_path))
+    
+    from ruzino_graph import RuzinoGraph
+    HAS_BASE = True
+except ImportError as e:
+    HAS_BASE = False
+    print(f"WARNING: Could not import RuzinoGraph base class: {e}")
+    # Fallback: define a minimal base class
+    class RuzinoGraph:
+        pass
+
 # Import required modules
 try:
-    import nodes_core_py as core
-    import nodes_system_py as system
     import hd_USTC_CG_py as renderer
     HAS_RENDERER = True
 except ImportError as e:
@@ -50,8 +66,11 @@ except ImportError as e:
     print(f"WARNING: Renderer modules not available: {e}")
 
 
-class RenderGraph:
-    """High-level interface for render node graph construction and execution."""
+class RenderGraph(RuzinoGraph):
+    """High-level interface for render node graph construction and execution.
+    
+    Extends RuzinoGraph with render-specific initialization and USD stage support.
+    """
     
     def __init__(self, name: str = "RenderGraph"):
         """
@@ -63,23 +82,14 @@ class RenderGraph:
         if not HAS_RENDERER:
             raise RuntimeError(
                 "Renderer modules not available. "
-                "Make sure hd_USTC_CG_py, nodes_system_py, and nodes_core_py are built."
+                "Make sure hd_USTC_CG_py is built."
             )
         
-        self.name = name
-        self._system: Optional[system.NodeDynamicLoadingSystem] = None
-        self._tree: Optional[core.NodeTree] = None
-        self._executor: Optional[system.NodeTreeExecutor] = None
-        self._initialized = False
-        self._node_name_counter = {}
-        self._output_marks = []
+        super().__init__(name)
     
-    def _ensure_initialized(self):
-        """Ensure the graph system is initialized."""
-        if not self._initialized:
-            raise RuntimeError(
-                "Graph not initialized. Call initialize() or loadConfiguration() first."
-            )
+    def _create_system(self):
+        """Override to create render-specific system."""
+        return renderer.create_render_system()
     
     def initialize(self, config_path: Optional[str] = None, usd_stage_path: Optional[str] = None) -> 'RenderGraph':
         """
@@ -92,9 +102,11 @@ class RenderGraph:
         Returns:
             self for chaining
         """
+        # Create render-specific system if not already initialized
         if self._system is None:
-            self._system = renderer.create_render_system()
+            self._system = self._create_system()
         
+        # Load configuration and initialize using parent class logic
         if config_path:
             loaded = self._system.load_configuration(config_path)
             if not loaded:
@@ -106,7 +118,7 @@ class RenderGraph:
             self._executor = self._system.get_node_tree_executor()
             self._initialized = True
         
-        # Set up USD stage if provided
+        # Set up USD stage if provided (render-specific)
         if usd_stage_path:
             try:
                 import stage_py
@@ -119,296 +131,6 @@ class RenderGraph:
                 print(f"⚠ Warning: Could not load USD stage: {e}")
         
         return self
-    
-    def loadConfiguration(self, config_path: str) -> 'RenderGraph':
-        """
-        Load node definitions from render_nodes.json.
-        
-        Args:
-            config_path: Path to render_nodes.json
-            
-        Returns:
-            self for chaining
-        """
-        if not self._initialized:
-            return self.initialize(config_path)
-        
-        loaded = self._system.load_configuration(config_path)
-        if not loaded:
-            raise RuntimeError(f"Failed to load configuration from {config_path}")
-        
-        return self
-    
-    def createNode(self, node_type: str, properties: Optional[dict] = None, 
-                   name: Optional[str] = None) -> 'core.Node':
-        """
-        Create a render node.
-        
-        Args:
-            node_type: Type of node (e.g., "path_tracing", "accumulate")
-            properties: Optional properties dictionary
-            name: Optional custom name
-            
-        Returns:
-            The created node
-        """
-        self._ensure_initialized()
-        
-        if name is None:
-            count = self._node_name_counter.get(node_type, 0)
-            name = f"{node_type}_{count}"
-            self._node_name_counter[node_type] = count + 1
-        
-        node = self._tree.add_node(node_type)
-        if node is None:
-            raise RuntimeError(f"Failed to create node of type '{node_type}'")
-        
-        node.ui_name = name
-        
-        if properties:
-            print(f"Warning: Property setting not yet implemented")
-        
-        return node
-    
-    def addEdge(self, 
-                from_node: Union['core.Node', str], 
-                from_socket: str,
-                to_node: Union['core.Node', str],
-                to_socket: str) -> 'RenderGraph':
-        """
-        Connect two nodes.
-        
-        Args:
-            from_node: Source node or name
-            from_socket: Output socket name
-            to_node: Destination node or name
-            to_socket: Input socket name
-            
-        Returns:
-            self for chaining
-        """
-        self._ensure_initialized()
-        
-        from_n = self._resolve_node(from_node)
-        to_n = self._resolve_node(to_node)
-        
-        from_sock = from_n.get_output_socket(from_socket)
-        to_sock = to_n.get_input_socket(to_socket)
-        
-        if from_sock is None:
-            raise ValueError(f"Socket '{from_socket}' not found on node '{from_n.ui_name}'")
-        if to_sock is None:
-            raise ValueError(f"Socket '{to_socket}' not found on node '{to_n.ui_name}'")
-        
-        link = self._tree.add_link(from_sock, to_sock)
-        if link is None:
-            raise RuntimeError(
-                f"Failed to create link from {from_n.ui_name}.{from_socket} "
-                f"to {to_n.ui_name}.{to_socket}"
-            )
-        
-        return self
-    
-    def markOutput(self, node_or_spec: Union['core.Node', str], 
-                   socket_name: Optional[str] = None) -> 'RenderGraph':
-        """
-        Mark an output for tracking.
-        
-        Args:
-            node_or_spec: Node or "node.socket" string
-            socket_name: Socket name (if node_or_spec is a node)
-            
-        Returns:
-            self for chaining
-        """
-        if socket_name is None:
-            self._output_marks.append(node_or_spec)
-        else:
-            if isinstance(node_or_spec, core.Node):
-                output_spec = f"{node_or_spec.ui_name}.{socket_name}"
-            else:
-                output_spec = f"{node_or_spec}.{socket_name}"
-            self._output_marks.append(output_spec)
-        return self
-    
-    def setInput(self, 
-                 node: Union['core.Node', str], 
-                 socket_name: str, 
-                 value: Any) -> 'RenderGraph':
-        """
-        Set an input value on a node.
-        
-        Args:
-            node: Target node or name
-            socket_name: Input socket name
-            value: Value to set
-            
-        Returns:
-            self for chaining
-        """
-        self._ensure_initialized()
-        
-        n = self._resolve_node(node)
-        socket = n.get_input_socket(socket_name)
-        
-        if socket is None:
-            raise ValueError(f"Socket '{socket_name}' not found on node '{n.ui_name}'")
-        
-        meta_value = core.to_meta_any(value)
-        self._executor.sync_node_from_external_storage(socket, meta_value)
-        return self
-    
-    def execute(self, required_node: Optional[Union['core.Node', str]] = None) -> 'RenderGraph':
-        """
-        Execute the render graph.
-        
-        Args:
-            required_node: Optional node to execute up to
-            
-        Returns:
-            self for chaining
-        """
-        self._ensure_initialized()
-        
-        req_node = None
-        if required_node is not None:
-            req_node = self._resolve_node(required_node)
-        
-        self._executor.execute(self._tree, req_node)
-        return self
-    
-    def prepare_and_execute(self, input_values: Optional[Dict] = None,
-                           required_node: Optional[Union['core.Node', str]] = None,
-                           auto_require_outputs: bool = True) -> 'RenderGraph':
-        """
-        Prepare tree, set inputs, and execute.
-        
-        Args:
-            input_values: Dictionary mapping (node, socket_name) to values
-            required_node: Optional node to execute up to
-            auto_require_outputs: Auto-execute marked outputs
-            
-        Returns:
-            self for chaining
-        """
-        self._ensure_initialized()
-        
-        req_node = None
-        if required_node is not None:
-            req_node = self._resolve_node(required_node)
-        elif auto_require_outputs and self._output_marks:
-            for mark in reversed(self._output_marks):
-                if isinstance(mark, str) and '.' in mark:
-                    node_name = mark.split('.')[0]
-                    node = self.getNode(node_name)
-                    if node:
-                        req_node = node
-                        break
-        
-        # Prepare tree
-        self._executor.prepare_tree(self._tree, req_node)
-        
-        # Set inputs
-        if input_values:
-            for (node, socket_name), value in input_values.items():
-                n = self._resolve_node(node)
-                socket = n.get_input_socket(socket_name)
-                if socket is None:
-                    raise ValueError(f"Socket '{socket_name}' not found on node '{n.ui_name}'")
-                meta_value = core.to_meta_any(value)
-                self._executor.sync_node_from_external_storage(socket, meta_value)
-        
-        # Execute
-        self._executor.execute_tree(self._tree)
-        
-        return self
-    
-    def getOutput(self, 
-                  node: Union['core.Node', str], 
-                  socket_name: str) -> Any:
-        """
-        Get an output value from a node.
-        
-        Args:
-            node: Source node or name
-            socket_name: Output socket name
-            
-        Returns:
-            The output value
-        """
-        self._ensure_initialized()
-        
-        n = self._resolve_node(node)
-        socket = n.get_output_socket(socket_name)
-        
-        if socket is None:
-            raise ValueError(f"Socket '{socket_name}' not found on node '{n.ui_name}'")
-        
-        result = core.meta_any()
-        self._executor.sync_node_to_external_storage(socket, result)
-        
-        # Try to extract the value
-        type_name = result.type_name()
-        if type_name == "int":
-            return result.cast_int()
-        elif type_name == "float":
-            return result.cast_float()
-        elif type_name == "bool":
-            return result.cast_bool()
-        elif "string" in type_name.lower():
-            return result.cast_string()
-        else:
-            # Return raw meta_any for complex types (textures, buffers, etc.)
-            return result
-    
-    def getNode(self, name: str) -> Optional['core.Node']:
-        """Get a node by name."""
-        self._ensure_initialized()
-        
-        for node in self._tree.nodes:
-            if node.ui_name == name:
-                return node
-        return None
-    
-    def _resolve_node(self, node_ref: Union['core.Node', str]) -> 'core.Node':
-        """Resolve a node reference."""
-        if isinstance(node_ref, str):
-            node = self.getNode(node_ref)
-            if node is None:
-                raise ValueError(f"Node '{node_ref}' not found in graph")
-            return node
-        return node_ref
-    
-    def serialize(self) -> str:
-        """Serialize the graph to JSON."""
-        self._ensure_initialized()
-        return self._tree.serialize()
-    
-    def deserialize(self, json_str: str) -> 'RenderGraph':
-        """Deserialize a graph from JSON."""
-        self._ensure_initialized()
-        self._tree.deserialize(json_str)
-        return self
-    
-    def clear(self) -> 'RenderGraph':
-        """Clear all nodes and links."""
-        self._ensure_initialized()
-        self._tree.clear()
-        self._node_name_counter.clear()
-        self._output_marks.clear()
-        return self
-    
-    @property
-    def nodes(self):
-        """Get list of all nodes."""
-        self._ensure_initialized()
-        return self._tree.nodes
-    
-    @property
-    def links(self):
-        """Get list of all links."""
-        self._ensure_initialized()
-        return self._tree.links
     
     def __repr__(self):
         if not self._initialized:
