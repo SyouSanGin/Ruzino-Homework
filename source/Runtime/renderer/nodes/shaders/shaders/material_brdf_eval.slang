@@ -88,8 +88,7 @@ void EvalPdfRayGen()
         return;
     }
     
-    // Create shading frame from incident direction
-    float3 wi = normalize(analysis_params.incident_direction);
+    // Create shading frame (Z-up in local space)
     bool valid;
     ShadingFrame sf = ShadingFrame.createSafe(
         float3(0, 0, 1),  // Normal (z-up)
@@ -103,9 +102,11 @@ void EvalPdfRayGen()
         return;
     }
     
-    // Transform wi and wo to world space
-    float3 world_wi = sf.fromLocal(wi);
-    float3 world_wo = sf.fromLocal(local_wo);
+    // Incident direction is already in world space, convert to local space
+    float3 world_wi = normalize(analysis_params.incident_direction);
+    float3 local_wi = sf.toLocal(world_wi);
+    
+    // wo is already in local space (from texcoord_to_direction)
     
     // Create a dummy vertex info for material evaluation
     VertexInfo vertex;
@@ -122,8 +123,8 @@ void EvalPdfRayGen()
     // Prepare callable data
     CallableData callData;
     callData.vertexInfo = vertex;
-    callData.L = world_wi;  // Incident direction (toward light)
-    callData.V = -world_wo; // View direction (toward camera)
+    callData.L = local_wi;   // Incident direction in local space
+    callData.V = local_wo;   // Outgoing direction in local space
     callData.color = float4(0, 0, 0, 1);
     callData.seed = 12345;  // Dummy seed
     callData.eta_flipped = 0;

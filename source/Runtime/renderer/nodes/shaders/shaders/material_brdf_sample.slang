@@ -10,9 +10,8 @@ import Scene.BindlessVertexBuffer;
 import utils.Math.ShadingFrame;
 import Utils.Math.MathHelpers;
 
-RWTexture2D<float4> sample_output;
+RWStructuredBuffer<uint> sample_buffer;  // Fixed-point accumulation buffer
 RaytracingAccelerationStructure SceneBVH;
-RWStructuredBuffer<uint> rng_seeds;
 
 struct SampleConstants {
     float3 incident_direction;
@@ -51,13 +50,13 @@ struct SamplePayload {
 [shader("raygeneration")]
 void SampleRayGen()
 {
-    uint thread_id = DispatchRaysIndex().x;
+    uint sample_id = DispatchRaysIndex().x;
     uint resolution = sample_params.resolution;
-    uint num_samples = sample_params.num_samples;
     
-    // Initialize RNG seed
-    uint seed = thread_id * 1664525 + 1013904223;
-    rng_seeds[thread_id] = seed;
+    // Each thread generates ONE sample
+    // Initialize RNG seed uniquely per sample
+    uint seed = sample_id * 1664525 + 1013904223;
+    seed = random_unsigned(seed);
     
     // Create shading frame
     bool valid;
@@ -71,9 +70,9 @@ void SampleRayGen()
         return;
     }
     
-    // Incident direction in local space
-    float3 wi = normalize(sample_params.incident_direction);
-    float3 local_wi = sf.toLocal(wi);
+    // Incident direction - convert world space to local space
+    float3 world_wi = normalize(sample_params.incident_direction);
+    float3 local_wi = sf.toLocal(world_wi);
     
     // Create dummy vertex for material evaluation
     VertexInfo vertex;
@@ -87,55 +86,45 @@ void SampleRayGen()
     uint material_id = sample_params.material_id;
     var material_header = materialHeaderBuffer[material_id];
     
-    // Generate samples and accumulate to texture
-    for (uint i = 0; i < num_samples; i++) {
-        // Prepare callable data for sampling
-        CallableData callData;
-        callData.vertexInfo = vertex;
-        callData.L = float3(0, 0, 0);  // Will be ignored for sampling
-        callData.V = local_wi;         // View direction
-        callData.color = float4(0, 0, 0, 1);
-        callData.seed = seed;
-        callData.eta_flipped = 0;
-        callData.materialBlobID = material_header.material_blob_id;
+    // Prepare callable data for sampling
+    CallableData callData;
+    callData.vertexInfo = vertex;
+    callData.L = local_wi;   // Incident direction in local space
+    callData.V = float3(0, 0, 1);  // Dummy view, will be replaced by sample
+    callData.color = float4(0, 0, 0, 1);
+    callData.seed = seed;
+    callData.eta_flipped = 0;
+    callData.materialBlobID = material_header.material_blob_id;
+    
+    // Call material to generate sample
+    CallShader(material_header.material_type_id, callData);
+    
+    // Extract sampled direction (should already be in local space)
+    float3 local_sampled = callData.sampledDir;
+    
+    // Check if sample is valid (above hemisphere)
+    if (local_sampled.z > 0.0) {
+        // Convert sampled direction to texture coordinate
+        float2 uv = direction_to_texcoord(local_sampled);
         
-        // Call material to generate sample
-        CallShader(material_header.material_type_id, callData);
-        
-        // Extract sampled direction
-        float3 sampled_dir = callData.sampledDir;
-        float3 local_sampled = sf.toLocal(sampled_dir);
-        
-        // Update seed
-        seed = callData.seed;
-        
-        // Check if sample is valid (above hemisphere)
-        if (local_sampled.z > 0.0) {
-            // Convert sampled direction to texture coordinate
-            float2 uv = direction_to_texcoord(local_sampled);
+        if (all(uv >= 0.0) && all(uv <= 1.0)) {
+            // Convert to pixel coordinates
+            uint2 pixel = uint2(uv * float(resolution));
+            pixel = min(pixel, uint2(resolution - 1, resolution - 1));
             
-            if (all(uv >= 0.0) && all(uv <= 1.0)) {
-                // Convert to pixel coordinates
-                uint2 pixel = uint2(uv * float(resolution));
-                pixel = min(pixel, uint2(resolution - 1, resolution - 1));
-                
-                // Atomically increment counter
-                // Note: Slang doesn't directly support atomic float add,
-                // so we accumulate as fixed-point integers and normalize later
-                // For now, we'll just accumulate the count
-                
-                float3 contribution = callData.throughput / max(callData.pdf, 1e-6);
-                float weight = length(contribution);
-                
-                // Accumulate sample count (not atomic, but good enough for visualization)
-                // Note: For precise atomic accumulation, would need RWStructuredBuffer instead
-                float4 current = sample_output[pixel];
-                sample_output[pixel] = current + float4(weight, 0, 0, 1);
-            }
+            // Compute contribution weight
+            float3 contribution = callData.throughput / max(callData.pdf, 1e-6);
+            float weight = length(contribution);
+            
+            // Atomically accumulate using InterlockedAdd on structured buffer
+            // Each pixel has 2 uints: [weight_accumulator, sample_count]
+            uint pixel_index = pixel.y * resolution + pixel.x;
+            uint weight_fixed = uint(weight * 65536.0);  // 16.16 fixed point
+            
+            InterlockedAdd(sample_buffer[pixel_index * 2 + 0], weight_fixed);
+            InterlockedAdd(sample_buffer[pixel_index * 2 + 1], 1);
         }
     }
-    
-    rng_seeds[thread_id] = seed;
 }
 
 [shader("closesthit")]

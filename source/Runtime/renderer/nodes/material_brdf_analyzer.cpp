@@ -51,6 +51,7 @@ struct ValueTrait<pxr::GfVec2f> {
 
 #include "../source/renderTLAS.h"
 #include "GPUContext/raytracing_context.hpp"
+#include "GPUContext/compute_context.hpp"
 #include "nodes/core/def/node_def.hpp"
 #include "nvrhi/nvrhi.h"
 #include "nvrhi/utils.h"
@@ -306,24 +307,32 @@ NODE_EXECUTION_FUNCTION(material_brdf_analyzer)
     auto sample_cb = create_constant_buffer(params, sample_constants);
     MARK_DESTROY_NVRHI_RESOURCE(sample_cb);
 
-    // Create RNG buffer
-    BufferDesc rng_desc;
-    rng_desc.byteSize = sizeof(uint32_t) * resolution * resolution;
-    rng_desc.structStride = sizeof(uint32_t);  // RWStructuredBuffer<uint> in shader
-    rng_desc.canHaveUAVs = true;
-    rng_desc.debugName = "RNG_Seeds";
-    rng_desc.initialState = ResourceStates::UnorderedAccess;
-    rng_desc.keepInitialState = true;
+    // Create sample accumulation buffer
+    // Each pixel has 2 uints: [weight_accumulator, sample_count]
+    BufferDesc sample_buffer_desc;
+    sample_buffer_desc.byteSize = sizeof(uint32_t) * resolution * resolution * 2;
+    sample_buffer_desc.structStride = sizeof(uint32_t);
+    sample_buffer_desc.canHaveUAVs = true;
+    sample_buffer_desc.debugName = "Sample_Accumulation_Buffer";
+    sample_buffer_desc.initialState = ResourceStates::UnorderedAccess;
+    sample_buffer_desc.keepInitialState = true;
 
-    auto rng_buffer = resource_allocator.create(rng_desc);
-    MARK_DESTROY_NVRHI_RESOURCE(rng_buffer);
+    auto sample_buffer = resource_allocator.create(sample_buffer_desc);
+    MARK_DESTROY_NVRHI_RESOURCE(sample_buffer);
+    
+    // Clear the buffer to zero
+    auto cmd_list = RHI::get_device()->createCommandList();
+    cmd_list->open();
+    cmd_list->clearBufferUInt(sample_buffer, 0);
+    cmd_list->close();
+    RHI::get_device()->executeCommandList(cmd_list.Get());
+    RHI::get_device()->waitForIdle();
 
     // Setup program vars for sample shader
     ProgramVars sample_vars(resource_allocator, sample_compiled);
     sample_vars["SceneBVH"] = instance_collection->get_tlas();
-    sample_vars["sample_output"] = sample_output;
+    sample_vars["sample_buffer"] = sample_buffer;
     sample_vars["sample_params"] = sample_cb;
-    sample_vars["rng_seeds"] = rng_buffer;
 
     for (int i = 0; i < 9; ++i) {
         sample_vars["samplers"][i] = sampler;
@@ -362,10 +371,50 @@ NODE_EXECUTION_FUNCTION(material_brdf_analyzer)
 
     sample_context.finish_announcing_shader_names();
 
-    // Execute sample shader
+    // Execute sample shader - dispatch num_samples threads (one per sample)
     sample_context.begin();
-    sample_context.trace_rays({}, sample_vars, resolution * resolution, 1, 1);
+    sample_context.trace_rays({}, sample_vars, num_samples, 1, 1);
     sample_context.finish();
+    
+    // ===== Normalize Sample Buffer to Texture =====
+    ProgramDesc normalize_program_desc;
+    normalize_program_desc.set_path("shaders/material_brdf_normalize.slang");
+    normalize_program_desc.shaderType = ShaderType::Compute;
+    
+    auto normalize_compiled = resource_allocator.create(normalize_program_desc);
+    MARK_DESTROY_NVRHI_RESOURCE(normalize_compiled);
+    CHECK_PROGRAM_ERROR(normalize_compiled);
+    
+    struct NormalizeConstants {
+        uint32_t resolution;
+        uint32_t num_samples;
+    };
+    
+    NormalizeConstants normalize_constants;
+    normalize_constants.resolution = static_cast<uint32_t>(resolution);
+    normalize_constants.num_samples = static_cast<uint32_t>(num_samples);
+    
+    auto normalize_cb = create_constant_buffer(params, normalize_constants);
+    MARK_DESTROY_NVRHI_RESOURCE(normalize_cb);
+    
+    ProgramVars normalize_vars(resource_allocator, normalize_compiled);
+    normalize_vars["sample_buffer"] = sample_buffer;
+    normalize_vars["sample_output"] = sample_output;
+    normalize_vars["normalize_params"] = normalize_cb;
+    normalize_vars.finish_setting_vars();
+    
+    // Execute normalize compute shader using ComputeContext
+    ComputeContext normalize_context(resource_allocator, normalize_vars);
+    normalize_context.finish_setting_pso();
+    
+    normalize_context.begin();
+    normalize_context.dispatch(
+        {},                // No indirect params
+        normalize_vars,
+        resolution, 16,    // width, groupSizeX
+        resolution, 16,    // height, groupSizeY
+        1, 1);             // depth, groupSizeZ
+    normalize_context.finish();
 
     // Set outputs
     params.set_output("BRDF Eval", eval_output);
