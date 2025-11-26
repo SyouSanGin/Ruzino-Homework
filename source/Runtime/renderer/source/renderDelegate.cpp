@@ -217,8 +217,6 @@ void Hd_USTC_CG_RenderDelegate::_Initialize()
 HdAovDescriptor Hd_USTC_CG_RenderDelegate::GetDefaultAovDescriptor(
     const TfToken& name) const
 {
-    spdlog::info(("Attempting to acquire aov " + name.GetString()).c_str());
-
     if (name == HdAovTokens->color) {
         return HdAovDescriptor(
             HdFormatFloat32Vec4, false, VtValue(GfVec4f(0.0f)));
@@ -539,8 +537,6 @@ VtValue Hd_USTC_CG_RenderDelegate::GetRenderSetting(TfToken const& key) const
 #ifdef USTC_CG_DIRECT_VK_DISPLAY
     if (key == TfToken("VulkanColorAov")) {
         // Legacy: return default texture for backward compatibility
-        spdlog::info("GetRenderSetting: VulkanColorAov (default), default_name='{}'", 
-                     _renderParam->default_texture_name);
         if (!_renderParam->default_texture_name.empty()) {
             auto it = _renderParam->presented_textures.find(_renderParam->default_texture_name);
             if (it != _renderParam->presented_textures.end() && it->second) {

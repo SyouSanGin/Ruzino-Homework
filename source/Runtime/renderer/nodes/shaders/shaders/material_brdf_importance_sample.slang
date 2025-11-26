@@ -50,10 +50,8 @@ void AtomicAddFloat(uint index, float value)
     }
 }
 
-// Convert 3D direction to 2D texture coordinate using equal-area projection
 float2 direction_to_texcoord(float3 dir, out float jacobian)
 {
-    // Lambert azimuthal equal-area projection
     float z = dir.z;
 
     if (z <= 0.0) {
@@ -62,9 +60,9 @@ float2 direction_to_texcoord(float3 dir, out float jacobian)
         return float2(-1, -1);
     }
 
-    float2 p = dir.xy;
-    
-    jacobian = 2.0 * 3.14159265359;
+    float2 p = dir.xy; 
+
+    jacobian = max(z, 1e-6);
 
     // Map from [-1, 1] to [0, 1]
     return p * 0.5 + 0.5;
@@ -140,10 +138,10 @@ void ImportanceSampleRayGen()
             // Compute importance sampling weight: throughput / pdf
             // Note: PDF is in solid angle, but we need PDF in texture space
             // pdf_texture = pdf_solid_angle * jacobian
-            // So weight_texture = throughput / pdf_texture = throughput / (pdf * jacobian)
-            // We use a scaling factor for better visualization
-            float pdf_texture = callData.pdf * jacobian;
-            float weight = 100.0f / pdf_texture;
+            // So weight_texture = throughput / pdf_texture = throughput / (pdf
+            // * jacobian) We use a scaling factor for better visualization
+            float pdf_texture = callData.pdf;
+            float weight = 0.01f / pdf_texture * jacobian;
 
             // Atomically accumulate using AtomicAddFloat
             // Each pixel has 2 floats: [weight_accumulator, sample_count]

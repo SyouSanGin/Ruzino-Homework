@@ -110,7 +110,7 @@ float3 sample_specular_reflection(float2 u, float3 V, float2 alpha, out float pd
     
     // VNDF PDF: D(H) * G1(V) * max(0, V·H) / NdotV
     float D = mx_ggx_NDF(H, alpha);
-    float G1 = mx_ggx_smith_G1(NdotV, mx_average_alpha(alpha));
+    float G1 = mx_ggx_smith_G1_aniso(NdotV, V.x, V.y, alpha.x, alpha.y);
     float vndf_pdf = D * G1 * VdotH / NdotV;
     
     // Transform to reflection direction: PDF_L = PDF_H / (4 * V·H)
@@ -153,7 +153,7 @@ float3 sample_transmission(float2 u, float3 V, float2 alpha, float eta, out floa
     
     // Compute PDF using GGX VNDF for transmission
     float D = mx_ggx_NDF(H, alpha);
-    float G1 = mx_ggx_smith_G1(NdotV, mx_average_alpha(alpha));
+    float G1 = mx_ggx_smith_G1_aniso(NdotV, V.x, V.y, alpha.x, alpha.y);
     float vndf_pdf = D * G1 * VdotH / NdotV;
     
     // Transform to transmission direction with Jacobian
@@ -304,7 +304,7 @@ float3 sample_standard_surface(
         float VdotH = max(dot(V_local, H), M_FLOAT_EPS);
         
         float D = mx_ggx_NDF(H, alpha);
-        float G1 = mx_ggx_smith_G1(NdotV, mx_average_alpha(alpha));
+        float G1 = mx_ggx_smith_G1_aniso(NdotV, V_local.x, V_local.y, alpha.x, alpha.y);
         float vndf_pdf = D * G1 * VdotH / NdotV;
         metal_pdf = vndf_pdf / (4.0 * VdotH);
     }
@@ -325,7 +325,7 @@ float3 sample_standard_surface(
             float VdotH = max(dot(V_local, H), M_FLOAT_EPS);
             
             float D = mx_ggx_NDF(H, alpha);
-            float G1 = mx_ggx_smith_G1(NdotV, mx_average_alpha(alpha));
+            float G1 = mx_ggx_smith_G1_aniso(NdotV, V_local.x, V_local.y, alpha.x, alpha.y);
             float vndf_pdf = D * G1 * VdotH / NdotV;
             reflection_pdf = vndf_pdf / (4.0 * VdotH);    
         }
@@ -343,7 +343,7 @@ float3 sample_standard_surface(
             float LdotH = max(abs(dot(L_local, H)), M_FLOAT_EPS);
             
             float D = mx_ggx_NDF(H, alpha);
-            float G1 = mx_ggx_smith_G1(NdotV, mx_average_alpha(alpha));
+            float G1 = mx_ggx_smith_G1_aniso(NdotV, V_local.x, V_local.y, alpha.x, alpha.y);
             float vndf_pdf = D * G1 * VdotH / NdotV;
             
             // Transform to transmission direction with proper Jacobian
@@ -429,7 +429,7 @@ float3 sample_specular_reflection(float2 u, float3 V, float roughness, out float
     
     // VNDF PDF: D(H) * G1(V) * max(0, V·H) / NdotV
     float D = mx_ggx_NDF(H, alpha);
-    float G1 = mx_ggx_smith_G1(NdotV, mx_average_alpha(alpha));
+    float G1 = mx_ggx_smith_G1_aniso(NdotV, V.x, V.y, alpha.x, alpha.y);
     float vndf_pdf = D * G1 * VdotH / NdotV;
     
     // Transform to reflection direction: PDF_L = PDF_H / (4 * V·H)
@@ -554,7 +554,7 @@ float3 sample_preview_surface(
         
         float2 alpha = float2(roughness * roughness, roughness * roughness);
         float D = mx_ggx_NDF(H, alpha);
-        float G1 = mx_ggx_smith_G1(NdotV, mx_average_alpha(alpha));
+        float G1 = mx_ggx_smith_G1_aniso(NdotV, V_local.x, V_local.y, alpha.x, alpha.y);
         float vndf_pdf = D * G1 * VdotH / NdotV;
         metal_pdf = vndf_pdf / (4.0 * VdotH);
     }
@@ -571,7 +571,7 @@ float3 sample_preview_surface(
         
         float2 alpha = float2(roughness * roughness, roughness * roughness);
         float D = mx_ggx_NDF(H, alpha);
-        float G1 = mx_ggx_smith_G1(NdotV, mx_average_alpha(alpha));
+        float G1 = mx_ggx_smith_G1_aniso(NdotV, V_local.x, V_local.y, alpha.x, alpha.y);
         float vndf_pdf = D * G1 * VdotH / NdotV;
         float reflection_pdf = vndf_pdf / (4.0 * VdotH);
         

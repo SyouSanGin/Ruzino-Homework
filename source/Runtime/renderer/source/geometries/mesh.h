@@ -74,6 +74,7 @@ class HD_USTC_CG_API Hd_USTC_CG_Mesh final : public HdMesh {
     VtIntArray trianglePrimitiveParams;
     VtArray<GfVec3f> points;
     VtVec3fArray normals;
+    VtVec4fArray tangents;
     static constexpr GLuint normalLocation = 1;
     static constexpr GLuint texcoordLocation = 2;
 

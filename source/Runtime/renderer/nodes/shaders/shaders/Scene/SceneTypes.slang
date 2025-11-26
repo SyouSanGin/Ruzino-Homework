@@ -184,6 +184,7 @@ struct MeshDesc {
 
     InterpolationType texCrdInterpolation;
     InterpolationType normalInterpolation;
+    InterpolationType tangentInterpolation;
 
     uint padding;
 

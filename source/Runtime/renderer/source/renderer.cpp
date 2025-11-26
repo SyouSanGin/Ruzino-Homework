@@ -142,12 +142,9 @@ void Hd_USTC_CG_Renderer::Render(HdRenderThread* renderThread)
                 present_name : node->ui_name;
             render_param->presented_textures[texture_name] = texture;
             
-            spdlog::info("Stored texture with name: '{}'", texture_name);
-            
             // Keep backward compatibility: first texture becomes default
             if (render_param->default_texture_name.empty()) {
                 render_param->default_texture_name = texture_name;
-                spdlog::info("Set default texture to: '{}'", texture_name);
             }
             
             // Update render buffer

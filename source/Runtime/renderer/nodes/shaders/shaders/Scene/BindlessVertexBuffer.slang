@@ -40,6 +40,15 @@ StaticVertexData load_vertex(MeshDesc mesh_data, uint vertex_id)
     if (normal_offset == 0)
         normal = float3(0, 1, 0);
 
+    float4 tangent = float4(1, 0, 0, 1);
+    if (mesh_data.tangentOffset != 0) {
+        if (mesh_data.tangentInterpolation == InterpolationType::FaceVarying) {
+            tangent = asfloat(vertex_buffer.Load4(4 * id * 4 + mesh_data.tangentOffset));
+        } else {
+            tangent = asfloat(vertex_buffer.Load4(4 * vertex_id * 4 + mesh_data.tangentOffset));
+        }
+    }
+
     float2 texCrd;
 
     if (mesh_data.texCrdInterpolation == InterpolationType::FaceVarying) {
@@ -57,7 +66,7 @@ StaticVertexData load_vertex(MeshDesc mesh_data, uint vertex_id)
     }
 
     StaticVertexData data = StaticVertexData(
-        pos, normal, float4(1, 0, 0, 1), texCrd, 0, subset_material_id);
+        pos, normal, tangent, texCrd, 0, subset_material_id);
     return data;
 }
 

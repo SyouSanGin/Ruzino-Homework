@@ -304,6 +304,13 @@ void ClosestHit(
         vertex.normalW = -vertex.normalW;
         eta_flipped = 1;
     }
+    float3 visualize = float3(vertex.texC, 0.0);
+    visualize = dot(vertex.normalW, WorldRayDirection());
+    visualize = vertex.normalW.xyz * 0.5 + 0.5;  // Visualize tangent space
+    //visualize = vertex.tangentW.xyz * 0.5 + 0.5;
+
+    payload.color = visualize;  // For debugging, visualize texture
+    return;
 
     // Create shading frame
     bool valid;
@@ -311,12 +318,6 @@ void ClosestHit(
         ShadingFrame.createSafe(vertex.normalW, float4(1, 0, 0, 1), valid);
     vertex.tangentW.xyz = sf.T;
 
-    float3 visualize = float3(vertex.texC, 0.0);
-    visualize = dot(vertex.normalW, WorldRayDirection());
-    visualize = vertex.normalW.xyz * 0.5 + 0.5;  // Visualize tangent space
-
-    // payload.color = visualize;  // For debugging, visualize texture
-    // return;
     // coordinates return;
 
     // Get material ID

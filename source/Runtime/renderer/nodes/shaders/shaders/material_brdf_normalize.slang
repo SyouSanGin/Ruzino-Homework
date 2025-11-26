@@ -36,7 +36,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         output_value = value;
     } else {
         // Importance test mode: compute average weight with threshold filtering
-        if (count >= float(normalize_params.min_samples_threshold)) {
+        if (count >= float(8)) {
             output_value = value / count;
         } else {
             output_value = 0.0;  // Not enough samples

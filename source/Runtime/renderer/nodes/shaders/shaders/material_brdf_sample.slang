@@ -44,10 +44,8 @@ void AtomicAddFloat(uint index, float value)
     }
 }
 
-// Convert 3D direction to 2D texture coordinate using equal-area projection
 float2 direction_to_texcoord(float3 dir, out float jacobian)
 {
-    // Lambert azimuthal equal-area projection
     float z = dir.z;
 
     if (z <= 0.0) {
@@ -57,7 +55,8 @@ float2 direction_to_texcoord(float3 dir, out float jacobian)
     }
 
     float2 p = dir.xy;
-    jacobian = 2.0 * 3.14159265359;
+
+    jacobian = max(z, 1e-6);
 
     // Map from [-1, 1] to [0, 1]
     return p * 0.5 + 0.5;
