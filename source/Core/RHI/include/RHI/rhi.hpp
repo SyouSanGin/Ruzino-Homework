@@ -36,7 +36,8 @@ RHI_API void write_texture(
 
 RHI_API void copy_from_texture(
     nvrhi::TextureHandle& texture,
-    nvrhi::ITexture* source);
+    nvrhi::ITexture* source,
+    nvrhi::ICommandList* command_list);
 struct nvrhi_image {
     nvrhi::TextureDesc nvrhi_desc = {};
     nvrhi::TextureHandle nvrhi_texture = nullptr;

@@ -404,7 +404,7 @@ float3 sample_standard_surface(
             // Transform to transmission direction with proper Jacobian
             float denom = VdotH + LdotH / eta;
             float jacobian = (eta * eta * LdotH) / (denom * denom);
-            transmission_pdf = vndf_pdf * jacobian;
+            transmission_pdf = vndf_pdf * jacobian / (4.0 * VdotH);
         }
         
         nonmetal_pdf = diffuse_pdf * diffuse_weight + reflection_pdf * reflection_weight + transmission_pdf * transmission_weight;

@@ -30,11 +30,13 @@ int init(bool with_window, bool use_dx12)
     if (!cached_logger.lock()) {
         cached_logger = spdlog::default_logger();
     }
-    
+
     if (device_manager) {
         reference_count++;
         if (auto logger = cached_logger.lock()) {
-            logger->info("RHI already initialized, reference count: {}", reference_count);
+            logger->info(
+                "RHI already initialized, reference count: {}",
+                reference_count);
         }
         return 0;
     }
@@ -74,7 +76,7 @@ int init(bool with_window, bool use_dx12)
     // params.enableNvrhiValidationLayer = true;
     params.enableDebugRuntime = true;
 #endif
-//    params.enableDebugRuntime = true;
+    //    params.enableDebugRuntime = true;
 
     if (with_window) {
         auto ret =
@@ -179,7 +181,8 @@ std::tuple<nvrhi::TextureHandle, nvrhi::StagingTextureHandle> load_texture(
 
 inline void copy_from_texture(
     nvrhi::TextureHandle& texture,
-    nvrhi::ITexture* source)
+    nvrhi::ITexture* source,
+    nvrhi::ICommandList* command_list)
 {
     nvrhi::IDevice* device = get_device();
     nvrhi::TextureDesc desc = source->getDesc();
@@ -187,11 +190,10 @@ inline void copy_from_texture(
         texture = device->createTexture(desc);
     }
 
-    nvrhi::CommandListHandle commandList = device->createCommandList();
-    commandList->open();
-    commandList->copyTexture(texture, {}, source, {});
-    commandList->close();
-    device->executeCommandList(commandList);
+    command_list->open();
+    command_list->copyTexture(texture, {}, source, {});
+    command_list->close();
+    device->executeCommandList(command_list);
 }
 #if USTC_CG_WITH_OPENUSD
 nvrhi::TextureHandle load_ogl_texture(
@@ -303,7 +305,8 @@ int shutdown()
 
     reference_count--;
     if (auto logger = cached_logger.lock()) {
-        logger->info("RHI shutdown called, reference count: {}", reference_count);
+        logger->info(
+            "RHI shutdown called, reference count: {}", reference_count);
     }
 
     if (reference_count > 0) {

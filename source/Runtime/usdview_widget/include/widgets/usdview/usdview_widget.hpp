@@ -77,6 +77,7 @@ class USDVIEW_WIDGET_API UsdviewEngine final : public IWidget {
     pxr::TfHashMap<pxr::TfToken, pxr::VtValue, pxr::TfHash> settings;
     bool right_mouse_pressed = false;
     nvrhi::TextureHandle persistent_texture;
+    nvrhi::CommandListHandle command_list_;
 
     void DrawMenuBar();
     void OnFrame(float delta_time);

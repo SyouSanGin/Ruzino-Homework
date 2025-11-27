@@ -253,8 +253,11 @@ void UsdviewEngine::OnFrame(float delta_time)
     if (engine_status.renderer_id == 0) {
         lights = GlfSimpleLightVector(1);
         auto cam_pos = frustum.GetPosition();
-        lights[0].SetPosition(GfVec4f{
-            float(cam_pos[0]), float(cam_pos[1]), float(cam_pos[2]), 1.0f });
+        lights[0].SetPosition(
+            GfVec4f{ float(cam_pos[0]),
+                     float(cam_pos[1]),
+                     float(cam_pos[2]),
+                     1.0f });
         lights[0].SetAmbient(GfVec4f(0.8, 0.8, 0.8, 1));
         lights[0].SetDiffuse(GfVec4f(1.0f));
         lights[0].SetSpecular(GfVec4f(1.0f));
@@ -514,6 +517,7 @@ void UsdviewEngine::CreateGLContext()
 
 UsdviewEngine::~UsdviewEngine()
 {
+    command_list_ = nullptr;
     data_.reset();
     assert(RHI::get_device());
     renderer_.reset();
@@ -573,7 +577,11 @@ void UsdviewEngine::finish_render()
         auto rendered = *reinterpret_cast<const nvrhi::TextureHandle*>(
             hacked_handle.Get<const void*>());
         if (rendered) {
-            RHI::copy_from_texture(data_->nvrhi_texture, rendered);
+            if (!command_list_) {
+                command_list_ = RHI::get_device()->createCommandList();
+            }
+            RHI::copy_from_texture(
+                data_->nvrhi_texture, rendered, command_list_.Get());
         }
     }
     else {
