@@ -165,8 +165,6 @@ struct Program : nvrhi::RefCounter<IProgram> {
     Slang::ComPtr<slang::IComponentType> linkedProgram;
 };
 
-constexpr uint32_t c_FalcorMaterialInstanceSize = 128;
-
 USTC_CG_NAMESPACE_CLOSE_SCOPE
 
 USTC_CG_NAMESPACE_OPEN_SCOPE

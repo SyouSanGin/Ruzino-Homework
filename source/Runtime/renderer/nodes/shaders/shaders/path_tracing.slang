@@ -3,6 +3,7 @@ import callable_data;
 #include "utils/ray.slang"
 import Scene.SceneTypes;
 import Scene.BindlessMaterial;
+import Scene.MaterialParams;
 import Scene.BindlessVertexBuffer;
 import Scene.Lights.LightData;
 import utils.Math.ShadingFrame;
@@ -245,7 +246,8 @@ LightSample sampleLights(float3 hitPos, float3 hitNormal, inout uint seed)
                 shadowPayload);
 
             if (shadowPayload.isVisible) {
-                float geometricTerm = (NdotL * LdotN) / (lightDistance * lightDistance);
+                float geometricTerm =
+                    (NdotL * LdotN) / (lightDistance * lightDistance);
                 areaPdf = 1.0 / light.surfaceArea;
                 sample.direction = lightDir;
                 sample.intensity = light.intensity * geometricTerm;
@@ -358,21 +360,40 @@ void ClosestHit(
     // Sample a light source for direct lighting
     LightSample lightSample = sampleLights(vertex.posW, vertex.normalW, seed);
 
-    // Evaluate material with light direction
-    CallableData callData;
-    callData.vertexInfo = vertex;
-    callData.L = lightSample.direction;  // L is now direction
-    callData.V = -WorldRayDirection();
-    callData.color = float4(0, 0, 0, 1);
-    callData.seed = seed;
-    callData.eta_flipped = eta_flipped;
-    callData.materialBlobID = material_header.material_blob_id;
-    CallShader(material_header.material_type_id, callData);
+    // Step 1: Call material data fetch callable to populate parameters
+    FetchCallableData fetchData;
+    fetchData.vertexInfo = vertex;
+    fetchData.materialBlobID = material_header.material_blob_id;
+    fetchData.material_params_index =
+        id;  // Use ray index as material params index
+    fetchData.vertexInfo = vertex;
 
-    float pdf = callData.pdf;
+    // Call the per-material data fetch callable to fill parameters
+    CallShader(2 + material_header.material_type_id, fetchData);
+
+    // Step 2: Call shared evaluation callable based on shader type
+    EvalCallableData evalData;
+    evalData.color = float4(0, 0, 0, 1);
+    evalData.throughput = float3(1, 1, 1);
+    evalData.L = lightSample.direction;
+    evalData.V = -WorldRayDirection();
+    evalData.sampledDir = float3(0, 0, 0);
+    evalData.pdf = 0.0;
+    evalData.seed = seed;
+    evalData.eta_flipped = eta_flipped;
+    evalData.material_params_index = id;
+    evalData.vertexInfo = vertex;
+
+    CallShader(fetchData.shader_type_id, evalData);
+
+    payload.color = evalData.throughput;
+    payload.terminated = true;
+    return;
+
+    float pdf = evalData.pdf;
 
     if (pdf == 0.0) {
-        payload.seed = callData.seed;
+        payload.seed = evalData.seed;
         payload.terminated = true;
         return;
     }
@@ -380,32 +401,32 @@ void ClosestHit(
     // Add direct lighting contribution: light_intensity * BRDF * NdotL / PDF
     if (lightSample.valid) {
         float3 directContrib =
-            lightSample.intensity * callData.color.xyz / lightSample.pdf;
+            lightSample.intensity * evalData.color.xyz / lightSample.pdf;
         payload.color += payload.throughput * directContrib;
     }
 
-    float3 ray_dir = callData.sampledDir;
+    float3 ray_dir = evalData.sampledDir;
     float3 local_ray_dir = sf.toLocal(ray_dir);
     bool isTransmission = local_ray_dir.z < 0.0;  // if (isTransmission) {
 
     // Validate throughput before continuing
-    if (any(isnan(callData.throughput))) {
+    if (any(isnan(evalData.throughput))) {
         payload.color = float3(1, 0, 0);
         payload.terminated = true;
         return;
     }
 
-    if (any(isinf(callData.throughput))) {
+    if (any(isinf(evalData.throughput))) {
         payload.color = float3(0, 0, 1);
         payload.terminated = true;
         return;
     }
 
-    payload.throughput *= callData.throughput / pdf;
+    payload.throughput *= evalData.throughput / pdf;
 
     payload.hitPosition = vertex.posW;
     payload.depth++;
-    payload.seed = callData.seed;
+    payload.seed = evalData.seed;
 
     // Trace next ray (light comes from environment/miss shader)
     if (!payload.terminated) {

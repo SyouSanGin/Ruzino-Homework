@@ -1,6 +1,8 @@
 
 #include <spdlog/spdlog.h>
 
+#include <memory>
+
 #include "../source/renderTLAS.h"
 #include "GPUContext/raytracing_context.hpp"
 #include "nodes/core/def/node_def.hpp"
@@ -39,9 +41,6 @@ NODE_EXECUTION_FUNCTION(path_tracing)
     program_desc.set_path("shaders/path_tracing.slang");
     program_desc.shaderType = nvrhi::ShaderType::AllRayTracing;
     program_desc.nvapi_support = true;
-    program_desc.define(
-        "FALCOR_MATERIAL_INSTANCE_SIZE",
-        std::to_string(c_FalcorMaterialInstanceSize));
 
     auto& materials = global_payload.get_materials();
 
@@ -72,6 +71,18 @@ NODE_EXECUTION_FUNCTION(path_tracing)
     MARK_DESTROY_NVRHI_RESOURCE(raytrace_compiled);
     CHECK_PROGRAM_ERROR(raytrace_compiled);
 
+    ProgramDesc material_eval_desc;
+    material_eval_desc.set_path("shaders/MaterialEvaluation.slang");
+    material_eval_desc.shaderType = nvrhi::ShaderType::AllRayTracing;
+    material_eval_desc.nvapi_support = true;
+    auto material_eval_compiled = resource_allocator.create(material_eval_desc);
+    MARK_DESTROY_NVRHI_RESOURCE(material_eval_compiled);
+    CHECK_PROGRAM_ERROR(material_eval_compiled);
+
+    RaytracingContext::ProgramVarHandle material_eval_vars =
+        std::make_shared<ProgramVars>(
+            resource_allocator, material_eval_compiled);
+
     auto m_CommandList = resource_allocator.create(CommandListDesc{});
     MARK_DESTROY_NVRHI_RESOURCE(m_CommandList);
 
@@ -98,12 +109,29 @@ NODE_EXECUTION_FUNCTION(path_tracing)
     for (int i = 0; i < 9; ++i) {
         program_vars["samplers"][i] = sampler;
     }
-    program_vars["rays"] = params.get_input<nvrhi::BufferHandle>("Rays");
+
+    auto rays = params.get_input<nvrhi::BufferHandle>("Rays");
+    program_vars["rays"] = rays;
 
     auto env_prefilter_data = EnvironmentPrefilterData{};
     auto env_prefilter_cb = create_constant_buffer(params, env_prefilter_data);
     MARK_DESTROY_NVRHI_RESOURCE(env_prefilter_cb);
     program_vars["u_envPrefilterData"] = env_prefilter_cb;
+
+    nvrhi::BufferDesc material_params_desc;
+    // Each pixel should be able to store 288 bytes
+
+    material_params_desc.byteSize =
+        rays->getDesc().byteSize / sizeof(RayInfo) * sizeof(MaterialParams);
+    material_params_desc.structStride = sizeof(MaterialParams);
+    material_params_desc.canHaveUAVs = true;
+    material_params_desc.initialState = nvrhi::ResourceStates::ShaderResource;
+    material_params_desc.debugName = "materialParamsBuffer";
+    material_params_desc.keepInitialState = true;
+    auto material_params_buffer =
+        resource_allocator.create(material_params_desc);
+
+    MARK_DESTROY_NVRHI_RESOURCE(material_params_buffer);
 
     auto u_envRadiance = create_empty_texture(params, { 4, 4 });
     auto u_envIrradiance = create_empty_texture(params, { 4, 4 });
@@ -130,6 +158,7 @@ NODE_EXECUTION_FUNCTION(path_tracing)
         instance_collection->material_pool.get_device_buffer();
     program_vars["materialHeaderBuffer"] =
         instance_collection->material_header_pool.get_device_buffer();
+    program_vars["materialParamsBuffer"] = material_params_buffer;
 
     // Bind light buffer - only include lights with valid paths
     auto& all_lights = global_payload.get_lights();
@@ -177,13 +206,20 @@ NODE_EXECUTION_FUNCTION(path_tracing)
     context.announce_miss(
         "ShadowMiss", 1);  // Shadow ray miss shader at index 1
 
+    // Register shared material evaluation callables at fixed indices
+    context.announce_callable(
+        "eval_standard_surface",
+        0,
+        material_eval_vars);  // shader_type_id = 0
+    context.announce_callable(
+        "eval_preview_surface", 1, material_eval_vars);  // shader_type_id = 1
+
+    // Register per-material data fetch callables starting from index 2
     for (auto& callable : callable_shaders) {
-        context.announce_callable(callable.second, callable.first);
+        context.announce_callable(callable.second, 2 + callable.first);
     }
 
     context.finish_announcing_shader_names();
-
-    auto rays = params.get_input<nvrhi::BufferHandle>("Rays");
 
     auto buffer_size = rays->getDesc().byteSize / sizeof(RayInfo);
 

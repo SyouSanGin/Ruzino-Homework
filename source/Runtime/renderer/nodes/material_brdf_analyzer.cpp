@@ -117,9 +117,6 @@ NODE_EXECUTION_FUNCTION(material_brdf_analyzer)
     eval_program_desc.set_path("shaders/material_brdf_eval.slang");
     eval_program_desc.shaderType = ShaderType::AllRayTracing;
     eval_program_desc.nvapi_support = true;
-    eval_program_desc.define(
-        "FALCOR_MATERIAL_INSTANCE_SIZE",
-        std::to_string(c_FalcorMaterialInstanceSize));
 
     for (auto material : materials) {
         auto location = material.second->GetMaterialLocation();
@@ -221,9 +218,6 @@ NODE_EXECUTION_FUNCTION(material_brdf_analyzer)
     sample_program_desc.set_path("shaders/material_brdf_sample.slang");
     sample_program_desc.shaderType = ShaderType::AllRayTracing;
     sample_program_desc.nvapi_support = true;
-    sample_program_desc.define(
-        "FALCOR_MATERIAL_INSTANCE_SIZE",
-        std::to_string(c_FalcorMaterialInstanceSize));
 
     for (auto material : materials) {
         auto location = material.second->GetMaterialLocation();
@@ -402,9 +396,6 @@ NODE_EXECUTION_FUNCTION(material_brdf_analyzer)
         "shaders/material_brdf_importance_sample.slang");
     importance_program_desc.shaderType = ShaderType::AllRayTracing;
     importance_program_desc.nvapi_support = true;
-    importance_program_desc.define(
-        "FALCOR_MATERIAL_INSTANCE_SIZE",
-        std::to_string(c_FalcorMaterialInstanceSize));
 
     for (auto material : materials) {
         auto location = material.second->GetMaterialLocation();

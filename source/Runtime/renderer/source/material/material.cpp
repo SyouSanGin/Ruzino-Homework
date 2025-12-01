@@ -81,58 +81,22 @@ unsigned Hd_USTC_CG_Material::GetMaterialLocation() const
 std::string Hd_USTC_CG_Material::slang_source_code_template = R"(
 import Scene.VertexInfo;
 import Scene.BindlessMaterial;
+import Scene.MaterialParams;
 import utils.Math.ShadingFrame;
 
-struct CallableData
-{
-    float4 color;
-    float3 throughput;
-    float3 L;
-    float3 V;
-    float3 sampledDir;
-    float pdf;
-    uint seed;
-    uint eta_flipped;
+struct FetchCallableData {
     uint materialBlobID;
+    uint material_params_index; // Index into material parameters buffer, set by data fetch callable
+    uint shader_type_id;
     VertexInfo vertexInfo;
 };
 
 [shader("callable")]
-void $getColor(inout CallableData data)
+void $getColor(inout FetchCallableData data)
 {
+    float4 placeholder_color = float4(1.0); 
     MaterialDataBlob blob_data = materialBlobBuffer[data.materialBlobID];
-
-    eval_sample_pdf(data.color, data.sampledDir, data.throughput, data.pdf, data.seed, data.eta_flipped, data.L, data.V, blob_data, data.vertexInfo);
-    if (length(data.L) < 0.1)
-        data.color = 0.0f;
-}
-
-)";
-
-// HLSL callable shader
-std::string Hd_USTC_CG_Material::eval_source_code_fallback = R"(
-import Utils.Math.MathHelpers;
-#include "utils/random.slangh"
-
-void eval_sample_pdf(
-    out float4 color,
-    out float3 sampled_direction,
-    out float3 sampled_weight,
-    out float pdf,
-    inout uint seed,
-    uint eta_flipped,
-    float3 L,
-    float3 V,
-    in MaterialDataBlob blob_data,
-    VertexInfo vertexInfo)
-{
-    float3 color3 = float3(0.8); // Default color for fallback
-    color = float4(color3 * dot(L, vertexInfo.normalW), 1.0);
-    sampled_direction = sample_cosine_hemisphere_concentric(random_float2(seed), pdf);
-    bool valid;
-    ShadingFrame sf = ShadingFrame.createSafe(vertexInfo.normalW, float4(1, 0, 0, 1), valid);
-    sampled_direction = sf.fromLocal(sampled_direction);
-    sampled_weight = float3(0.8, 0.8, 0.8) / 3.14159 * max(0.0, dot(vertexInfo.normalW, sampled_direction));
+    eval_sample_pdf(placeholder_color, data.material_params_index, data.shader_type_id, blob_data, data.vertexInfo);
 }
 
 )";
@@ -156,7 +120,8 @@ void Hd_USTC_CG_Material::ensure_shader_ready(const ShaderFactory& factory)
             pos, strlen(FUNC_PLACEHOLDER), material_name);
     }
 
-    final_shader_source = eval_source_code_fallback + slang_source_code_main;
+    // No longer appending eval code - that's in shared callables
+    final_shader_source = slang_source_code_main;
 }
 
 std::string Hd_USTC_CG_Material::GetShader(const ShaderFactory& factory)

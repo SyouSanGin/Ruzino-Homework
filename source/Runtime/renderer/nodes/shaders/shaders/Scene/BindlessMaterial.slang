@@ -17,9 +17,14 @@ struct MaterialDataBlob {
     uint data[256];
 };
 
+struct MaterialParams {
+    uint data[72]; 
+};
+
 #ifndef HOST_CODE
 StructuredBuffer<MaterialDataBlob> materialBlobBuffer : register(t3);
 StructuredBuffer<MaterialHeader> materialHeaderBuffer : register(t4);
+RWStructuredBuffer<MaterialParams> materialParamsBuffer;
 
 [[vk::binding(1, 1)]]
 Texture2D t_BindlessTextures[] : register(t0, space2);
@@ -30,4 +35,4 @@ Texture2D t_BindlessTextures[] : register(t0, space2);
 // 0=point, 1=linear, 2=aniso for filter types
 SamplerState samplers[9];
 
-#endif
+#endif 

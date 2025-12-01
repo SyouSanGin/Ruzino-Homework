@@ -37,9 +37,6 @@ NODE_EXECUTION_FUNCTION(material_eval_sample_pdf)
     program_desc.set_path("shaders/material_eval_sample_pdf.slang");
     program_desc.shaderType = nvrhi::ShaderType::AllRayTracing;
     program_desc.nvapi_support = true;
-    program_desc.define(
-        "FALCOR_MATERIAL_INSTANCE_SIZE",
-        std::to_string(c_FalcorMaterialInstanceSize));
 
     auto &materials = global_payload.get_materials();
 

@@ -193,10 +193,12 @@ SlangShaderGenerator::SlangShaderGenerator(TypeSystemPtr typeSystem)
         "IM_surfacematerial_" + SlangShaderGenerator::TARGET,
         MaterialNode::create);
 
-    _lightSamplingNodes.push_back(ShaderNode::create(
-        nullptr, "numActiveLightSources", NumLightsNodeSlang::create()));
-    _lightSamplingNodes.push_back(ShaderNode::create(
-        nullptr, "sampleLightSource", LightSamplerNodeSlang::create()));
+    _lightSamplingNodes.push_back(
+        ShaderNode::create(
+            nullptr, "numActiveLightSources", NumLightsNodeSlang::create()));
+    _lightSamplingNodes.push_back(
+        ShaderNode::create(
+            nullptr, "sampleLightSource", LightSamplerNodeSlang::create()));
 }
 
 ShaderPtr SlangShaderGenerator::generate(
@@ -667,15 +669,16 @@ void SlangShaderGenerator::emitPixelStage(
     auto& syntax = getSyntax();
 
     const string& type = syntax.getTypeName(Type::VECTOR3);
-    emitLine("out float3 sampled_direction, ", stage, false);
-    emitLine("out float3 sampled_weight, ", stage, false);
-    emitLine("out float pdf, ", stage, false);
-    emitLine("inout uint seed,", stage, false);
-    emitLine("uint eta_flipped,", stage, false);
+    // emitLine("out float3 sampled_direction, ", stage, false);
+    // emitLine("out float3 sampled_weight, ", stage, false);
+    // emitLine("out float pdf, ", stage, false);
+    // emitLine("inout uint seed,", stage, false);
+    // emitLine("uint eta_flipped,", stage, false);
+    // emitLine(type + " " + HW::DIR_L + ", ", stage, false);
+    // emitLine(type + " " + HW::DIR_V + ", ", stage, false);
 
-    emitLine(type + " " + HW::DIR_L + ", ", stage, false);
-    emitLine(type + " " + HW::DIR_V + ", ", stage, false);
-
+    emitLine("in uint material_params_index, ", stage, false);
+    emitLine("inout uint shader_type_id, ", stage, false);
     emitLine("in MaterialDataBlob data, ", stage, false);
     emitLine("in VertexInfo vertexInfo)", stage, false);
 
