@@ -12,18 +12,18 @@
 
 NODE_DEF_OPEN_SCOPE
 
-struct OldConstants {
+struct RaygenStorage {
     constexpr static bool has_storage = false;
 
     float aperture = 0;
     float focus_distance = 2;
 
-    bool operator==(const OldConstants& rhs) const
+    bool operator==(const RaygenStorage& rhs) const
     {
         return aperture == rhs.aperture && focus_distance == rhs.focus_distance;
     }
 
-    bool operator!=(const OldConstants& rhs) const
+    bool operator!=(const RaygenStorage& rhs) const
     {
         return !(*this == rhs);
     }
@@ -48,9 +48,9 @@ NODE_EXECUTION_FUNCTION(node_render_ray_generation)
     auto aperture = params.get_input<float>("Aperture");
     auto focus_distance = params.get_input<float>("Focus Distance");
 
-    if (params.get_storage<OldConstants>() !=
-        OldConstants{ aperture, focus_distance }) {
-        params.set_storage(OldConstants{ aperture, focus_distance });
+    if (params.get_storage<RaygenStorage>() !=
+        RaygenStorage{ aperture, focus_distance }) {
+        params.set_storage(RaygenStorage{ aperture, focus_distance });
         global_payload.reset_accumulation = true;
     }
 

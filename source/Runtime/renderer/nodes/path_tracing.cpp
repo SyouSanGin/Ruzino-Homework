@@ -141,6 +141,7 @@ NODE_EXECUTION_FUNCTION(path_tracing)
 
     if (is_any_dirty || !storage.cached_program_vars ||
         !storage.cached_rt_context) {
+        g.reset_accumulation = true;
         storage.cached_program_vars = std::make_unique<ProgramVars>(
             resource_allocator, storage.path_tracing_program);
         ProgramVars& program_vars = *storage.cached_program_vars;
