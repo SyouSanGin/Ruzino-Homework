@@ -655,7 +655,7 @@ void SlangShaderGenerator::emitPixelStage(
     const VariableBlock& vertexData = stage.getInputBlock(HW::VERTEX_DATA);
     _tokenSubstitutions[HW::T_VIEW_POSITION] = "vd." + HW::POSITION_WORLD;
 
-    emitLine("void eval_sample_pdf(", stage, false);
+    emitLine("void fetch_shader_data(", stage, false);
 
     const VariableBlock& outputs = stage.getOutputBlock(HW::PIXEL_OUTPUTS);
     emitVariableDeclarations(

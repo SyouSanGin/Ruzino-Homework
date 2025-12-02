@@ -78,6 +78,20 @@ unsigned Hd_USTC_CG_Material::GetMaterialLocation() const
 }
 
 // HLSL callable shader
+std::string Hd_USTC_CG_Material::eval_source_code_fallback = R"(
+void fetch_shader_data(
+    out float4 out1,
+    in uint material_params_index, 
+    inout uint shader_type_id, 
+    in MaterialDataBlob data, 
+    in VertexInfo vertexInfo
+    )
+{
+    shader_type_id = 2; // Fallback shader type id
+    out1 = float4(1.0, 1.0, 1.0, 1.0);
+}
+)";
+
 std::string Hd_USTC_CG_Material::slang_source_code_template = R"(
 import Scene.VertexInfo;
 import Scene.BindlessMaterial;
@@ -96,7 +110,7 @@ void $getColor(inout FetchCallableData data)
 {
     float4 placeholder_color = float4(1.0); 
     MaterialDataBlob blob_data = materialBlobBuffer[data.materialBlobID];
-    eval_sample_pdf(placeholder_color, data.material_params_index, data.shader_type_id, blob_data, data.vertexInfo);
+    fetch_shader_data(placeholder_color, data.material_params_index, data.shader_type_id, blob_data, data.vertexInfo);
 }
 
 )";
@@ -104,11 +118,14 @@ void $getColor(inout FetchCallableData data)
 void Hd_USTC_CG_Material::ensure_shader_ready(const ShaderFactory& factory)
 {
     // Use fallback shader if no source is available
+    std::string local_slang_source_code{};
     if (material_name.empty()) {
         material_name = "fallback";
+        local_slang_source_code = eval_source_code_fallback;
     }
 
-    slang_source_code_main = slang_source_code_template;
+    slang_source_code_main =
+        local_slang_source_code + slang_source_code_template;
 
     // Replace the callable function name with the material name in all code
     constexpr char FUNC_PLACEHOLDER[] = "$getColor";
@@ -128,6 +145,10 @@ std::string Hd_USTC_CG_Material::GetShader(const ShaderFactory& factory)
 {
     ensure_shader_ready(factory);
     return final_shader_source;
+}
+std::string Hd_USTC_CG_Material::GetMaterialName() const
+{
+    return material_name;
 }
 
 USTC_CG_NAMESPACE_CLOSE_SCOPE

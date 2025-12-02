@@ -102,24 +102,24 @@ Stage::~Stage()
 
 void Stage::tick(float ellapsed_time)
 {
-    // for each prim, if it is animatable, update it
-    // 每个prim都会独立判断自己是否应该进行仿真
-    for (auto&& prim : stage->Traverse()) {
-        if (animation::WithDynamicLogicPrim::is_animatable(prim)) {
-            if (animatable_prims.find(prim.GetPath()) ==
-                animatable_prims.end()) {
-                animatable_prims.emplace(
-                    prim.GetPath(),
-                    std::move(animation::WithDynamicLogicPrim(prim, this)));
-            }
-
-            animatable_prims.at(prim.GetPath()).update(ellapsed_time);
-        }
-    }
-    
     // Stage的全局时间码用于追踪整体状态
     // 但实际的仿真时间由每个prim独立管理
     if (should_simulate()) {
+        // for each prim, if it is animatable, update it
+        // 每个prim都会独立判断自己是否应该进行仿真
+        for (auto&& prim : stage->Traverse()) {
+            if (animation::WithDynamicLogicPrim::is_animatable(prim)) {
+                if (animatable_prims.find(prim.GetPath()) ==
+                    animatable_prims.end()) {
+                    animatable_prims.emplace(
+                        prim.GetPath(),
+                        std::move(animation::WithDynamicLogicPrim(prim, this)));
+                }
+
+                animatable_prims.at(prim.GetPath()).update(ellapsed_time);
+            }
+        }
+
         auto current = current_time_code.GetValue();
         current += ellapsed_time;
         current_time_code = pxr::UsdTimeCode(current);

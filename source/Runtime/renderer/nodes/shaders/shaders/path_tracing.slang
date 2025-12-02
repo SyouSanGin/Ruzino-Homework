@@ -372,7 +372,7 @@ void ClosestHit(
     fetchData.vertexInfo = vertex;
 
     // Call the per-material data fetch callable to fill parameters
-    CallShader(2 + material_header.material_type_id, fetchData);
+    CallShader(3 + material_header.material_type_id, fetchData);
 
     // Step 2: Call shared evaluation callable based on shader type
     EvalCallableData evalData;

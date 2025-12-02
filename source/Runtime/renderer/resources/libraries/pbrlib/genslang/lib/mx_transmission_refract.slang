@@ -1,7 +1,5 @@
 import pbrlib.genslang.lib.mx_microfacet_specular;
 
-ConstantBuffer<uint> u_refractionTwoSided;
-
 float3 mx_surface_transmission(
     float3 N,
     float3 V,

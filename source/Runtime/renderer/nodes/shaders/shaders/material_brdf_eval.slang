@@ -128,8 +128,8 @@ void EvalPdfRayGen()
     CallShader(material_header.material_type_id, callData);
     
     // Extract BRDF value
-    // Note: eval_sample_pdf returns BRDF in 'color' output (Surface_out.color)
-    // The 'pdf' and 'throughput' from eval_sample_pdf are for the sampled direction,
+    // Note: fetch_shader_data returns BRDF in 'color' output (Surface_out.color)
+    // The 'pdf' and 'throughput' from fetch_shader_data are for the sampled direction,
     // not for our input L direction, so they're not useful for evaluation
     float3 brdf = callData.color.rgb;
     
@@ -138,7 +138,7 @@ void EvalPdfRayGen()
     eval_output[pixel] = float4(brdf, local_wo.z);
     
     // PDF output: We cannot get meaningful PDF from MaterialX for arbitrary L direction
-    // MaterialX's eval_sample_pdf only returns PDF for importance-sampled directions
+    // MaterialX's fetch_shader_data only returns PDF for importance-sampled directions
     // Store BRDF again for now (or could compute theoretical PDF if we had BRDF parameters)
     pdf_output[pixel] = float4(brdf, 1.0);
 }

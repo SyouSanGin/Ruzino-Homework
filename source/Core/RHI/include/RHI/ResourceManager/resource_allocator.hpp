@@ -415,7 +415,7 @@ class ResourceAllocator {
         // expect many items in the cache and std::multimap generates tons of
         // code. std::multimap starts getting significantly better around 1000
         // items.
-        using Container = std::vector<std::pair<Key, Value>>;
+        using Container = std::list<std::pair<Key, Value>>;
         Container mContainer;
 
        public:
@@ -483,7 +483,7 @@ class ResourceAllocator {
 template<typename K, typename V, typename H>
 ResourceAllocator::AssociativeContainer<K, V, H>::AssociativeContainer()
 {
-    mContainer.reserve(128);
+    // mContainer.reserve(128);
 }
 
 template<typename K, typename V, typename H>

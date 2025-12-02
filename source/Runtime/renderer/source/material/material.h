@@ -34,10 +34,7 @@ class HD_USTC_CG_API Hd_USTC_CG_Material : public HdMaterial {
 
     std::string GetShader(const ShaderFactory& factory);
 
-    std::string GetMaterialName() const
-    {
-        return material_name;
-    }
+    std::string GetMaterialName() const;
 
     virtual void update_data_loader(
         DescriptorIndex descriptor_index,
@@ -62,7 +59,8 @@ class HD_USTC_CG_API Hd_USTC_CG_Material : public HdMaterial {
         HioImageSharedPtr image;
         nvrhi::TextureHandle texture;
         DescriptorHandle descriptor;
-        bool isSRGB = false;  // Track whether this texture should use sRGB format
+        bool isSRGB =
+            false;  // Track whether this texture should use sRGB format
     };
 
     std::unordered_map<std::string, TextureResource> textureResources;
