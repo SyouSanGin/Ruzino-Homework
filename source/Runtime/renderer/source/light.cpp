@@ -196,6 +196,12 @@ VtValue Hd_USTC_CG_Light::Get(const TfToken& token) const
     TfMapLookup(_params, token, &val);
     return val;
 }
+void Hd_USTC_CG_Light::Finalize(HdRenderParam* renderParam)
+{
+    auto render_param = static_cast<Hd_USTC_CG_RenderParam*>(renderParam);
+    render_param->InstanceCollection->mark_lights_dirty();
+    HdLight::Finalize(renderParam);
+}
 
 void Hd_USTC_CG_Simple_Light::Sync(
     HdSceneDelegate* sceneDelegate,

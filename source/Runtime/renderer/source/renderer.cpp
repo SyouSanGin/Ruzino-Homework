@@ -131,6 +131,15 @@ void Hd_USTC_CG_Renderer::Render(HdRenderThread* renderThread)
             last_geometry_version = current_geometry_version;
         }
 
+        static uint32_t last_light_version = 0;
+        uint32_t current_light_version =
+            global_payload.InstanceCollection->get_light_version();
+        if (last_light_version != current_light_version) {
+            global_payload.mark_dirty(
+                RenderGlobalPayload::SceneDirtyBits::DirtyLights);
+            last_light_version = current_light_version;
+        }
+
         // global_payload.resource_allocator.gc();
         global_payload.resource_allocator.gc();
 
