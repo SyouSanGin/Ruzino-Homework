@@ -108,6 +108,11 @@ NODE_EXECUTION_FUNCTION(path_tracing)
         program_desc.shaderType = nvrhi::ShaderType::AllRayTracing;
         program_desc.nvapi_support = true;
 
+        // Add callable shader files
+        program_desc.add_path("shaders/callables/eval_fallback.slang");
+        program_desc.add_path("shaders/callables/eval_standard_surface.slang");
+        program_desc.add_path("shaders/callables/eval_preview_surface.slang");
+
         auto& materials = global_payload.get_materials();
 
         storage.callable_shaders.clear();

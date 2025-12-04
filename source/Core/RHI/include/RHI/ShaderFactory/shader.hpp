@@ -57,7 +57,7 @@ class RHI_API ShaderFactory {
     std::vector<std::string> search_paths;
 
     void SlangCompile(
-        const std::string& path,
+        const std::vector<std::string>& paths,
         const std::vector<std::string>& sourceCodes,
         const char* entryPoint,
         nvrhi::ShaderType shaderType,

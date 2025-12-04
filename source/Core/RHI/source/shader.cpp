@@ -49,7 +49,15 @@ const ShaderReflectionInfo& Program::get_reflection_info() const
 
 ProgramDesc& ProgramDesc::set_path(const std::string& path)
 {
-    this->path = path;
+    this->paths.clear();
+    this->paths.push_back(path);
+    update_last_write_time(path);
+    return *this;
+}
+
+ProgramDesc& ProgramDesc::add_path(const std::string& path)
+{
+    this->paths.push_back(path);
     update_last_write_time(path);
     return *this;
 }
@@ -73,24 +81,23 @@ namespace fs = std::filesystem;
 
 bool ProgramDesc::check_shader_updated() const
 {
-    auto full_path =
-        std::filesystem::path(ShaderFactory::shader_search_path) / path;
-    if (fs::exists(full_path)) {
-        auto possibly_newer_lastWriteTime = fs::last_write_time(full_path);
-        auto current_time = possibly_newer_lastWriteTime.time_since_epoch().count();
-        
-        if (lastWriteTime == 0) {
-            return false;
+    for (const auto& path : paths) {
+        auto full_path =
+            std::filesystem::path(ShaderFactory::shader_search_path) / path;
+        if (fs::exists(full_path)) {
+            auto possibly_newer_lastWriteTime = fs::last_write_time(full_path);
+            auto current_time = possibly_newer_lastWriteTime.time_since_epoch().count();
+            
+            if (lastWriteTime == 0) {
+                return false;
+            }
+            
+            if (current_time > lastWriteTime) {
+                return true;
+            }
         }
-        
-        if (current_time > lastWriteTime) {
-            return true;
-        }
-        return false;
     }
-    else {
-        return false;
-    }
+    return false;
 }
 void ProgramDesc::update_last_write_time(const std::string& path)
 {
@@ -522,7 +529,7 @@ ProgramHandle ShaderFactory::compile_cpu_executable(
     SlangCompileTarget target = SLANG_SHADER_HOST_CALLABLE;
 
     SlangCompile(
-        desc.path,
+        desc.paths,
         desc.source_code,
         desc.entry_name.c_str(),
         desc.shaderType,
@@ -608,7 +615,7 @@ void ShaderFactory::populate_dxc_options(
     }
 
 void ShaderFactory::SlangCompile(
-    const std::string& path,
+    const std::vector<std::string>& paths,
     const std::vector<std::string>& sourceCodes,
     const char* entryPoint,
     nvrhi::ShaderType shaderType,
@@ -708,11 +715,12 @@ void ShaderFactory::SlangCompile(
 
     auto load_module_from_source =
         [&](const std::string& sourceCode,
-            slang::ISession* session) -> slang::IModule* {
+            slang::ISession* session,
+            const std::string& name) -> slang::IModule* {
         auto id = shader_id++;
         return session->loadModuleFromSourceString(
-            (std::to_string(id) + path).c_str(),
-            (std::to_string(id) + path).c_str(),
+            (std::to_string(id) + name).c_str(),
+            (std::to_string(id) + name).c_str(),
             sourceCode.c_str(),
             diagnostics.writeRef());
     };
@@ -727,6 +735,8 @@ void ShaderFactory::SlangCompile(
     std::vector<Slang::ComPtr<slang::IModule>> modules;
     bool loaded_successfully = false;
 
+    std::string module_name = paths.empty() ? "unnamed" : paths[0];
+
     // Try to load from source code if provided
     if (!sourceCodes.empty()) {
         for (const auto& sourceCode : sourceCodes) {
@@ -734,7 +744,7 @@ void ShaderFactory::SlangCompile(
                 continue;
 
             auto m =
-                load_module_from_source(sourceCode, p_compile_session.get());
+                load_module_from_source(sourceCode, p_compile_session.get(), module_name);
             if (m) {
                 modules.emplace_back(m);
                 loaded_successfully = true;
@@ -748,8 +758,11 @@ void ShaderFactory::SlangCompile(
         }
     }
 
-    // Additionally try loading from path if provided (not exclusively)
-    if (!path.empty()) {
+    // Load all paths if provided
+    for (const auto& path : paths) {
+        if (path.empty())
+            continue;
+            
         auto m = load_module_from_path(path, p_compile_session.get());
         if (m) {
             modules.emplace_back(m);
@@ -835,7 +848,7 @@ ProgramHandle ShaderFactory::createProgram(const ProgramDesc& desc) const
                                                            : SLANG_DXIL;
 
     SlangCompile(
-        desc.path,
+        desc.paths,
         desc.source_code,
         desc.entry_name.c_str(),
         desc.shaderType,

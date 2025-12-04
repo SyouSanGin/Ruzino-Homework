@@ -56,7 +56,7 @@ struct RHI_API ShaderMacro {
 struct RHI_API ProgramDesc {
     friend bool operator==(const ProgramDesc& lhs, const ProgramDesc& rhs)
     {
-        return lhs.path == rhs.path && lhs.entry_name == rhs.entry_name &&
+        return lhs.paths == rhs.paths && lhs.entry_name == rhs.entry_name &&
                lhs.lastWriteTime == rhs.lastWriteTime &&
                lhs.shaderType == rhs.shaderType &&
                lhs.nvapi_support == rhs.nvapi_support &&
@@ -79,6 +79,7 @@ struct RHI_API ProgramDesc {
     }
 
     ProgramDesc& set_path(const std::string& path);
+    ProgramDesc& add_path(const std::string& path);
     ProgramDesc& set_shader_type(nvrhi::ShaderType shaderType);
     ProgramDesc& set_entry_name(const std::string& entry_name);
 
@@ -86,6 +87,11 @@ struct RHI_API ProgramDesc {
     {
         this->source_code.push_back(source_code);
         return *this;
+    }
+
+    const std::vector<std::string>& get_paths() const
+    {
+        return paths;
     }
 
     const std::string& get_entry_name()
@@ -102,7 +108,7 @@ struct RHI_API ProgramDesc {
     void update_last_write_time(const std::string& path);
     std::vector<ShaderMacro> macros;
     std::string get_profile() const;
-    std::string path;
+    std::vector<std::string> paths;  // Changed from single path to multiple paths
     std::vector<std::string> source_code;
     long long lastWriteTime = 0;
     std::string entry_name;

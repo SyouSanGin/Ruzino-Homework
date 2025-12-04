@@ -1,0 +1,100 @@
+import callable_data;
+import Scene.MaterialParams;
+import Scene.MaterialParamsBuffer;
+import Scene.UsdPreviewSurface;
+
+// Preview Surface evaluation
+[shader("callable")]
+void eval_preview_surface(inout EvalCallableData data)
+{
+    // Read parameters from buffer
+    MaterialParams params_blob =
+        materialParamsBuffer[data.material_params_index];
+    PreviewSurfaceMaterialParams params;
+
+    // Reinterpret buffer data as PreviewSurfaceMaterialParams
+    params = reinterpret<PreviewSurfaceMaterialParams>(params_blob);
+
+    VertexData vd;
+    vd.normalWorld = data.vertexInfo.normalW;
+    vd.tangentWorld = data.vertexInfo.tangentW.xyz;
+    vd.bitangentWorld =
+        cross(data.vertexInfo.normalW, data.vertexInfo.tangentW.xyz) *
+        data.vertexInfo.tangentW.w;
+    vd.positionWorld = data.vertexInfo.posW;
+
+    // Evaluate the BSDF with light direction L
+    surfaceshader bsdf_result = surfaceshader(float3(0.0), float3(0.0));
+    IMP_UsdPreviewSurface_surfaceshader(
+        vd,
+        data.L,
+        data.V,
+        data.eta_flipped,
+        params.diffuseColor,
+        params.emissiveColor,
+        params.useSpecularWorkflow,
+        params.specularColor,
+        params.metallic,
+        params.roughness,
+        params.clearcoat,
+        params.clearcoatRoughness,
+        params.opacity,
+        params.opacityMode,
+        params.opacityThreshold,
+        params.ior,
+        params.normal,
+        params.displacement,
+        params.occlusion,
+        bsdf_result);
+
+    data.color = float4(bsdf_result.color, 1.0);
+
+    // Sample the BSDF for next direction
+    data.sampledDir = sample_preview_surface(
+        vd,
+        data.V,
+        params.diffuseColor,
+        params.emissiveColor,
+        params.useSpecularWorkflow,
+        params.specularColor,
+        params.metallic,
+        params.roughness,
+        params.clearcoat,
+        params.clearcoatRoughness,
+        params.opacity,
+        params.opacityMode,
+        params.opacityThreshold,
+        params.ior,
+        params.normal,
+        params.displacement,
+        params.occlusion,
+        data.eta_flipped,
+        data.seed,
+        data.pdf);
+
+    // Evaluate BSDF again with sampled direction to get throughput
+    surfaceshader weight_result = surfaceshader(float3(0.0), float3(0.0));
+    IMP_UsdPreviewSurface_surfaceshader(
+        vd,
+        data.sampledDir,
+        data.V,
+        data.eta_flipped,
+        params.diffuseColor,
+        params.emissiveColor,
+        params.useSpecularWorkflow,
+        params.specularColor,
+        params.metallic,
+        params.roughness,
+        params.clearcoat,
+        params.clearcoatRoughness,
+        params.opacity,
+        params.opacityMode,
+        params.opacityThreshold,
+        params.ior,
+        params.normal,
+        params.displacement,
+        params.occlusion,
+        weight_result);
+
+    data.throughput = weight_result.color;
+}

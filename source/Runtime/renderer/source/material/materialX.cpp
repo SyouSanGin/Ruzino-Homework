@@ -160,26 +160,26 @@ void Hd_USTC_CG_MaterialX::ensure_shader_ready(const ShaderFactory& factory)
 
     // Combine shader parts into final source
 
-    ProgramDesc program_desc;
-    program_desc.add_source_code(final_shader_source);
-    program_desc.set_shader_type(nvrhi::ShaderType::Callable);
-    program_desc.set_entry_name(material_name);
+    // ProgramDesc program_desc;
+    // program_desc.add_source_code(final_shader_source);
+    // program_desc.set_shader_type(nvrhi::ShaderType::Callable);
+    // program_desc.set_entry_name(material_name);
 
-    spdlog::info("MaterialX: Creating shader program for '{}'", material_name);
-    final_program = factory.createProgram(program_desc);
+    // spdlog::info("MaterialX: Creating shader program for '{}'", material_name);
+    // final_program = factory.createProgram(program_desc);
 
-    if (!final_program) {
-        spdlog::error(
-            "MaterialX: Failed to create shader program for '{}'",
-            material_name);
-    }
-    else {
-        spdlog::info(
-            "MaterialX: Shader program created successfully for '{}'",
-            material_name);
-    }
+    // if (!final_program) {
+    //     spdlog::error(
+    //         "MaterialX: Failed to create shader program for '{}'",
+    //         material_name);
+    // }
+    // else {
+    //     spdlog::info(
+    //         "MaterialX: Shader program created successfully for '{}'",
+    //         material_name);
+    // }
 
-    assert(final_program);
+    // assert(final_program);
 
     shader_ready = true;
     // Note: shader_generation was already incremented by base class

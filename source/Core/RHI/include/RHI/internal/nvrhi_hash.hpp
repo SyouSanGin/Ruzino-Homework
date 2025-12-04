@@ -10,7 +10,9 @@ struct hash<USTC_CG::ProgramDesc> {
     size_t operator()(const USTC_CG::ProgramDesc& s) const noexcept
     {
         size_t seed = 0;
-        nvrhi::hash_combine(seed, s.path);
+        for (const auto& path : s.paths) {
+            nvrhi::hash_combine(seed, path);
+        }
         nvrhi::hash_combine(seed, s.entry_name);
         nvrhi::hash_combine(seed, s.lastWriteTime);
         nvrhi::hash_combine(seed, s.shaderType);
