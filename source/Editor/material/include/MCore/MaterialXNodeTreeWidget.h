@@ -113,8 +113,20 @@ class MCORE_API MaterialXNodeTreeWidget : public NodeEditorWidgetBase {
     void create_new_node(ImVec2 openPopupPosition) override;
 
    public:
-    MaterialXNodeTreeWidget(const NodeWidgetSettings& desc);
+    MaterialXNodeTreeWidget(
+        const NodeWidgetSettings& desc,
+        const mx::FilePath& mtlx_path,
+        const std::string& material_path = "");
     void drawGraph();
+    bool GetDirty() const
+    {
+        return tree_->GetDirty();
+    }
+
+    void SetDirty(bool dirty)
+    {
+        tree_->SetDirty(dirty);
+    }
 
     // RenderViewPtr getRenderer()
     //{
@@ -251,6 +263,8 @@ class MCORE_API MaterialXNodeTreeWidget : public NodeEditorWidgetBase {
     UiNodePtr _prevUiNode;
     UiNodePtr _currRenderNode;
     std::vector<std::string> _currGraphName;
+    mx::FilePath mtlx_path_;
+    std::string material_path_;
 
     void addExtraNodes();
 

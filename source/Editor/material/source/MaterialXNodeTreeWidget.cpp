@@ -11,8 +11,8 @@
 
 #include <nodes/core/node_link.hpp>
 
-#include "MCore/MaterialXNodeTree.hpp"
 #include "GUI/window.h"
+#include "MCore/MaterialXNodeTree.hpp"
 namespace mx = MaterialX;
 
 USTC_CG_NAMESPACE_OPEN_SCOPE
@@ -311,57 +311,59 @@ ImVec2 MaterialXNodeTreeWidget::layoutPosition(
     bool initialLayout,
     int level)
 {
-    //if (checkPosition(layoutNode) && !_autoLayout) {
-    //    for (UiNodePtr node : _graphNodes) {
-    //        // Since nodegraph nodes do not have MaterialX info they are placed
-    //        // based on their connected node
-    //        if (getMaterialXNodeGraph(node) != nullptr) {
-    //            std::vector<UiNodePtr> outputCon = node->getOutputConnections();
-    //            if (outputCon.size() > 0) {
-    //                ImVec2 outputPos = ed::GetNodePosition(outputCon[0]->ID);
-    //                ed::SetNodePosition(
-    //                    node->ID, ImVec2(outputPos.x - 400, outputPos.y));
-    //            }
-    //        }
-    //        else {
-    //            // Don't set position of group nodes
-    //            if (node->getMessage().empty()) {
-    //                mx::ElementPtr elem = node->getElement();
-    //                if (elem &&
-    //                    elem->hasAttribute(mx::Element::XPOS_ATTRIBUTE)) {
-    //                    float x = std::stof(
-    //                        elem->getAttribute(mx::Element::XPOS_ATTRIBUTE));
-    //                    if (elem->hasAttribute(mx::Element::YPOS_ATTRIBUTE)) {
-    //                        float y = std::stof(elem->getAttribute(
-    //                            mx::Element::YPOS_ATTRIBUTE));
-    //                        x *= DEFAULT_NODE_SIZE.x;
-    //                        y *= DEFAULT_NODE_SIZE.y;
-    //                        ed::SetNodePosition(node->ID, ImVec2(x, y));
-    //                    }
-    //                }
-    //            }
-    //        }
-    //    }
-    //    return ImVec2(0.f, 0.f);
-    //}
-    //else {
-    //    ImVec2 currPos = startingPos;
-    //    ImVec2 newPos = currPos;
-    //    if (layoutNode->_level != -1) {
-    //        if (layoutNode->_level < level) {
-    //            // Remove the old instance of the node from the map
-    //            int levelNum = 0;
-    //            int removeNum = -1;
-    //            for (UiNodePtr levelNode : _levelMap[layoutNode->_level]) {
-    //                if (levelNode->getName() == layoutNode->getName()) {
-    //                    removeNum = levelNum;
-    //                }
-    //                levelNum++;
-    //            }
-    //            if (removeNum > -1) {
-    //                _levelMap[layoutNode->_level].erase(
-    //                    _levelMap[layoutNode->_level].begin() + removeNum);
-    //            }
+    // if (checkPosition(layoutNode) && !_autoLayout) {
+    //     for (UiNodePtr node : _graphNodes) {
+    //         // Since nodegraph nodes do not have MaterialX info they are
+    //         placed
+    //         // based on their connected node
+    //         if (getMaterialXNodeGraph(node) != nullptr) {
+    //             std::vector<UiNodePtr> outputCon =
+    //             node->getOutputConnections(); if (outputCon.size() > 0) {
+    //                 ImVec2 outputPos = ed::GetNodePosition(outputCon[0]->ID);
+    //                 ed::SetNodePosition(
+    //                     node->ID, ImVec2(outputPos.x - 400, outputPos.y));
+    //             }
+    //         }
+    //         else {
+    //             // Don't set position of group nodes
+    //             if (node->getMessage().empty()) {
+    //                 mx::ElementPtr elem = node->getElement();
+    //                 if (elem &&
+    //                     elem->hasAttribute(mx::Element::XPOS_ATTRIBUTE)) {
+    //                     float x = std::stof(
+    //                         elem->getAttribute(mx::Element::XPOS_ATTRIBUTE));
+    //                     if (elem->hasAttribute(mx::Element::YPOS_ATTRIBUTE))
+    //                     {
+    //                         float y = std::stof(elem->getAttribute(
+    //                             mx::Element::YPOS_ATTRIBUTE));
+    //                         x *= DEFAULT_NODE_SIZE.x;
+    //                         y *= DEFAULT_NODE_SIZE.y;
+    //                         ed::SetNodePosition(node->ID, ImVec2(x, y));
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     return ImVec2(0.f, 0.f);
+    // }
+    // else {
+    //     ImVec2 currPos = startingPos;
+    //     ImVec2 newPos = currPos;
+    //     if (layoutNode->_level != -1) {
+    //         if (layoutNode->_level < level) {
+    //             // Remove the old instance of the node from the map
+    //             int levelNum = 0;
+    //             int removeNum = -1;
+    //             for (UiNodePtr levelNode : _levelMap[layoutNode->_level]) {
+    //                 if (levelNode->getName() == layoutNode->getName()) {
+    //                     removeNum = levelNum;
+    //                 }
+    //                 levelNum++;
+    //             }
+    //             if (removeNum > -1) {
+    //                 _levelMap[layoutNode->_level].erase(
+    //                     _levelMap[layoutNode->_level].begin() + removeNum);
+    //             }
 
     //            layoutNode->_level = level;
     //        }
@@ -407,7 +409,8 @@ ImVec2 MaterialXNodeTreeWidget::layoutPosition(
     //                            _fontScale;
     //                        ed::SetNodePosition(layoutNode->ID, startingPos);
 
-    //                        // Call layout position on upstream node with newPos
+    //                        // Call layout position on upstream node with
+    //                        newPos
     //                        // to the left of current node
     //                        layoutPosition(
     //                            nextNode,
@@ -2337,7 +2340,7 @@ void MaterialXNodeTreeWidget::create_new_node(ImVec2 openPopupPosition)
         // Remember the position where node should be created
         static ImVec2 newNodePosition;
         static bool positionRemembered = false;
-        
+
         if (!positionRemembered) {
             newNodePosition = openPopupPosition;
             positionRemembered = true;
@@ -2345,7 +2348,7 @@ void MaterialXNodeTreeWidget::create_new_node(ImVec2 openPopupPosition)
 
         ImGui::Text("Add Node");
         ImGui::Separator();
-        
+
         static char input[32]{ "" };
         if (create_new_node_search_cursor) {
             ImGui::SetKeyboardFocusHere();
@@ -2356,7 +2359,7 @@ void MaterialXNodeTreeWidget::create_new_node(ImVec2 openPopupPosition)
 
         auto mtlx_tree = static_cast<MaterialXNodeTree*>(tree_);
         const std::string NODEGRAPH_ENTRY = "Node Graph";
-        
+
         bool nodeCreated = false;
         Node* createdNode = nullptr;
 
@@ -2380,21 +2383,20 @@ void MaterialXNodeTreeWidget::create_new_node(ImVec2 openPopupPosition)
                     if (ImGui::MenuItem(getUserNodeDefName(nodeName).c_str()) ||
                         (ImGui::IsItemFocused() &&
                          ImGui::IsKeyPressed(ImGuiKey_Enter))) {
-                        
                         // Store node count before creation
                         size_t nodeCountBefore = tree_->nodes.size();
-                        
+
                         mtlx_tree->addNode(
                             node_item.getCategory(),
                             getUserNodeDefName(nodeName),
                             node_item.getType());
-                        
+
                         // Get the newly created node
                         if (tree_->nodes.size() > nodeCountBefore) {
                             createdNode = tree_->nodes.back().get();
                             nodeCreated = true;
                         }
-                        
+
                         memset(input, '\0', sizeof(input));
                         break;
                     }
@@ -2415,14 +2417,13 @@ void MaterialXNodeTreeWidget::create_new_node(ImVec2 openPopupPosition)
                         if (ImGui::MenuItem(getUserNodeDefName(name).c_str()) ||
                             (ImGui::IsItemFocused() &&
                              ImGui::IsKeyPressed(ImGuiKey_Enter))) {
-                            
                             size_t nodeCountBefore = tree_->nodes.size();
-                            
+
                             mtlx_tree->addNode(
                                 node_item.getCategory(),
                                 getUserNodeDefName(name),
                                 node_item.getType());
-                            
+
                             if (tree_->nodes.size() > nodeCountBefore) {
                                 createdNode = tree_->nodes.back().get();
                                 nodeCreated = true;
@@ -2435,14 +2436,13 @@ void MaterialXNodeTreeWidget::create_new_node(ImVec2 openPopupPosition)
                                     getUserNodeDefName(name).c_str()) ||
                                 (ImGui::IsItemFocused() &&
                                  ImGui::IsKeyPressed(ImGuiKey_Enter))) {
-                                
                                 size_t nodeCountBefore = tree_->nodes.size();
-                                
+
                                 mtlx_tree->addNode(
                                     node_item.getCategory(),
                                     getUserNodeDefName(name),
                                     node_item.getType());
-                                
+
                                 if (tree_->nodes.size() > nodeCountBefore) {
                                     createdNode = tree_->nodes.back().get();
                                     nodeCreated = true;
@@ -2455,12 +2455,12 @@ void MaterialXNodeTreeWidget::create_new_node(ImVec2 openPopupPosition)
                     ImGui::EndMenu();
                 }
             }
-            
+
             if (nodeCreated) {
                 break;
             }
         }
-        
+
         // If a node was created, set its position and try to auto-connect
         if (nodeCreated && createdNode) {
             positionRemembered = false;
@@ -2498,8 +2498,13 @@ void MaterialXNodeTreeWidget::create_new_node(ImVec2 openPopupPosition)
     }
 }
 
-MaterialXNodeTreeWidget::MaterialXNodeTreeWidget(const NodeWidgetSettings& desc)
-    : NodeEditorWidgetBase(desc)
+MaterialXNodeTreeWidget::MaterialXNodeTreeWidget(
+    const NodeWidgetSettings& desc,
+    const mx::FilePath& mtlx_path,
+    const std::string& material_path)
+    : NodeEditorWidgetBase(desc),
+      mtlx_path_(mtlx_path),
+      material_path_(material_path)
 {
     MaterialXNodeTreeWidget::initialize();
     auto mtlx_tree = static_cast<MaterialXNodeTree*>(tree_);
@@ -2949,12 +2954,12 @@ void MaterialXNodeTreeWidget::execute_tree(Node* node)
     auto mtlx_tree = static_cast<MaterialXNodeTree*>(tree_);
 
     if (mtlx_tree->GetDirty()) {
-        mtlx_tree->saveDocument("test.mtlx");
+        mtlx_tree->saveDocument(mtlx_path_);
         mtlx_tree->SetDirty(false);
-        
+
         // Emit event to notify document viewer that graph has changed
         if (window) {
-            window->events().emit("materialx_graph_changed");
+            window->events().emit("materialx_graph_changed", material_path_);
         }
     }
 }
