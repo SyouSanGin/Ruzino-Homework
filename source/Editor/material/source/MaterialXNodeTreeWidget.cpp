@@ -993,15 +993,44 @@ void MaterialXNodeTreeWidget::execute_tree(Node* node)
 {
     auto mtlx_tree = static_cast<MaterialXNodeTree*>(tree_);
 
+    // Always save MaterialX file immediately when dirty (lightweight operation)
     if (mtlx_tree->GetDirty()) {
+        spdlog::debug("MaterialX tree dirty, saving document");
         mtlx_tree->saveDocument(mtlx_path_);
         mtlx_tree->SetDirty(false);
-
-        // Emit event to notify document viewer that graph has changed
-        if (window) {
-            window->events().emit("materialx_graph_changed", material_path_);
+        
+        // Mark that we have pending changes for USD
+        _pendingUsdUpdate = true;
+        _usdUpdateTimer = 0.0f;
+    }
+    
+    // USD update logic with proper debouncing
+    if (_pendingUsdUpdate) {
+        // If any control is still active, reset timer
+        if (_anyControlActive) {
+            spdlog::debug("Control still active, resetting timer");
+            _anyControlActive = false;  // Reset for next frame
+            _usdUpdateTimer = 0.0f;
+            return;
+        }
+        
+        // Increment timer when no controls are active
+        _usdUpdateTimer += ImGui::GetIO().DeltaTime;
+        spdlog::trace("USD update timer: {:.2f}s / {:.2f}s", _usdUpdateTimer, USD_UPDATE_DELAY);
+        
+        // Trigger USD update after delay
+        if (_usdUpdateTimer >= USD_UPDATE_DELAY) {
+            spdlog::info("USD update triggered after debounce delay ({:.2f}s)", _usdUpdateTimer);
+            if (window) {
+                window->events().emit("materialx_graph_changed", material_path_);
+            }
+            _pendingUsdUpdate = false;  // Clear pending flag
+            _usdUpdateTimer = 0.0f;
         }
     }
+    
+    // Reset active flag for next frame
+    _anyControlActive = false;
 }
 
 void MaterialXNodeTreeWidget::addExtraNodes()
@@ -1177,6 +1206,12 @@ bool MaterialXNodeTreeWidget::draw_socket_controllers(NodeSocket* input)
     
     if (changed) {
         tree_->SetDirty();
+    }
+    
+    // Track if this control is being actively edited (mouse button held down)
+    if (ImGui::IsItemActive()) {
+        _anyControlActive = true;
+        spdlog::trace("Control active detected");
     }
     
     return changed;

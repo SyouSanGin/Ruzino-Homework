@@ -1,5 +1,6 @@
 #include <MaterialXCore/Document.h>
 #include <MaterialXFormat/XmlIo.h>
+#include <pxr/base/tf/stringUtils.h>
 #include <rzconsole/ConsoleInterpreter.h>
 #include <rzconsole/ConsoleObjects.h>
 #include <rzconsole/imgui_console.h>
@@ -51,29 +52,29 @@ class MaterialXNodeSystem : public NodeSystem {
         if (!ptr) {
             doc = mx::createDocument();
 
-            // CRITICAL FIX: Create complete material with standard_surface shader
-            // This ensures the .mtlx file has children BEFORE the reference is created
+            // CRITICAL FIX: Create complete material with standard_surface
+            // shader This ensures the .mtlx file has children BEFORE the
+            // reference is created
             mx::NodePtr materialNode =
                 doc->addNode("surfacematerial", material_name, "material");
-            
+
             // Create standard_surface shader node with proper nodedef
             std::string shader_name = "standard_surface_surfaceshader";
-            mx::NodePtr shaderNode = doc->addNode(
-                "standard_surface",
-                shader_name,
-                "surfaceshader");
-            
-            // Set the nodedef attribute (CRITICAL for USD to create child prims)
+            mx::NodePtr shaderNode =
+                doc->addNode("standard_surface", shader_name, "surfaceshader");
+
+            // Set the nodedef attribute (CRITICAL for USD to create child
+            // prims)
             shaderNode->setNodeDefString("ND_standard_surface_surfaceshader");
-            
+
             // Connect shader to material
-            mx::InputPtr surfaceShaderInput = materialNode->addInput(
-                "surfaceshader",
-                "surfaceshader");
+            mx::InputPtr surfaceShaderInput =
+                materialNode->addInput("surfaceshader", "surfaceshader");
             surfaceShaderInput->setNodeName(shader_name);
-            
+
             spdlog::info(
-                "Created default MaterialX document with standard_surface shader");
+                "Created default MaterialX document with standard_surface "
+                "shader");
         }
         else {
             doc = ptr;
@@ -474,154 +475,27 @@ int main(int argc, char* argv[])
                 spdlog::error("Failed to read MaterialX file: {}", e.what());
                 return;
             }
+            // First clear the material prim's attributes
+            auto attributes = material_prim.GetAuthoredAttributes();
+            for (const auto& attr : attributes) {
+                spdlog::info(
+                    "Clearing attribute: {}", attr.GetName().GetString());
+                spdlog::info(
+                    "Attribute type: {}", attr.GetTypeName().GetCPPTypeName());
 
-            // Find surface shader and sync parameters
-            std::string surface_shader_name;
-            mx::NodePtr shader_node = nullptr;
-            
-            for (auto material_node : mtlx_doc->getMaterialNodes()) {
-                auto surfaceshader_input =
-                    material_node->getInput("surfaceshader");
-                if (surfaceshader_input) {
-                    auto connected_node =
-                        surfaceshader_input->getConnectedNode();
-                    if (connected_node) {
-                        surface_shader_name = connected_node->getName();
-                        shader_node = connected_node;
-                    }
-                    else {
-                        auto nodename =
-                            surfaceshader_input->getAttribute("nodename");
-                        if (!nodename.empty()) {
-                            surface_shader_name = nodename;
-                            shader_node = mtlx_doc->getNode(nodename);
-                        }
-                    }
-                }
-                break;
+                // Step 1: First check if this attribute is
             }
 
-            if (surface_shader_name.empty() || !shader_node) {
-                spdlog::warn(
-                    "No surface shader found in MaterialX file, skipping USD "
-                    "update");
-                return;
-            }
-
-            // Get USD layer for authoring
-            auto root_layer = stage->get_usd_stage()->GetRootLayer();
-
-            // CRITICAL: Sync MaterialX shader parameters to USD inputs
-            // This ensures USD sees the latest parameter values from MaterialX editor
-            pxr::SdfPrimSpecHandle material_prim_spec =
-                root_layer->GetPrimAtPath(material_path);
-            if (!material_prim_spec) {
-                material_prim_spec =
-                    pxr::SdfCreatePrimInLayer(root_layer, material_path);
-            }
-
-            // Sync all shader inputs to USD material inputs
-            for (auto input : shader_node->getInputs()) {
-                std::string input_name = "inputs:" + input->getName();
-                pxr::TfToken input_token(input_name);
-                
-                auto value = input->getValue();
-                if (!value) continue;
-
-                // Convert MaterialX value to USD value
-                pxr::VtValue usd_value;
-                std::string type = input->getType();
-                
-                if (type == "float") {
-                    usd_value = value->asA<float>();
-                }
-                else if (type == "color3") {
-                    auto color = value->asA<mx::Color3>();
-                    usd_value = pxr::GfVec3f(color[0], color[1], color[2]);
-                }
-                else if (type == "vector3") {
-                    auto vec = value->asA<mx::Vector3>();
-                    usd_value = pxr::GfVec3f(vec[0], vec[1], vec[2]);
-                }
-                else if (type == "color4") {
-                    auto color = value->asA<mx::Color4>();
-                    usd_value = pxr::GfVec4f(color[0], color[1], color[2], color[3]);
-                }
-                else if (type == "integer" || type == "boolean") {
-                    usd_value = value->asA<int>();
-                }
-                // Add more types as needed
-
-                if (!usd_value.IsEmpty()) {
-                    // Create or update the input attribute
-                    auto existing_input = material_prim_spec->GetAttributes().get(input_token);
-                    if (existing_input) {
-                        existing_input->SetDefaultValue(usd_value);
-                    } else {
-                        // Determine USD type
-                        pxr::SdfValueTypeName usd_type;
-                        if (type == "float") {
-                            usd_type = pxr::SdfValueTypeNames->Float;
-                        } else if (type == "color3" || type == "vector3") {
-                            usd_type = pxr::SdfValueTypeNames->Color3f;
-                        } else if (type == "color4") {
-                            usd_type = pxr::SdfValueTypeNames->Color4f;
-                        } else if (type == "integer") {
-                            usd_type = pxr::SdfValueTypeNames->Int;
-                        } else if (type == "boolean") {
-                            usd_type = pxr::SdfValueTypeNames->Bool;
-                        }
-                        
-                        if (usd_type) {
-                            auto new_input = pxr::SdfAttributeSpec::New(
-                                material_prim_spec, input_token, usd_type);
-                            if (new_input) {
-                                new_input->SetDefaultValue(usd_value);
-                            }
-                        }
-                    }
-                    
-                    spdlog::info("  Synced parameter: {} = {}", 
-                        input->getName(), value->getValueString());
-                }
-            }
-
-            // Create USD surface connection
-            pxr::SdfPath shader_path = material_path.AppendChild(
-                pxr::TfToken(surface_shader_name));
-            pxr::SdfPath shader_surface_output_path =
-                shader_path.AppendProperty(pxr::TfToken("outputs:surface"));
-
-            pxr::TfToken outputs_surface_token("outputs:surface");
-            auto existing_attr = material_prim_spec->GetAttributes().get(
-                outputs_surface_token);
-
-            if (existing_attr) {
-                auto conn_list = existing_attr->GetConnectionPathList();
-                conn_list.ClearEdits();
-                conn_list.GetExplicitItems().clear();
-                conn_list.GetExplicitItems().push_back(
-                    shader_surface_output_path);
-            }
-            else {
-                auto surface_output_attr = pxr::SdfAttributeSpec::New(
-                    material_prim_spec,
-                    outputs_surface_token,
-                    pxr::SdfValueTypeNames->Token);
-
-                if (surface_output_attr) {
-                    auto conn_list =
-                        surface_output_attr->GetConnectionPathList();
-                    conn_list.GetExplicitItems().push_back(
-                        shader_surface_output_path);
-                }
-            }
+            auto mtlx_relative_path = "./" + material_name + ".mtlx";
+            auto mtlx_material_path_str =
+                "/MaterialX/Materials/" + material_name;
+            auto references = material_prim.GetReferences();
+            references.ClearReferences();
+            references.AddReference(
+                pxr::SdfReference(
+                    mtlx_relative_path, pxr::SdfPath(mtlx_material_path_str)));
 
             stage->get_usd_stage()->Save();
-            spdlog::info(
-                "MaterialX graph update complete: {} -> {}",
-                material_path_str + ".outputs:surface",
-                shader_surface_output_path.GetString());
         });
     // Subscribe to document viewer events
     window->events().subscribe(
