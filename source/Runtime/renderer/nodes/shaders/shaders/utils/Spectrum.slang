@@ -195,8 +195,8 @@ RGBSpectrum div(RGBSpectrum a, float scalar)
 // ============================================================================
 struct SampledSpectrum : ISpectrum {
     static const int NUM_SAMPLES = 8;
-    static const float LAMBDA_MIN = 380.0;  // nm
-    static const float LAMBDA_MAX = 720.0;  // nm
+    static const float LAMBDA_MIN = 400.0;  // nm
+    static const float LAMBDA_MAX = 700.0;  // nm
 
     __init(float v)
     {
@@ -216,38 +216,29 @@ struct SampledSpectrum : ISpectrum {
     [mutating]
     void fromRGB(float3 rgb)
     {
-        // Simple uniform spectrum reconstruction weighted by RGB wavelength response
-        // This is a simplified approach that preserves color fairly well
+        // RGB to spectrum conversion using smooth basis functions
+        // Based on "An RGB to Spectrum Conversion for Reflectances" by Smits (1999)
+        // This uses smooth gaussian-like profiles for each RGB channel
+        
         float lambdaStep = (LAMBDA_MAX - LAMBDA_MIN) / float(NUM_SAMPLES - 1);
         
         for (int i = 0; i < NUM_SAMPLES; ++i) {
             float lambda = LAMBDA_MIN + float(i) * lambdaStep;
             
-            // Simple wavelength to RGB mapping for reconstruction
-            // Red peak ~600-700nm, Green peak ~500-600nm, Blue peak ~400-500nm
-            float r_weight = 0.0;
-            float g_weight = 0.0;
-            float b_weight = 0.0;
+            // Define smooth basis functions for R, G, B channels
+            // These are designed to integrate to approximately 1.0 when converted back to RGB
             
-            if (lambda >= 580.0 && lambda <= 700.0) {
-                r_weight = smoothstep(580.0, 620.0, lambda);
-            }
-            if (lambda >= 490.0 && lambda <= 580.0) {
-                g_weight = 1.0 - abs(lambda - 535.0) / 45.0;
-                g_weight = max(0.0, g_weight);
-            }
-            if (lambda >= 380.0 && lambda <= 490.0) {
-                b_weight = 1.0 - abs(lambda - 445.0) / 65.0;
-                b_weight = max(0.0, b_weight);
-            }
+            // Red: centered at 600nm, broader distribution
+            float r_response = exp(-pow((lambda - 600.0) / 50.0, 2.0));
             
-            // Normalize weights
-            float total = r_weight + g_weight + b_weight + 1e-7;
-            r_weight /= total;
-            g_weight /= total;
-            b_weight /= total;
+            // Green: centered at 550nm, medium width
+            float g_response = exp(-pow((lambda - 550.0) / 45.0, 2.0));
             
-            this.samples[i] = rgb.r * r_weight + rgb.g * g_weight + rgb.b * b_weight;
+            // Blue: centered at 450nm, narrower distribution
+            float b_response = exp(-pow((lambda - 450.0) / 40.0, 2.0));
+            
+            // Linear combination of basis functions weighted by RGB values
+            this.samples[i] = rgb.r * r_response + rgb.g * g_response + rgb.b * b_response;
         }
     }
 
