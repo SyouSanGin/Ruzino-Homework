@@ -111,6 +111,7 @@ class HD_USTC_CG_API Hd_USTC_CG_Mesh final : public HdMesh {
 
     bool _normalsValid;
     bool _adjacencyValid;
+    HdInterpolation _normalInterp;
 
     HdMeshTopology topology;
     Hd_VertexAdjacency _adjacency;

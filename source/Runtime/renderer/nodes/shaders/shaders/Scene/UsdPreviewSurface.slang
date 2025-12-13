@@ -82,7 +82,7 @@ import pbrlib.genslang.mx_layer_bsdf;
 
 bool is_close(float3 a, float3 b)
 {
-    const float EPSILON = 1e-8;
+    const float EPSILON = 1e-6;
     return all(abs(a - b) < float3(EPSILON, EPSILON, EPSILON));
 }
 
@@ -109,7 +109,11 @@ void IMP_UsdPreviewSurface_surfaceshader(
     out surfaceshader out1)
 {
     if (is_close(L, -V)) {
-        out1 = surfaceshader(float3(1.0), float3(1.0));
+        out1 = surfaceshader(float3(1.0f), float3(1.0));
+        return;
+    }
+    if (opacity < 0.25f) {
+        out1 = surfaceshader(float3(0.0f), float3(1.0));
         return;
     }
 
@@ -593,8 +597,8 @@ float3 sample_preview_surface(
     inout uint seed,
     out float pdf)
 {
-    if (opacity < random_float(seed)) {
-        pdf = 1.0;
+    if (opacity < 0.25f) {
+        pdf = 1.0f;
         V = normalize(V);
         return -V;
     }

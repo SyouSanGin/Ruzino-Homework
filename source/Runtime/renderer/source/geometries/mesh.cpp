@@ -46,6 +46,7 @@ Hd_USTC_CG_Mesh::Hd_USTC_CG_Mesh(const SdfPath& id)
       _doubleSided(false),
       _normalsValid(false),
       _adjacencyValid(false),
+      _normalInterp(HdInterpolationVertex),
       _refined(false)
 {
     // create model buffer (constant buffer, CPU writable)
@@ -313,9 +314,9 @@ void Hd_USTC_CG_Mesh::create_gpu_resources(Hd_USTC_CG_RenderParam* render_param)
     mesh_desc.bindlessIndex = descriptor_handle.Get();
 
     mesh_desc.texCrdInterpolation = texCrdInterpolation;
-    mesh_desc.normalInterpolation = normals.size() == points.size()
-                                        ? InterpolationType::Vertex
-                                        : InterpolationType::FaceVarying;
+    mesh_desc.normalInterpolation = (_normalInterp == HdInterpolationFaceVarying)
+                                        ? InterpolationType::FaceVarying
+                                        : InterpolationType::Vertex;
     mesh_desc.tangentInterpolation = tangents.size() == points.size()
                                          ? InterpolationType::Vertex
                                          : InterpolationType::FaceVarying;
@@ -699,10 +700,12 @@ void Hd_USTC_CG_Mesh::Sync(
 
         if (!_normalsValid) {
             VtValue normal_primvar;
+            HdInterpolation normal_interp = HdInterpolationVertex;
 
             if (_primvarSourceMap.find(HdTokens->normals) !=
                 _primvarSourceMap.end()) {
                 normal_primvar = _primvarSourceMap[HdTokens->normals].data;
+                normal_interp = _primvarSourceMap[HdTokens->normals].interpolation;
             }
             else {
                 normal_primvar = GetNormals(sceneDelegate);
@@ -728,13 +731,57 @@ void Hd_USTC_CG_Mesh::Sync(
                 normals = Hd_SmoothNormals::ComputeSmoothNormals(
                     &_adjacency, points.size(), points.cdata());
                 assert(points.size() == normals.size());
+                normal_interp = HdInterpolationVertex;
             }
             else {
                 // If normals are authored, we use them.
-
                 normals = normal_primvar.Get<VtVec3fArray>();
+                
+                // Handle indexed normals (primvars:normals:indices)
+                // When normals are indexed, expand them to FaceVarying
+                if (normal_interp == HdInterpolationFaceVarying) {
+                    // Check if normals size matches faceVertexIndices (already expanded)
+                    if (normals.size() == topology.GetFaceVertexIndices().size()) {
+                        // Already in FaceVarying format, triangulate it
+                        HdMeshUtil meshUtil(&topology, GetId());
+                        VtValue triangulated_normals;
+                        meshUtil.ComputeTriangulatedFaceVaryingPrimvar(
+                            normals.data(),
+                            normals.size(),
+                            HdTypeFloatVec3,
+                            &triangulated_normals);
+                        normals = triangulated_normals.Get<VtVec3fArray>();
+                        
+                        spdlog::info(
+                            "Mesh {}: Triangulated FaceVarying normals - "
+                            "result size: {}",
+                            GetId().GetText(),
+                            normals.size());
+                    }
+                    else if (normals.size() < topology.GetFaceVertexIndices().size()) {
+                        // This is indexed normals case
+                        // normals array contains unique values
+                        // faceVertexIndices (or a separate normal indices array) tells us which to use
+                        spdlog::info(
+                            "Mesh {}: Detected indexed normals - "
+                            "unique normals: {}, face vertex count: {}",
+                            GetId().GetText(),
+                            normals.size(),
+                            topology.GetFaceVertexIndices().size());
+                        
+                        // For now, treat as Vertex interpolation if size matches points
+                        if (normals.size() == points.size()) {
+                            normal_interp = HdInterpolationVertex;
+                            spdlog::info(
+                                "Mesh {}: Treating indexed normals as Vertex interpolation",
+                                GetId().GetText());
+                        }
+                    }
+                }
             }
 
+            // Store normal interpolation type
+            _normalInterp = normal_interp;
             _normalsValid = true;
         }
 
@@ -793,11 +840,28 @@ void Hd_USTC_CG_Mesh::Sync(
                             n1 = normals[triIdx * 3 + 1];
                             n2 = normals[triIdx * 3 + 2];
                         }
-                        else {
-                            // Vertex normals
+                        else if (normals.size() == points.size() &&
+                                 i0 < normals.size() && 
+                                 i1 < normals.size() && 
+                                 i2 < normals.size()) {
+                            // Vertex normals - with bounds check
                             n0 = normals[i0];
                             n1 = normals[i1];
                             n2 = normals[i2];
+                        }
+                        else {
+                            // Fallback: compute face normal
+                            GfVec3f edge1 = v1 - v0;
+                            GfVec3f edge2 = v2 - v0;
+                            GfVec3f faceNormal = GfCross(edge1, edge2);
+                            float len = faceNormal.GetLength();
+                            if (len > 1e-6f) {
+                                faceNormal = faceNormal / len;
+                            }
+                            else {
+                                faceNormal = GfVec3f(0.0f, 1.0f, 0.0f);
+                            }
+                            n0 = n1 = n2 = faceNormal;
                         }
 
                         GfVec3f deltaPos1 = v1 - v0;

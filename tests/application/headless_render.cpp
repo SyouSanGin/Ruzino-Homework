@@ -57,6 +57,7 @@ struct RenderSettings {
     std::string usd_file;
     std::string json_script;
     std::string output_image;
+    std::string camera_path;  // Optional camera prim path
     int width = 1920;
     int height = 1080;
     int spp = 16;
@@ -68,13 +69,14 @@ bool ParseCommandLine(int argc, char* argv[], RenderSettings& settings)
     if (argc < 4) {
         std::cout << "Usage: " << argv[0]
                   << " <usd_file> <json_script> <output_image> [width] "
-                     "[height] [spp]\n"
+                     "[height] [spp] [camera_path]\n"
                   << "  usd_file: Path to USD file to render\n"
                   << "  json_script: Path to JSON rendering script\n"
                   << "  output_image: Output image filename (PNG/HDR/EXR)\n"
                   << "  width: Image width (default: 1920)\n"
                   << "  height: Image height (default: 1080)\n"
-                  << "  spp: Samples per pixel (default: 16)\n";
+                  << "  spp: Samples per pixel (default: 16)\n"
+                  << "  camera_path: Camera prim path (optional, e.g., /Camera)\n";
         return false;
     }
 
@@ -88,6 +90,8 @@ bool ParseCommandLine(int argc, char* argv[], RenderSettings& settings)
         settings.height = std::atoi(argv[5]);
     if (argc > 6)
         settings.spp = std::atoi(argv[6]);
+    if (argc > 7)
+        settings.camera_path = argv[7];
 
     // Validate input files
     if (!std::filesystem::exists(settings.usd_file)) {
@@ -105,8 +109,22 @@ bool ParseCommandLine(int argc, char* argv[], RenderSettings& settings)
 }
 
 // USD utilities
-UsdGeomCamera FindFirstCamera(const UsdStageRefPtr& stage)
+UsdGeomCamera GetCamera(const UsdStageRefPtr& stage, const std::string& camera_path)
 {
+    // If camera_path is specified, try to use it
+    if (!camera_path.empty()) {
+        SdfPath path(camera_path);
+        UsdPrim prim = stage->GetPrimAtPath(path);
+        if (prim && prim.IsA<UsdGeomCamera>()) {
+            spdlog::info("Using specified camera: {}", camera_path);
+            return UsdGeomCamera(prim);
+        }
+        else {
+            spdlog::warn("Specified camera path '{}' not found or not a camera, falling back to first camera", camera_path);
+        }
+    }
+    
+    // Fall back to first camera
     for (const UsdPrim& prim : stage->Traverse()) {
         if (prim.IsA<UsdGeomCamera>()) {
             spdlog::info("Found camera: {}", prim.GetPath().GetString());
@@ -381,7 +399,7 @@ int main(int argc, char* argv[])
         }
 
         // Find camera
-        auto camera = FindFirstCamera(stage->get_usd_stage());
+        auto camera = GetCamera(stage->get_usd_stage(), settings.camera_path);
         if (!camera) {
             throw std::runtime_error("No camera found in USD file");
         }

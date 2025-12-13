@@ -38,15 +38,12 @@ struct RayPayload {
 };
 
 struct ShadowPayload {
-    bool isVisible;       // Whether light is visible or occluded
-    uint materialID;      // Material ID for opacity testing
-    uint instanceID;      // Instance ID for opacity testing
-    uint primID;          // Primitive ID for opacity testing
     float3 hitPos;        // Hit position for continuation rays
     float3 rayDir;        // Ray direction for continuation
     float rayTMax;        // Maximum ray distance
     uint recursionDepth;  // Current recursion depth for opacity testing
     uint seed;
+    bool isVisible;  // Whether light is visible or occluded
 };
 
 struct LightSample {
@@ -157,7 +154,7 @@ LightSample sampleLights(float3 hitPos, float3 hitNormal, inout uint seed)
                 1,
                 shadowRay,
                 shadowPayload);
-
+            seed = shadowPayload.seed;
             if (shadowPayload.isVisible) {
                 float attenuation = 1.0 / (lightDistance * lightDistance);
                 sample.direction = lightDir;
@@ -199,6 +196,8 @@ LightSample sampleLights(float3 hitPos, float3 hitNormal, inout uint seed)
                 shadowRay,
                 shadowPayload);
 
+            seed = shadowPayload.seed;
+
             if (shadowPayload.isVisible) {
                 float attenuation = 1.0 / (lightDistance * lightDistance);
                 sample.direction = lightDir;
@@ -210,7 +209,7 @@ LightSample sampleLights(float3 hitPos, float3 hitNormal, inout uint seed)
     }
     else if (light.type == uint(LightType::Distant)) {
         lightDir = -light.dirW;
-        lightDistance = 1e10;
+        lightDistance = 1e6;
 
         float NdotL = max(0.0, dot(hitNormal, lightDir));
         if (NdotL > 0.0) {
@@ -234,6 +233,7 @@ LightSample sampleLights(float3 hitPos, float3 hitNormal, inout uint seed)
                 1,
                 shadowRay,
                 shadowPayload);
+            seed = shadowPayload.seed;
 
             if (shadowPayload.isVisible) {
                 sample.direction = lightDir;
@@ -279,6 +279,7 @@ LightSample sampleLights(float3 hitPos, float3 hitNormal, inout uint seed)
                 1,
                 shadowRay,
                 shadowPayload);
+            seed = shadowPayload.seed;
 
             if (shadowPayload.isVisible) {
                 float geometricTerm =
@@ -328,6 +329,8 @@ LightSample sampleLights(float3 hitPos, float3 hitNormal, inout uint seed)
                 shadowRay,
                 shadowPayload);
 
+            seed = shadowPayload.seed;
+
             if (shadowPayload.isVisible) {
                 float geometricTerm =
                     (NdotL * LdotN) / (lightDistance * lightDistance);
@@ -374,7 +377,7 @@ void ClosestHit(
         vertex.faceNormalW = -vertex.faceNormalW;
         eta_flipped = 1;
     }
-
+    
     // Create shading frame
     bool valid;
     ShadingFrame sf =
@@ -455,7 +458,7 @@ void ClosestHit(
 
     // Validate throughput before continuing
     if (any(isnan(evalData.throughput.toFloat3()))) {
-        payload.color = Spectrum(float3(1, 0, 0));
+        payload.color = Spectrum(float3(1, 0, 1));
         payload.terminated = true;
         return;
     }
@@ -467,8 +470,8 @@ void ClosestHit(
     }
 
     payload.throughput = mul(payload.throughput, div(evalData.throughput, pdf));
-    // Russian Roulette path termination after depth 3
-    if (payload.depth >= 3) {
+    // Russian Roulette path termination after depth 5
+    if (payload.depth >= 5) {
         float3 thr = payload.throughput.toFloat3();
         float rrProbability = min(0.95, max(thr.x, max(thr.y, thr.z)));
         if (random_float(evalData.seed) > rrProbability) {
@@ -597,14 +600,13 @@ void Miss(inout RayPayload payload)
 
     // Debug: Check for invalid values
     if (any(isnan(payload.color.toFloat3()))) {
-        payload.color =
-            Spectrum(float3(0, 0, 0));  // Red for debugging NaN/Inf
+        payload.color = Spectrum(float3(1, 0, 0));  // Red for debugging NaN/Inf
         payload.terminated = true;
     }
 
     if (any(isnan(payload.color.toFloat3()))) {
         payload.color =
-            Spectrum(float3(0, 0, 0));  // Magenta for debugging NaN/Inf
+            Spectrum(float3(1, 0, 1));  // Magenta for debugging NaN/Inf
         payload.terminated = true;
     }
 
@@ -616,6 +618,8 @@ void ShadowHit(
     inout ShadowPayload payload,
     in BuiltInTriangleIntersectionAttributes attribs)
 {
+    // payload.isVisible = false;
+    // return;
     // Limit recursion depth to prevent infinite loops
     const uint MAX_SHADOW_RECURSION = 8;
     if (payload.recursionDepth >= MAX_SHADOW_RECURSION) {
@@ -642,7 +646,8 @@ void ShadowHit(
     FetchCallableData fetchData;
     fetchData.vertexInfo = vertex;
     fetchData.materialBlobID = material_header.material_blob_id;
-    fetchData.material_params_index = 0;
+    fetchData.material_params_index = DispatchRaysIndex().x;
+    fetchData.vertexInfo = vertex;
 
     CallShader(
         ptConstants.materialFetchCallableBaseIndex +
@@ -670,7 +675,7 @@ void ShadowHit(
             float3 rayOrigin = vertex.posW + WorldRayDirection() * 0.001;
             float remainingDist = payload.rayTMax - RayTCurrent();
 
-            if (remainingDist > 0.0001) {
+            if (remainingDist > 0.001) {
                 RayDesc continuationRay;
                 continuationRay.Origin = rayOrigin;
                 continuationRay.Direction = WorldRayDirection();

@@ -18,5 +18,5 @@ void opacity_test_preview_surface(inout OpacityTestCallableData data)
     // Test opacity based on opacity mode
     // opacityMode: 0 = default, 1 = opaque, 2 = mask
 
-    data.isOpaque = (params.opacity > random_float(data.seed));
+    data.isOpaque = (params.opacity > 0.25f);
 }
