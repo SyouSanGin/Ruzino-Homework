@@ -67,10 +67,6 @@ void CompoundNodeSlang::setValues(
         assert(inputs.size() == shaderInputs.size());
         assert(outputs.size() == shaderOutputs.size());
 
-        if (inputs.size() == 2) {
-            std::cout << "1";
-        }
-
         for (auto shader_input : shaderInputs) {
             auto input = _rootGraph->getInputSocket(shader_input->getName());
             input->setVariable(shader_input->getVariable());

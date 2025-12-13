@@ -326,6 +326,11 @@ class ResourceAllocator {
     {
 #ifdef USTC_CG_BACKEND_NVRHI
         if ((cacheSize >= CACHE_CAPACITY)) {
+            spdlog::warn(
+                "ResourceAllocator: GC triggered for resource type {}. "
+                "Current cache size: {} bytes",
+                typeid(RESOURCE).name(),
+                cacheSize);
             using ContainerType = std::remove_cvref_t<decltype(cache_in)>;
             using Vector = std::vector<std::pair<
                 typename ContainerType::key_type,

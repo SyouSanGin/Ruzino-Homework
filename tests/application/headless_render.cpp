@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -15,6 +16,7 @@
 #include "nodes/system/node_system.hpp"
 #include "stage/stage.hpp"
 #include "usd_nodejson.hpp"
+#include "cmdparser.hpp"
 
 // USD includes
 #include "pxr/usd/usd/primRange.h"
@@ -51,62 +53,6 @@
 
 using namespace USTC_CG;
 using namespace pxr;
-
-// Configuration
-struct RenderSettings {
-    std::string usd_file;
-    std::string json_script;
-    std::string output_image;
-    std::string camera_path;  // Optional camera prim path
-    int width = 1920;
-    int height = 1080;
-    int spp = 16;
-};
-
-// Command line parsing
-bool ParseCommandLine(int argc, char* argv[], RenderSettings& settings)
-{
-    if (argc < 4) {
-        std::cout << "Usage: " << argv[0]
-                  << " <usd_file> <json_script> <output_image> [width] "
-                     "[height] [spp] [camera_path]\n"
-                  << "  usd_file: Path to USD file to render\n"
-                  << "  json_script: Path to JSON rendering script\n"
-                  << "  output_image: Output image filename (PNG/HDR/EXR)\n"
-                  << "  width: Image width (default: 1920)\n"
-                  << "  height: Image height (default: 1080)\n"
-                  << "  spp: Samples per pixel (default: 16)\n"
-                  << "  camera_path: Camera prim path (optional, e.g., /Camera)\n";
-        return false;
-    }
-
-    settings.usd_file = argv[1];
-    settings.json_script = argv[2];
-    settings.output_image = argv[3];
-
-    if (argc > 4)
-        settings.width = std::atoi(argv[4]);
-    if (argc > 5)
-        settings.height = std::atoi(argv[5]);
-    if (argc > 6)
-        settings.spp = std::atoi(argv[6]);
-    if (argc > 7)
-        settings.camera_path = argv[7];
-
-    // Validate input files
-    if (!std::filesystem::exists(settings.usd_file)) {
-        std::cerr << "Error: USD file not found: " << settings.usd_file
-                  << std::endl;
-        return false;
-    }
-    if (!std::filesystem::exists(settings.json_script)) {
-        std::cerr << "Error: JSON script not found: " << settings.json_script
-                  << std::endl;
-        return false;
-    }
-
-    return true;
-}
 
 // USD utilities
 UsdGeomCamera GetCamera(const UsdStageRefPtr& stage, const std::string& camera_path)
@@ -369,22 +315,50 @@ int main(int argc, char* argv[])
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
     // 或者设置错误模式，避免 Windows 弹窗
     _set_error_mode(_OUT_TO_STDERR);
-    // Parse command line
-    RenderSettings settings;
-    if (!ParseCommandLine(argc, argv, settings)) {
+    
+    // Parse command line using cmdparser
+    cmdline::parser parser;
+    parser.add<std::string>("usd", 'u', "USD file to render", true);
+    parser.add<std::string>("json", 'j', "JSON rendering script", true);
+    parser.add<std::string>("output", 'o', "Output image filename (PNG/HDR/EXR)", true);
+    parser.add<int>("width", 'w', "Image width", false, 1920);
+    parser.add<int>("height", 'h', "Image height", false, 1080);
+    parser.add<int>("spp", 's', "Samples per pixel", false, 16);
+    parser.add<std::string>("camera", 'c', "Camera prim path (e.g., /Camera)", false, "");
+    parser.add("verbose", 'v', "Enable verbose logging");
+    
+    parser.parse_check(argc, argv);
+    
+    // Extract settings
+    std::string usd_file = parser.get<std::string>("usd");
+    std::string json_script = parser.get<std::string>("json");
+    std::string output_image = parser.get<std::string>("output");
+    int width = parser.get<int>("width");
+    int height = parser.get<int>("height");
+    int spp = parser.get<int>("spp");
+    std::string camera_path = parser.get<std::string>("camera");
+    bool verbose = parser.exist("verbose");
+    
+    // Validate input files
+    if (!std::filesystem::exists(usd_file)) {
+        std::cerr << "Error: USD file not found: " << usd_file << std::endl;
+        return 1;
+    }
+    if (!std::filesystem::exists(json_script)) {
+        std::cerr << "Error: JSON script not found: " << json_script << std::endl;
         return 1;
     }
 
     // Initialize logging
-    spdlog::set_level(spdlog::level::info);
+    spdlog::set_level(verbose ? spdlog::level::info : spdlog::level::warn);
     spdlog::set_pattern("%^[%T] %n: %v%$");
 
     spdlog::info("Starting headless render...");
-    spdlog::info("USD file: {}", settings.usd_file);
-    spdlog::info("JSON script: {}", settings.json_script);
-    spdlog::info("Output image: {}", settings.output_image);
-    spdlog::info("Resolution: {}x{}", settings.width, settings.height);
-    spdlog::info("SPP: {}", settings.spp);
+    spdlog::info("USD file: {}", usd_file);
+    spdlog::info("JSON script: {}", json_script);
+    spdlog::info("Output image: {}", output_image);
+    spdlog::info("Resolution: {}x{}", width, height);
+    spdlog::info("SPP: {}", spp);
 
     try {
         // Initialize OpenGL context
@@ -392,14 +366,14 @@ int main(int argc, char* argv[])
         GarchGLApiLoad();
 
         // Create USD stage
-        auto stage = create_custom_global_stage(settings.usd_file);
+        auto stage = create_custom_global_stage(usd_file);
         if (!stage) {
             throw std::runtime_error(
-                "Failed to load USD stage from " + settings.usd_file);
+                "Failed to load USD stage from " + usd_file);
         }
 
         // Find camera
-        auto camera = GetCamera(stage->get_usd_stage(), settings.camera_path);
+        auto camera = GetCamera(stage->get_usd_stage(), camera_path);
         if (!camera) {
             throw std::runtime_error("No camera found in USD file");
         }
@@ -419,10 +393,10 @@ int main(int argc, char* argv[])
         renderer->SetEnablePresentation(false);
 
         // Configure render settings
-        GfVec2i render_size(settings.width, settings.height);
+        GfVec2i render_size(width, height);
         renderer->SetRenderBufferSize(render_size);
         renderer->SetRenderViewport(
-            GfVec4d(0.0, 0.0, settings.width, settings.height));
+            GfVec4d(0.0, 0.0, width, height));
 
         // Setup camera
         auto gf_camera = camera.GetCamera(UsdTimeCode::Default());
@@ -446,35 +420,82 @@ int main(int argc, char* argv[])
             renderer->GetRendererSetting(pxr::TfToken("RenderNodeSystem"))
                 .Get<const void*>());
 
-        std::string nodes_json = LoadJSONScript(settings.json_script);
+        std::string nodes_json = LoadJSONScript(json_script);
         (*node_system)->get_node_tree()->deserialize(nodes_json);
 
         // Render the scene with multiple samples
         UsdPrim root = stage->get_usd_stage()->GetPseudoRoot();
-        spdlog::info("Starting render with {} samples...", settings.spp);
+        std::cout << "Starting render with " << spp << " samples..." << std::endl;
 
-        for (int sample = 0; sample < settings.spp; ++sample) {
-            spdlog::info("Rendering sample {}/{}", sample + 1, settings.spp);
+        // Start timing (will be set after first sample)
+        std::chrono::high_resolution_clock::time_point render_start;
+        bool timing_started = false;
+        long long total_sample_time = 0;
+        int timed_samples = 0;
+
+        for (int sample = 0; sample < spp; ++sample) {
+            auto sample_start = std::chrono::high_resolution_clock::now();
+            
+            // Progress bar
+            int bar_width = 50;
+            float progress = (float)(sample + 1) / spp;
+            int pos = bar_width * progress;
+            
+            std::cout << "\r[";
+            for (int i = 0; i < bar_width; ++i) {
+                if (i < pos) std::cout << "=";
+                else if (i == pos) std::cout << ">";
+                else std::cout << " ";
+            }
+            std::cout << "] " << int(progress * 100.0) << "% (" << (sample + 1) << "/" << spp << ")";
+            std::cout.flush();
+            
             renderer->Render(root, render_params);
             renderer->StopRenderer();
             RHI::get_device()->waitForIdle();
             RHI::get_device()->runGarbageCollection();
+            
+            auto sample_end = std::chrono::high_resolution_clock::now();
+            auto sample_duration = std::chrono::duration_cast<std::chrono::milliseconds>(sample_end - sample_start).count();
+            
+            // Start timing after first sample completes
+            if (!timing_started && sample == 0) {
+                render_start = std::chrono::high_resolution_clock::now();
+                timing_started = true;
+            }
+            else if (sample > 0) {
+                total_sample_time += sample_duration;
+                timed_samples++;
+            }
+            
+            if (verbose) {
+                std::cout << " (" << sample_duration << "ms)" << std::endl;
+            }
         }
-        spdlog::set_level(spdlog::level::info);
-
-        spdlog::info("Render complete.");
+        std::cout << std::endl;
+        
+        auto render_end = std::chrono::high_resolution_clock::now();
+        auto total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(render_end - render_start).count();
+        
+        std::cout << "Render complete. Total time: " << (total_duration / 1000.0) << "s";
+        if (spp > 1) {
+            std::cout << " (excluding first sample)";
+            double avg_sample_time = (double)total_sample_time / timed_samples;
+            std::cout << ", Avg per sample: " << (avg_sample_time / 1000.0) << "s";
+        }
+        std::cout << std::endl;
 
         // Read back texture data
         std::vector<uint8_t> texture_data;
         bool success = ReadTextureDirectly(
-            renderer.get(), settings.width, settings.height, texture_data);
+            renderer.get(), width, height, texture_data);
 
         if (!success) {
             success = ReadTextureCPU(
                 renderer.get(),
                 hgi,
-                settings.width,
-                settings.height,
+                width,
+                height,
                 texture_data);
         }
 
@@ -483,17 +504,23 @@ int main(int argc, char* argv[])
         }
 
         // Save the image
-        spdlog::info("Saving image to: {}", settings.output_image);
+        auto save_start = std::chrono::high_resolution_clock::now();
+        std::cout << "Saving image to: " << output_image << std::endl;
+        
         if (!SaveImageToFile(
-                settings.output_image,
-                settings.width,
-                settings.height,
+                output_image,
+                width,
+                height,
                 texture_data)) {
             throw std::runtime_error(
-                "Failed to save image to " + settings.output_image);
+                "Failed to save image to " + output_image);
         }
-
-        spdlog::info("Headless render completed successfully!");
+        
+        auto save_end = std::chrono::high_resolution_clock::now();
+        auto save_duration = std::chrono::duration_cast<std::chrono::milliseconds>(save_end - save_start).count();
+        
+        std::cout << "Image saved in " << (save_duration / 1000.0) << "s" << std::endl;
+        std::cout << "Headless render completed successfully!" << std::endl;
 
         // Cleanup
         renderer.reset();

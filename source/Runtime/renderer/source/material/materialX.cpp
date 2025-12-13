@@ -289,8 +289,9 @@ void Hd_USTC_CG_MaterialX::ensure_shader_ready(const ShaderFactory& factory)
                                 first_non_ws, last_non_ws - first_non_ws + 1);
                         }
 
-                        // Check if opacity_expr is a simple variable or complex expression
-                        // Simple variable: just alphanumeric + underscore, no operators or function calls
+                        // Check if opacity_expr is a simple variable or complex
+                        // expression Simple variable: just alphanumeric +
+                        // underscore, no operators or function calls
                         bool is_simple_var = true;
                         for (char c : opacity_expr) {
                             if (!std::isalnum(c) && c != '_') {
@@ -300,15 +301,17 @@ void Hd_USTC_CG_MaterialX::ensure_shader_ready(const ShaderFactory& factory)
                         }
 
                         if (is_simple_var) {
-                            // Direct parameter variable - need to convert float3 to float
-                            // Standard surface opacity is always float3
+                            // Direct parameter variable - need to convert
+                            // float3 to float Standard surface opacity is
+                            // always float3
                             opacity_computation =
                                 "    float opacity_value = (" + opacity_expr +
                                 ".r + " + opacity_expr + ".g + " +
                                 opacity_expr + ".b) / 3.0;\n";
                         }
                         else {
-                            // Complex expression - assume it's already computed to appropriate type
+                            // Complex expression - assume it's already computed
+                            // to appropriate type
                             opacity_computation =
                                 "    float opacity_value = " + opacity_expr +
                                 ";\n";
@@ -427,9 +430,10 @@ void Hd_USTC_CG_MaterialX::ensure_shader_ready(const ShaderFactory& factory)
         final_shader_source = eval_shader_source + slang_source_code_main;
     }
     else {
-        spdlog::warn(
-            "MaterialX: eval_shader_source is empty for material '{}'",
-            GetId().GetText());
+        if (!GetId().GetString().empty())
+            spdlog::warn(
+                "MaterialX: eval_shader_source is empty for material '{}'",
+                GetId().GetString());
     }
 
     // Combine shader parts into final source
@@ -682,10 +686,6 @@ void Hd_USTC_CG_MaterialX::MtlxGenerateShader(
                     }
                     else {
                         // Interface exists but no value, use default 'st'
-                        spdlog::warn(
-                            "Could not resolve interfaceName='{}', using "
-                            "default 'st'",
-                            interfaceName);
                         geompropInput->setInterfaceName("");
                         geompropInput->setValue("st", "string");
                     }

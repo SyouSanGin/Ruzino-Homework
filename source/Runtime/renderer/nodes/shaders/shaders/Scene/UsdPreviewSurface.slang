@@ -348,143 +348,143 @@ void IMP_UsdPreviewSurface_surfaceshader(
             surface_constructor_out.color += coat_bsdf_out.response;
         }
 
-        // Calculate the BSDF transmission for viewing direction
-        {
-            ClosureData closureData =
-                ClosureData(CLOSURE_TYPE_TRANSMISSION, L, V, N, P, occlusion);
-            BSDF coat_dielectric_bsdf_out =
-                BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
-            mx_generalized_schlick_bsdf(
-                closureData,
-                clearcoat,
-                coat_F0_out,
-                float3(1.000000, 1.000000, 1.000000),
-                float3(1.000000, 1.000000, 1.000000),
-                5.000000,
-                coat_roughness_out,
-                0.000000,
-                1.500000,
-                surface_normal_out,
-                geomprop_Tworld_out1,
-                0,
-                0,
-                coat_dielectric_bsdf_out);
-            BSDF specular_bsdf1_out = BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
-            mx_generalized_schlick_bsdf(
-                closureData,
-                1.000000,
-                specularColor,
-                float3(1.000000, 1.000000, 1.000000),
-                float3(1.000000, 1.000000, 1.000000),
-                5.000000,
-                specular_roughness_out,
-                0.000000,
-                1.500000,
-                surface_normal_out,
-                geomprop_Tworld_out1,
-                0,
-                0,
-                specular_bsdf1_out);
-            BSDF diffuse_bsdf_out = BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
-            mx_oren_nayar_diffuse_bsdf(
-                closureData,
-                diffuse_bsdf_weight_out,
-                diffuseColor,
-                0.000000,
-                surface_normal_out,
-                false,
-                diffuse_bsdf_out);
-            BSDF transmission_bsdf_out =
-                BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
-            mx_dielectric_bsdf(
-                closureData,
-                1.000000,
-                float3(1.000000, 1.000000, 1.000000),
-                ior,
-                float2(0.000000, 0.000000),
-                0.000000,
-                1.500000,
-                surface_normal_out,
-                geomprop_Tworld_out1,
-                0,
-                1,
-                transmission_bsdf_out);
-            BSDF transmission_mix_out =
-                BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
-            mx_mix_bsdf(
-                closureData,
-                diffuse_bsdf_out,
-                transmission_bsdf_out,
-                transmission_mix_amount_out,
-                transmission_mix_out);
-            BSDF specular_workflow_bsdf_out =
-                BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
-            mx_layer_bsdf(
-                closureData,
-                specular_bsdf1_out,
-                transmission_mix_out,
-                specular_workflow_bsdf_out);
-            BSDF metalness_metal_bsdf_out =
-                BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
-            mx_conductor_bsdf(
-                closureData,
-                1.000000,
-                artistic_ior_ior,
-                artistic_ior_extinction,
-                specular_roughness_out,
-                0.000000,
-                1.500000,
-                surface_normal_out,
-                geomprop_Tworld_out1,
-                0,
-                metalness_metal_bsdf_out);
-            BSDF specular_bsdf2_out = BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
-            mx_generalized_schlick_bsdf(
-                closureData,
-                1.000000,
-                F0_out,
-                float3(1.000000, 1.000000, 1.000000),
-                specular_color_metallic_out,
-                5.000000,
-                specular_roughness_out,
-                0.000000,
-                1.500000,
-                surface_normal_out,
-                geomprop_Tworld_out1,
-                0,
-                0,
-                specular_bsdf2_out);
-            BSDF metalness_specular_bsdf_out =
-                BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
-            mx_layer_bsdf(
-                closureData,
-                specular_bsdf2_out,
-                transmission_mix_out,
-                metalness_specular_bsdf_out);
-            BSDF metalness_workflow_bsdf_out =
-                BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
-            mx_mix_bsdf(
-                closureData,
-                metalness_metal_bsdf_out,
-                metalness_specular_bsdf_out,
-                metallic,
-                metalness_workflow_bsdf_out);
-            BSDF workflow_selector_bsdf_out =
-                BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
-            mx_mix_bsdf(
-                closureData,
-                specular_workflow_bsdf_out,
-                metalness_workflow_bsdf_out,
-                use_specular_workflow_float_out,
-                workflow_selector_bsdf_out);
-            BSDF coat_bsdf_out = BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
-            mx_layer_bsdf(
-                closureData,
-                coat_dielectric_bsdf_out,
-                workflow_selector_bsdf_out,
-                coat_bsdf_out);
-            surface_constructor_out.color += coat_bsdf_out.response;
-        }
+        // // Calculate the BSDF transmission for viewing direction
+        // {
+        //     ClosureData closureData =
+        //         ClosureData(CLOSURE_TYPE_TRANSMISSION, L, V, N, P, occlusion);
+        //     BSDF coat_dielectric_bsdf_out =
+        //         BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
+        //     mx_generalized_schlick_bsdf(
+        //         closureData,
+        //         clearcoat,
+        //         coat_F0_out,
+        //         float3(1.000000, 1.000000, 1.000000),
+        //         float3(1.000000, 1.000000, 1.000000),
+        //         5.000000,
+        //         coat_roughness_out,
+        //         0.000000,
+        //         1.500000,
+        //         surface_normal_out,
+        //         geomprop_Tworld_out1,
+        //         0,
+        //         0,
+        //         coat_dielectric_bsdf_out);
+        //     BSDF specular_bsdf1_out = BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
+        //     mx_generalized_schlick_bsdf(
+        //         closureData,
+        //         1.000000,
+        //         specularColor,
+        //         float3(1.000000, 1.000000, 1.000000),
+        //         float3(1.000000, 1.000000, 1.000000),
+        //         5.000000,
+        //         specular_roughness_out,
+        //         0.000000,
+        //         1.500000,
+        //         surface_normal_out,
+        //         geomprop_Tworld_out1,
+        //         0,
+        //         0,
+        //         specular_bsdf1_out);
+        //     BSDF diffuse_bsdf_out = BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
+        //     mx_oren_nayar_diffuse_bsdf(
+        //         closureData,
+        //         diffuse_bsdf_weight_out,
+        //         diffuseColor,
+        //         0.000000,
+        //         surface_normal_out,
+        //         false,
+        //         diffuse_bsdf_out);
+        //     BSDF transmission_bsdf_out =
+        //         BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
+        //     mx_dielectric_bsdf(
+        //         closureData,
+        //         1.000000,
+        //         float3(1.000000, 1.000000, 1.000000),
+        //         ior,
+        //         float2(0.000000, 0.000000),
+        //         0.000000,
+        //         1.500000,
+        //         surface_normal_out,
+        //         geomprop_Tworld_out1,
+        //         0,
+        //         1,
+        //         transmission_bsdf_out);
+        //     BSDF transmission_mix_out =
+        //         BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
+        //     mx_mix_bsdf(
+        //         closureData,
+        //         diffuse_bsdf_out,
+        //         transmission_bsdf_out,
+        //         transmission_mix_amount_out,
+        //         transmission_mix_out);
+        //     BSDF specular_workflow_bsdf_out =
+        //         BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
+        //     mx_layer_bsdf(
+        //         closureData,
+        //         specular_bsdf1_out,
+        //         transmission_mix_out,
+        //         specular_workflow_bsdf_out);
+        //     BSDF metalness_metal_bsdf_out =
+        //         BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
+        //     mx_conductor_bsdf(
+        //         closureData,
+        //         1.000000,
+        //         artistic_ior_ior,
+        //         artistic_ior_extinction,
+        //         specular_roughness_out,
+        //         0.000000,
+        //         1.500000,
+        //         surface_normal_out,
+        //         geomprop_Tworld_out1,
+        //         0,
+        //         metalness_metal_bsdf_out);
+        //     BSDF specular_bsdf2_out = BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
+        //     mx_generalized_schlick_bsdf(
+        //         closureData,
+        //         1.000000,
+        //         F0_out,
+        //         float3(1.000000, 1.000000, 1.000000),
+        //         specular_color_metallic_out,
+        //         5.000000,
+        //         specular_roughness_out,
+        //         0.000000,
+        //         1.500000,
+        //         surface_normal_out,
+        //         geomprop_Tworld_out1,
+        //         0,
+        //         0,
+        //         specular_bsdf2_out);
+        //     BSDF metalness_specular_bsdf_out =
+        //         BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
+        //     mx_layer_bsdf(
+        //         closureData,
+        //         specular_bsdf2_out,
+        //         transmission_mix_out,
+        //         metalness_specular_bsdf_out);
+        //     BSDF metalness_workflow_bsdf_out =
+        //         BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
+        //     mx_mix_bsdf(
+        //         closureData,
+        //         metalness_metal_bsdf_out,
+        //         metalness_specular_bsdf_out,
+        //         metallic,
+        //         metalness_workflow_bsdf_out);
+        //     BSDF workflow_selector_bsdf_out =
+        //         BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
+        //     mx_mix_bsdf(
+        //         closureData,
+        //         specular_workflow_bsdf_out,
+        //         metalness_workflow_bsdf_out,
+        //         use_specular_workflow_float_out,
+        //         workflow_selector_bsdf_out);
+        //     BSDF coat_bsdf_out = BSDF(float3(0.0), float3(1.0), 0.0, 0.0);
+        //     mx_layer_bsdf(
+        //         closureData,
+        //         coat_dielectric_bsdf_out,
+        //         workflow_selector_bsdf_out,
+        //         coat_bsdf_out);
+        //     surface_constructor_out.color += coat_bsdf_out.response;
+        // }
 
         // Compute and apply surface opacity
         {

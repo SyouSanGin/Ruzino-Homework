@@ -72,15 +72,25 @@ void BindlessContext::emitResourceBindings(
                             val = uniform->getValue()->asA<int>();
                         }
                         catch (const std::exception& e) {
-                            // Try long as fallback (it's also mapped to "integer")
+                            // Try long as fallback (it's also mapped to
+                            // "integer")
                             try {
-                                val = static_cast<int>(uniform->getValue()->asA<long>());
-                                spdlog::info("Uniform '{}' is long type, converted to int: {}", 
-                                    uniform->getVariable(), val);
+                                val = static_cast<int>(
+                                    uniform->getValue()->asA<long>());
+                                spdlog::info(
+                                    "Uniform '{}' is long type, converted to "
+                                    "int: {}",
+                                    uniform->getVariable(),
+                                    val);
                             }
                             catch (const std::exception& e2) {
-                                spdlog::warn("Failed to convert INTEGER type for '{}': {}. Using default value 0. Inner error: {}", 
-                                    uniform->getVariable(), e.what(), e2.what());
+                                spdlog::warn(
+                                    "Failed to convert INTEGER type for '{}': "
+                                    "{}. Using default value 0. Inner error: "
+                                    "{}",
+                                    uniform->getVariable(),
+                                    e.what(),
+                                    e2.what());
                                 val = 0;
                             }
                         }
@@ -175,7 +185,8 @@ void BindlessContext::emitResourceBindings(
                     else {
                         spdlog::warn(
                             "Unsupported uniform value type for {}: {}",
-                            uniform->getVariable(), type.getName());
+                            uniform->getVariable(),
+                            type.getName());
                         // Use default zero value instead of asserting
                         Vector4 val(0.0f, 0.0f, 0.0f, 0.0f);
                         memcpy(
@@ -228,6 +239,24 @@ void BindlessContext::emitResourceBindings(
                     data_location += 4;
                     numComponents = 4;
                 }
+                else if (type == Type::SURFACESHADER) {
+                    auto val = uniform->getValue();
+                    // Load vector3 and float for surface shader
+                    std::string vectorPart = "float3(asfloat(data.data[" +
+                                             std::to_string(data_location) +
+                                             "]), asfloat(data.data[" +
+                                             std::to_string(data_location + 1) +
+                                             "]), asfloat(data.data[" +
+                                             std::to_string(data_location + 2) +
+                                             "]))";
+                    std::string floatPart = "asfloat(data.data[" +
+                                            std::to_string(data_location + 3) +
+                                            "])";
+                    dataFetch =
+                        "surfaceshader(" + vectorPart + ", " + floatPart + ")";
+                    data_location += 4;
+                    numComponents = 4;
+                }
                 else {
                     spdlog::warn(("Unsupported uniform type: " + type.getName())
                                      .c_str());
@@ -273,8 +302,8 @@ void BindlessContext::emitResourceBindings(
                 // generator.emitLineEnd(stage, true);
 
                 fetch_data += "Texture2D " + uniform->getVariable() + " = " +
-                              " t_BindlessTextures[NonUniformResourceIndex($" + uniform->getName() +
-                              "_id)];\n";
+                              " t_BindlessTextures[NonUniformResourceIndex($" +
+                              uniform->getName() + "_id)];\n";
             }
         }
     }
