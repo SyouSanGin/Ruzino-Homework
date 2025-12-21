@@ -7,5 +7,5 @@ ninja.exe
 ## Test Instructions
 Run the following command in Ruzino/Binaries/Release:
 ```
-.\Ruzino.exe ..\..\Assets\ttt.usda
+.\.\headless_render.exe -u ..\..\Assets\main_sponza\NewSponza_Main_USD_Zup_003.usdc -j ..\..\Assets\render_nodes_save.json -o profile_sponza.png -w 3840 -h 2160 -s 64
 ```
