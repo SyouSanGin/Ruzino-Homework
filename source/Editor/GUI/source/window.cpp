@@ -254,6 +254,24 @@ void DockingImguiRenderer::drawMenuBar()
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 4.0f));
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 4.0f));
 
+        // File menu
+        if (ImGui::BeginMenu("File")) {
+            if (ImGui::MenuItem("Open", "Ctrl+O")) {
+                window_->trigger_menu_action("file_open");
+            }
+            if (ImGui::MenuItem("Save", "Ctrl+S")) {
+                window_->trigger_menu_action("file_save");
+            }
+            if (ImGui::MenuItem("Save As", "Ctrl+Shift+S")) {
+                window_->trigger_menu_action("file_save_as");
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Exit", "Alt+F4")) {
+                window_->close();
+            }
+            ImGui::EndMenu();
+        }
+
         recursive_draw(menu_tree);
 
         ImGui::PopStyleVar(2);
@@ -348,7 +366,26 @@ void DockingImguiRenderer::buildUI()
     for (size_t i = 0; i < widgets_.size(); ++i) {
         widgets_[i]->CallBack();
     }
+    
     ImGui::End();
+
+    // Handle file dialogs - must be called after ImGui::End() but within the frame
+    auto file_dialog = IGFD::FileDialog::Instance();
+    if (file_dialog->Display("OpenStageDialog")) {
+        if (file_dialog->IsOk()) {
+            std::string file_path = file_dialog->GetFilePathName();
+            window_->events().emit("file_open_selected", file_path);
+        }
+        file_dialog->Close();
+    }
+    
+    if (file_dialog->Display("SaveStageDialog")) {
+        if (file_dialog->IsOk()) {
+            std::string file_path = file_dialog->GetFilePathName();
+            window_->events().emit("file_save_as_selected", file_path);
+        }
+        file_dialog->Close();
+    }
 
     for (auto&& callback : callbacks_after_frame_) {
         callback(window_);
@@ -384,12 +421,6 @@ Window::Window()
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     ImGui::StyleColorsDark();
-
-    auto instance = IGFD::FileDialog::Instance();
-    IGFD::FileDialogConfig config;
-    config.path = "../../Assets";
-    instance->OpenDialog(
-        "SelectFile", "Select File", "{ .usd, .usda, .usdz, .usdc }", config);
 
     manager->AddRenderPassToBack(imguiRenderPass.get());
 }
@@ -507,6 +538,19 @@ bool Window::IsMaximized() const
         return false;
 
     return manager->IsMaximized();
+}
+
+void Window::register_menu_action(const std::string& action_name, std::function<void()> callback)
+{
+    menu_actions_[action_name] = callback;
+}
+
+void Window::trigger_menu_action(const std::string& action_name)
+{
+    auto it = menu_actions_.find(action_name);
+    if (it != menu_actions_.end()) {
+        it->second();
+    }
 }
 
 USTC_CG_NAMESPACE_CLOSE_SCOPE

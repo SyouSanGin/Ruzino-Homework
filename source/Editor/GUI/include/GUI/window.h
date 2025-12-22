@@ -60,6 +60,10 @@ class GUI_API Window {
     
     // Event system access
     WindowEventSystem& events() { return event_system_; }
+    
+    // Menu action callbacks
+    void register_menu_action(const std::string& action_name, std::function<void()> callback);
+    void trigger_menu_action(const std::string& action_name);
 
     void close();
 
@@ -76,6 +80,7 @@ class GUI_API Window {
     std::unique_ptr<DockingImguiRenderer> imguiRenderPass;
     float elapsedTimeSeconds = 0.0f;
     WindowEventSystem event_system_;
+    std::unordered_map<std::string, std::function<void()>> menu_actions_;
     friend class DockingImguiRenderer;
 };
 

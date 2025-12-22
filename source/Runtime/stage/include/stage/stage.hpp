@@ -102,6 +102,11 @@ class STAGE_API Stage {
         return m_stage_path;
     }
 
+    // File operations
+    void Save();
+    void SaveAs(const std::string& new_path);
+    bool OpenStage(const std::string& path);
+
     // 获取特定prim的时间信息
     bool get_prim_time_info(
         const pxr::SdfPath& path,

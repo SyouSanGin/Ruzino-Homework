@@ -15,6 +15,7 @@
 #include "GCore/GOP.h"
 #include "GCore/algorithms/intersection.h"
 #include "GCore/geom_payload.hpp"
+#include "GUI/ImGuiFileDialog.h"
 #include "GUI/window.h"
 #include "MCore/MaterialXDocumentViewer.hpp"
 #include "MCore/MaterialXNodeTree.hpp"
@@ -318,6 +319,44 @@ int main(int argc, char* argv[])
 
     // Add Python reference to window for console access
     python::reference("window", window.get());
+
+    // Register File menu actions
+    window->register_menu_action("file_open", [&stage, &window]() {
+        auto instance = IGFD::FileDialog::Instance();
+        IGFD::FileDialogConfig config;
+        config.path = "../../Assets";
+        instance->OpenDialog(
+            "OpenStageDialog", 
+            "Open USD Stage", 
+            ".usd,.usda,.usdc,.usdz", 
+            config);
+    });
+
+    window->register_menu_action("file_save", [&stage]() {
+        stage->Save();
+    });
+
+    window->register_menu_action("file_save_as", [&stage, &window]() {
+        auto instance = IGFD::FileDialog::Instance();
+        IGFD::FileDialogConfig config;
+        config.path = "../../Assets";
+        instance->OpenDialog(
+            "SaveStageDialog", 
+            "Save USD Stage As", 
+            ".usd,.usda,.usdc,.usdz", 
+            config);
+    });
+
+    // Subscribe to file dialog result events
+    window->events().subscribe("file_open_selected", [&stage](const std::string& file_path) {
+        if (stage->OpenStage(file_path)) {
+            spdlog::info("Successfully opened stage: {}", file_path);
+        }
+    });
+
+    window->events().subscribe("file_save_as_selected", [&stage](const std::string& file_path) {
+        stage->SaveAs(file_path);
+    });
 
     // Subscribe to material editor events
     window->events().subscribe(

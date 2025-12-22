@@ -424,4 +424,63 @@ void Stage::set_prim_render_time(
     }
 }
 
+void Stage::Save()
+{
+    if (stage) {
+        stage->Save();
+        spdlog::info("Stage saved to: {}", m_stage_path);
+    }
+}
+
+void Stage::SaveAs(const std::string& new_path)
+{
+    if (!stage) {
+        spdlog::error("No stage to save");
+        return;
+    }
+
+    std::filesystem::path abs_path = std::filesystem::path(new_path).lexically_normal();
+    
+    // Export current stage to new file
+    if (stage->Export(abs_path.string())) {
+        m_stage_path = abs_path.string();
+        // Reopen the stage at the new location
+        stage = pxr::UsdStage::Open(m_stage_path);
+        spdlog::info("Stage saved as: {}", m_stage_path);
+    } else {
+        spdlog::error("Failed to save stage to: {}", abs_path.string());
+    }
+}
+
+bool Stage::OpenStage(const std::string& path)
+{
+    std::filesystem::path abs_path = std::filesystem::path(path).lexically_normal();
+    
+    if (!std::filesystem::exists(abs_path)) {
+        spdlog::error("Stage file does not exist: {}", abs_path.string());
+        return false;
+    }
+
+    // Clear existing animatable prims
+    animatable_prims.clear();
+    
+    // Open the new stage
+    auto new_stage = pxr::UsdStage::Open(abs_path.string());
+    if (!new_stage) {
+        spdlog::error("Failed to open stage: {}", abs_path.string());
+        return false;
+    }
+
+    // Replace the current stage
+    stage = new_stage;
+    m_stage_path = abs_path.string();
+    
+    // Reset time codes
+    current_time_code = pxr::UsdTimeCode(0.0f);
+    render_time_code = pxr::UsdTimeCode(0.0f);
+    
+    spdlog::info("Opened stage: {}", m_stage_path);
+    return true;
+}
+
 USTC_CG_NAMESPACE_CLOSE_SCOPE
