@@ -104,7 +104,8 @@ void Stage::tick(float ellapsed_time)
 {
     // Stage的全局时间码用于追踪整体状态
     // 但实际的仿真时间由每个prim独立管理
-    if (should_simulate()) {
+    // if (should_simulate()) 
+    {
         // for each prim, if it is animatable, update it
         // 每个prim都会独立判断自己是否应该进行仿真
         for (auto&& prim : stage->Traverse()) {
