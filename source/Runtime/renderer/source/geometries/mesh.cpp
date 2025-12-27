@@ -314,9 +314,10 @@ void Hd_USTC_CG_Mesh::create_gpu_resources(Hd_USTC_CG_RenderParam* render_param)
     mesh_desc.bindlessIndex = descriptor_handle.Get();
 
     mesh_desc.texCrdInterpolation = texCrdInterpolation;
-    mesh_desc.normalInterpolation = (_normalInterp == HdInterpolationFaceVarying)
-                                        ? InterpolationType::FaceVarying
-                                        : InterpolationType::Vertex;
+    mesh_desc.normalInterpolation =
+        (_normalInterp == HdInterpolationFaceVarying)
+            ? InterpolationType::FaceVarying
+            : InterpolationType::Vertex;
     mesh_desc.tangentInterpolation = tangents.size() == points.size()
                                          ? InterpolationType::Vertex
                                          : InterpolationType::FaceVarying;
@@ -360,10 +361,11 @@ void Hd_USTC_CG_Mesh::updateTLAS(
         transforms.size());
 
     auto material_id = GetMaterialId();
-    
+
     // Check if mesh has GeomSubset materials
-    bool has_subset_materials = 
-        _primvarSourceMap.find(TfToken("subset_material_id")) != _primvarSourceMap.end();
+    bool has_subset_materials =
+        _primvarSourceMap.find(TfToken("subset_material_id")) !=
+        _primvarSourceMap.end();
 
     if (material_id.IsEmpty()) {
         if (!has_subset_materials) {
@@ -374,8 +376,7 @@ void Hd_USTC_CG_Mesh::updateTLAS(
         }
         else {
             spdlog::info(
-                "Mesh {} uses GeomSubset materials only.",
-                id.GetText());
+                "Mesh {} uses GeomSubset materials only.", id.GetText());
         }
     }
     else {
@@ -397,8 +398,9 @@ void Hd_USTC_CG_Mesh::updateTLAS(
     std::vector<GeometryInstanceData> instance_data_array(transforms.size());
 
     for (int i = 0; i < transforms.size(); ++i) {
-        // transforms[i] already contains the full instance transform from the instancer
-        // For instanced geometry, apply: instanceTransform * prototypeTransform
+        // transforms[i] already contains the full instance transform from the
+        // instancer For instanced geometry, apply: instanceTransform *
+        // prototypeTransform
         GfMatrix4f mat = transforms[i] * transform;
         GfMatrix4f mat_transposed = mat.GetTranspose();
 
@@ -580,49 +582,6 @@ void Hd_USTC_CG_Mesh::Sync(
                             primvar.second.data.GetArraySize());
                     }
                 }
-
-                //// Then make them per-vertex
-
-                // if (primvar.second.interpolation ==
-                //     HdInterpolationFaceVarying) {
-                //     auto value = primvar.second.data;
-                //     if (value.IsArrayValued()) {
-                //         if (value.IsHolding<VtVec3fArray>()) {
-                //             VtVec3fArray vec3fArray =
-                //             value.Get<VtVec3fArray>(); VtVec3fArray
-                //             newVec3fArray =
-                //                 VtVec3fArray(points.size());
-                //             for (int i = 0; i < triangulatedIndices.size();
-                //                  i += 1) {
-                //                 newVec3fArray[triangulatedIndices[i][0]] =
-                //                     vec3fArray[i * 3];
-                //                 newVec3fArray[triangulatedIndices[i][1]] =
-                //                     vec3fArray[i * 3 + 1];
-                //                 newVec3fArray[triangulatedIndices[i][2]] =
-                //                     vec3fArray[i * 3 + 2];
-                //             }
-
-                //            primvar.second.data = VtValue(newVec3fArray);
-                //        }
-                //        else if (value.IsHolding<VtVec2fArray>()) {
-                //            VtVec2fArray vec2fArray =
-                //            value.Get<VtVec2fArray>(); VtVec2fArray
-                //            newVec2fArray =
-                //                VtVec2fArray(points.size());
-                //            for (int i = 0; i < triangulatedIndices.size();
-                //                 i += 1) {
-                //                newVec2fArray[triangulatedIndices[i][0]] =
-                //                    vec2fArray[i * 3];
-                //                newVec2fArray[triangulatedIndices[i][1]] =
-                //                    vec2fArray[i * 3 + 1];
-                //                newVec2fArray[triangulatedIndices[i][2]] =
-                //                    vec2fArray[i * 3 + 2];
-                //            }
-
-                //            primvar.second.data = VtValue(newVec2fArray);
-                //        }
-                //    }
-                //}
             }
 
             if (!geom_subsets.empty()) {
@@ -637,7 +596,8 @@ void Hd_USTC_CG_Mesh::Sync(
                 if (!mesh_material_id.IsEmpty()) {
                     auto p = material_map->find(mesh_material_id);
                     if (p != material_map->end()) {
-                        default_material_loc = (*p).second->GetMaterialLocation();
+                        default_material_loc =
+                            (*p).second->GetMaterialLocation();
                     }
                 }
 
@@ -647,7 +607,8 @@ void Hd_USTC_CG_Mesh::Sync(
 
                     if (p == material_map->end()) {
                         spdlog::error(
-                            "Material {} not found for subset in mesh {}. Skipping subset.",
+                            "Material {} not found for subset in mesh {}. "
+                            "Skipping subset.",
                             subset.materialId.GetText(),
                             id.GetText());
                         continue;
@@ -659,25 +620,28 @@ void Hd_USTC_CG_Mesh::Sync(
                     }
                 }
 
-                // Initialize with max uint to indicate "use instance material" (equivalent to -1 in signed)
+                // Initialize with max uint to indicate "use instance material"
+                // (equivalent to -1 in signed)
                 VtArray<unsigned> material_id_primvars;
-                material_id_primvars.resize(triangulatedIndices.size() * 3, 
-                    static_cast<unsigned>(-1));
+                material_id_primvars.resize(
+                    triangulatedIndices.size() * 3, static_cast<unsigned>(-1));
 
                 assert(
                     triangulatedIndices.size() ==
                     trianglePrimitiveParams.size());
 
                 for (int i = 0; i < triangulatedIndices.size(); i++) {
-                    int face_index = HdMeshUtil::DecodeFaceIndexFromCoarseFaceParam(
-                        trianglePrimitiveParams[i]);
-                    
+                    int face_index =
+                        HdMeshUtil::DecodeFaceIndexFromCoarseFaceParam(
+                            trianglePrimitiveParams[i]);
+
                     // Check if this face has a subset material
                     auto it = subset_material_id_map.find(face_index);
-                    unsigned mat_id = (it != subset_material_id_map.end()) 
-                        ? static_cast<unsigned>(it->second)
-                        : static_cast<unsigned>(default_material_loc);
-                    
+                    unsigned mat_id =
+                        (it != subset_material_id_map.end())
+                            ? static_cast<unsigned>(it->second)
+                            : static_cast<unsigned>(default_material_loc);
+
                     material_id_primvars[i * 3] = mat_id;
                     material_id_primvars[i * 3 + 1] = mat_id;
                     material_id_primvars[i * 3 + 2] = mat_id;
@@ -705,7 +669,8 @@ void Hd_USTC_CG_Mesh::Sync(
             if (_primvarSourceMap.find(HdTokens->normals) !=
                 _primvarSourceMap.end()) {
                 normal_primvar = _primvarSourceMap[HdTokens->normals].data;
-                normal_interp = _primvarSourceMap[HdTokens->normals].interpolation;
+                normal_interp =
+                    _primvarSourceMap[HdTokens->normals].interpolation;
             }
             else {
                 normal_primvar = GetNormals(sceneDelegate);
@@ -736,12 +701,14 @@ void Hd_USTC_CG_Mesh::Sync(
             else {
                 // If normals are authored, we use them.
                 normals = normal_primvar.Get<VtVec3fArray>();
-                
+
                 // Handle indexed normals (primvars:normals:indices)
                 // When normals are indexed, expand them to FaceVarying
                 if (normal_interp == HdInterpolationFaceVarying) {
-                    // Check if normals size matches faceVertexIndices (already expanded)
-                    if (normals.size() == topology.GetFaceVertexIndices().size()) {
+                    // Check if normals size matches faceVertexIndices (already
+                    // expanded)
+                    if (normals.size() ==
+                        topology.GetFaceVertexIndices().size()) {
                         // Already in FaceVarying format, triangulate it
                         HdMeshUtil meshUtil(&topology, GetId());
                         VtValue triangulated_normals;
@@ -751,29 +718,34 @@ void Hd_USTC_CG_Mesh::Sync(
                             HdTypeFloatVec3,
                             &triangulated_normals);
                         normals = triangulated_normals.Get<VtVec3fArray>();
-                        
+
                         spdlog::info(
                             "Mesh {}: Triangulated FaceVarying normals - "
                             "result size: {}",
                             GetId().GetText(),
                             normals.size());
                     }
-                    else if (normals.size() < topology.GetFaceVertexIndices().size()) {
+                    else if (
+                        normals.size() <
+                        topology.GetFaceVertexIndices().size()) {
                         // This is indexed normals case
                         // normals array contains unique values
-                        // faceVertexIndices (or a separate normal indices array) tells us which to use
+                        // faceVertexIndices (or a separate normal indices
+                        // array) tells us which to use
                         spdlog::info(
                             "Mesh {}: Detected indexed normals - "
                             "unique normals: {}, face vertex count: {}",
                             GetId().GetText(),
                             normals.size(),
                             topology.GetFaceVertexIndices().size());
-                        
-                        // For now, treat as Vertex interpolation if size matches points
+
+                        // For now, treat as Vertex interpolation if size
+                        // matches points
                         if (normals.size() == points.size()) {
                             normal_interp = HdInterpolationVertex;
                             spdlog::info(
-                                "Mesh {}: Treating indexed normals as Vertex interpolation",
+                                "Mesh {}: Treating indexed normals as Vertex "
+                                "interpolation",
                                 GetId().GetText());
                         }
                     }
@@ -840,10 +812,10 @@ void Hd_USTC_CG_Mesh::Sync(
                             n1 = normals[triIdx * 3 + 1];
                             n2 = normals[triIdx * 3 + 2];
                         }
-                        else if (normals.size() == points.size() &&
-                                 i0 < normals.size() && 
-                                 i1 < normals.size() && 
-                                 i2 < normals.size()) {
+                        else if (
+                            normals.size() == points.size() &&
+                            i0 < normals.size() && i1 < normals.size() &&
+                            i2 < normals.size()) {
                             // Vertex normals - with bounds check
                             n0 = normals[i0];
                             n1 = normals[i1];

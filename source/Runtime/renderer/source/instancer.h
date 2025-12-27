@@ -70,6 +70,9 @@ public:
     ///   \return One transform per instance, to apply when drawing.
     VtMatrix4fArray ComputeInstanceTransforms(SdfPath const& prototypeId);
 
+
+    
+
     /// Updates cached primvar data from the scene delegate.
     ///   \param sceneDelegate The scene delegate for this prim.
     ///   \param renderParam The hdEmbree render param.
@@ -83,6 +86,9 @@ private:
     // Updates the cached primvars in _primvarMap based on scene delegate
     // data.  This is a helper function for Sync().
     void _SyncPrimvars(HdSceneDelegate* delegate, HdDirtyBits dirtyBits);
+
+
+    nvrhi::BufferHandle instanceBuffer;
 
     // Map of the latest primvar data for this instancer, keyed by
     // primvar name. Primvar values are VtValue, an any-type; they are
