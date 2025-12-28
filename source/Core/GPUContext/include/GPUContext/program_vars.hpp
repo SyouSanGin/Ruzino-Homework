@@ -1,6 +1,7 @@
 #pragma once
 #include "RHI/ResourceManager/resource_allocator.hpp"
 #include "api.h"
+#include "nvrhi/nvrhi.h"
 #include <unordered_map>
 #include <string_view>
 
@@ -37,6 +38,8 @@ class GPUCONTEXT_API ProgramVarsProxy {
 
     // Assignment operator for direct resource assignment
     ProgramVarsProxy& operator=(nvrhi::IResource* resource);
+
+    ProgramVarsProxy& operator=(const nvrhi::BindingSetItem& item);
 
     // Implicit conversion to nvrhi::IResource*&
     operator nvrhi::IResource*&();

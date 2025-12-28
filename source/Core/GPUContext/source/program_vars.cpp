@@ -61,6 +61,29 @@ ProgramVarsProxy& ProgramVarsProxy::operator=(nvrhi::IResource* resource)
     return *this;
 }
 
+ProgramVarsProxy& ProgramVarsProxy::operator=(const nvrhi::BindingSetItem& item)
+{
+    // Get the binding location for this proxy
+    std::tuple<unsigned, unsigned> location;
+    if (binding_id_.is_valid()) {
+        location = parent_->get_binding_location_fast(binding_id_, array_index_);
+    }
+    else {
+        location = parent_->get_binding_location(path_, array_index_);
+    }
+    
+    auto [binding_space_id, binding_set_location] = location;
+    if (binding_space_id == static_cast<unsigned>(-1)) {
+        return *this;  // Invalid binding
+    }
+    
+    // Directly assign the entire BindingSetItem
+    // This allows setting all properties: resource, subresources, range, format, etc.
+    parent_->binding_spaces[binding_space_id][binding_set_location] = item;
+    
+    return *this;
+}
+
 ProgramVarsProxy::operator nvrhi::IResource*&()
 {
     if (binding_id_.is_valid()) {

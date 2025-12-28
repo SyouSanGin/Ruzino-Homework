@@ -26,7 +26,7 @@ NODE_EXECUTION_FUNCTION(instance_on_points)
     auto instancer = std::make_shared<InstancerComponent>(&geometry);
     geometry.attach_component(instancer);
 
-    auto points_component = points.get_component<PointsComponent>();
+    auto points_component = points.get_const_component<PointsComponent>();
 
     if (!points_component) {
         params.set_error("No points component found in input Points");
