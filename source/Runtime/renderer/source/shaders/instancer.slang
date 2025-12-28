@@ -120,20 +120,18 @@ void main(uint3 dispatchThreadID: SV_DispatchThreadID)
     GeometryInstanceData temp_data = GeometryInstanceData(0);
 
     // Write geometry instance data
-    uint geometryInstanceIndex = params.base_instance_index + i;
     temp_data.geometryID = params.geometry_id;
     temp_data.materialID = params.material_id;
     temp_data.transform = finalTransform;
     temp_data.flags = 0;
 
-    g_GeometryInstances[geometryInstanceIndex] = temp_data;
+    g_GeometryInstances[i] = temp_data;
 
     // Write RT instance descriptor (simplified, needs proper format)
     // Each RT instance is 64 bytes according to DXR spec
     // Layout: transform (3x4 floats) + instanceID + mask +
     // instanceContributionToHitGroupIndex + flags + accelerationStructure
-    uint rtInstanceOffset =
-        geometryInstanceIndex * 16;  // 64 bytes / 4 = 16 DWORDs
+    uint rtInstanceOffset = i * 16;  // 64 bytes / 4 = 16 DWORDs
 
     // Transpose for row-major storage
     float4x4 transposed = transpose(finalTransform);
@@ -149,12 +147,12 @@ void main(uint3 dispatchThreadID: SV_DispatchThreadID)
 
     // Write instanceID and mask (24-bit ID + 8-bit mask)
     g_RTInstances.Store(
-        rtInstanceOffset * 4 + 48, geometryInstanceIndex | (1 << 24));
+        rtInstanceOffset * 4 + 48, params.base_instance_index + i | (0xFF << 24));
 
     // Write instanceContributionToHitGroupIndex (24 bits) + flags (8 bits)
     g_RTInstances.Store(
         rtInstanceOffset * 4 + 52,
-        0);  // flags: TriangleFrontCounterclockwise would be 0x1
+        (2 << 24));  // flags: TriangleFrontCounterclockwise = 2
 
     // Write acceleration structure address (8 bytes)
     g_RTInstances.Store2(
