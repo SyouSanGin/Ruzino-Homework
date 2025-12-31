@@ -80,7 +80,7 @@ NODE_DECLARATION_FUNCTION(gpu_sph)
         .default_val(50000.0f)
         .min(1000.0f)
         .max(100000.0f);
-    b.add_input<float>("Viscosity").default_val(0.01f).min(0.001f).max(1.0f);
+    b.add_input<float>("Viscosity").default_val(0.001f).min(0.0001f).max(0.1f);
     b.add_input<float>("Surface Tension")
         .default_val(0.05f)
         .min(0.0f)
@@ -326,9 +326,9 @@ NODE_EXECUTION_FUNCTION(gpu_sph)
         }
     }
 
-    // Find neighbors (contact detection)
+    // Find neighbors (contact detection) - ONLY for initial setup
+    // We will rebuild this in each substep using the updated positions
     unsigned pair_count = 0;
-    auto contacts = FindNeighborsToBuffer(input_geom, radius * 2, pair_count);
 
     // Adjust dt for substeps
     float dt_substep = dt / substeps;
@@ -339,13 +339,19 @@ NODE_EXECUTION_FUNCTION(gpu_sph)
     sph_constants.smoothingRadius = radius * 2;
     sph_constants.gravity = gravity;
     sph_constants.restDensity = rest_density;
-    sph_constants.mV = 0.000001f;
+    
+    // Calculate particle volume based on particle radius
+    // Using cubic arrangement: each particle occupies a cube of side = diameter
+    // This gives better results than spherical volume for SPH
+    float particle_volume = radius * radius * radius * 8.0f;  // (2r)^3
+    sph_constants.mV = particle_volume;
+    
     sph_constants.constPress = pressure_constant;
     sph_constants.constVisc = viscosity;
     sph_constants.constSurf = surface_tension;
     sph_constants.dt = dt_substep;  // Use substep dt
     sph_constants.numParticles = num_particles;
-    sph_constants.numPairs = pair_count;
+    sph_constants.numPairs = 0;  // Will be updated each substep
 
     // Create constant buffer
     auto sph_cb = resource_allocator.create(
@@ -356,16 +362,30 @@ NODE_EXECUTION_FUNCTION(gpu_sph)
             .setKeepInitialState(true)
             .setDebugName("sph_constants"));
 
-    auto upload_cmd = resource_allocator.create(CommandListDesc{});
-    upload_cmd->open();
-    upload_cmd->writeBuffer(sph_cb, &sph_constants, sizeof(SPHConstants));
-    upload_cmd->close();
-    device->executeCommandList(upload_cmd);
-    device->waitForIdle();
-    resource_allocator.destroy(upload_cmd);
-
     // Substep loop for better stability
     for (int substep = 0; substep < substeps; ++substep) {
+        // CRITICAL: Rebuild neighbor pairs each substep with updated positions!
+        auto contacts = FindNeighborsFromPositionBuffer(
+            storage.positions, num_particles, radius * 2, pair_count);
+        
+        if (!contacts || pair_count == 0) {
+            spdlog::warn("No neighbors found in substep {}", substep);
+            if (contacts)
+                resource_allocator.destroy(contacts);
+            continue;
+        }
+
+        // Update pair count in constants
+        sph_constants.numPairs = pair_count;
+        
+        // Upload updated constants
+        auto upload_cmd = resource_allocator.create(CommandListDesc{});
+        upload_cmd->open();
+        upload_cmd->writeBuffer(sph_cb, &sph_constants, sizeof(SPHConstants));
+        upload_cmd->close();
+        device->executeCommandList(upload_cmd);
+        device->waitForIdle();
+        resource_allocator.destroy(upload_cmd);
         // Step 1: Initialize density with self-contribution
         {
             ProgramVars vars(resource_allocator, storage.init_density_program);
@@ -448,9 +468,13 @@ NODE_EXECUTION_FUNCTION(gpu_sph)
             ctx.dispatch({}, vars, num_particles, 32);
             ctx.finish();
         }
+        
+        // Clean up contacts for this substep
+        resource_allocator.destroy(contacts);
     }
 
-    get_resource_allocator().destroy(contacts);
+    // Clean up constant buffer
+    resource_allocator.destroy(sph_cb);
 
     // Read back positions from GPU
     auto readback_buffer = resource_allocator.create(
@@ -480,7 +504,6 @@ NODE_EXECUTION_FUNCTION(gpu_sph)
 
     resource_allocator.destroy(readback_buffer);
     resource_allocator.destroy(copy_cmd);
-    resource_allocator.destroy(sph_cb);
 
     // Update geometry with new positions
     points_component->set_vertices(new_positions);
