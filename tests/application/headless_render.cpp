@@ -2,8 +2,10 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -139,12 +141,55 @@ std::string GetFileExtension(const std::string& filename)
     return ext;
 }
 
+std::string GenerateSequenceFilename(
+    const std::string& base_filename,
+    int frame_number,
+    int total_frames)
+{
+    if (total_frames <= 1) {
+        return base_filename;
+    }
+
+    // Determine number of digits needed
+    int num_digits = std::to_string(total_frames - 1).length();
+    if (num_digits < 4) num_digits = 4;  // Minimum 4 digits
+
+    // Extract extension
+    size_t dot_pos = base_filename.find_last_of('.');
+    std::string name_part = (dot_pos != std::string::npos) 
+        ? base_filename.substr(0, dot_pos) 
+        : base_filename;
+    std::string ext_part = (dot_pos != std::string::npos) 
+        ? base_filename.substr(dot_pos) 
+        : ".png";
+
+    // Format frame number with leading zeros
+    std::ostringstream oss;
+    oss << name_part << "_" << std::setfill('0') << std::setw(num_digits) << frame_number << ext_part;
+    return oss.str();
+}
+
 bool SaveImageToFile(
     const std::string& filename,
     int width,
     int height,
     const std::vector<uint8_t>& data)
 {
+    // Create directory if it doesn't exist
+    std::filesystem::path filepath(filename);
+    if (filepath.has_parent_path()) {
+        std::filesystem::path parent_dir = filepath.parent_path();
+        if (!std::filesystem::exists(parent_dir)) {
+            try {
+                std::filesystem::create_directories(parent_dir);
+                spdlog::info("Created output directory: {}", parent_dir.string());
+            } catch (const std::exception& e) {
+                spdlog::error("Failed to create directory {}: {}", parent_dir.string(), e.what());
+                return false;
+            }
+        }
+    }
+
     const float* float_data = reinterpret_cast<const float*>(data.data());
     std::string ext = GetFileExtension(filename);
 
@@ -357,6 +402,10 @@ int main(int argc, char* argv[])
     parser.add<std::string>(
         "camera", 'c', "Camera prim path (e.g., /Camera)", false, "");
     parser.add("verbose", 'v', "Enable verbose logging");
+    parser.add<int>(
+        "frames", 'f', "Number of frames to render (for animation sequences)", false, 0);
+    parser.add<float>(
+        "fps", 'r', "Frames per second (for animation delta time)", false, 30.0f);
 
     parser.parse_check(argc, argv);
 
@@ -380,6 +429,9 @@ int main(int argc, char* argv[])
     int spp = parser.get<int>("spp");
     std::string camera_path = parser.get<std::string>("camera");
     bool verbose = parser.exist("verbose");
+    int num_frames = parser.get<int>("frames");
+    float fps = parser.get<float>("fps");
+    float delta_time = 1.0f / fps;
 
     // Validate input files
     if (!std::filesystem::exists(usd_file)) {
@@ -469,143 +521,188 @@ int main(int argc, char* argv[])
         std::string nodes_json = LoadJSONScript(json_script);
         (*node_system)->get_node_tree()->deserialize(nodes_json);
 
-        // Render the scene with multiple samples
-        UsdPrim root = stage->get_usd_stage()->GetPseudoRoot();
-        printf("Starting render with %d samples...\n", spp);
+        // Determine if we're rendering a sequence or single frame
+        bool is_sequence = (num_frames > 0);
+        int frames_to_render = is_sequence ? num_frames : 1;
+
+        printf("Starting %s render...\n", is_sequence ? "sequence" : "single frame");
+        if (is_sequence) {
+            printf("Total frames: %d, Delta time: %.4fs (%.0f fps)\n", 
+                   frames_to_render, delta_time, fps);
+        }
+        printf("Samples per pixel: %d\n", spp);
         fflush(stdout);
 
-        // Start timing (will be set after first sample)
-        auto render_start = std::chrono::high_resolution_clock::now();
-        long long total_sample_time = 0;
-        int timed_samples = 0;
-
-        for (int sample = 0; sample < spp; ++sample) {
-            auto sample_start = std::chrono::high_resolution_clock::now();
-
-            renderer->Render(root, render_params);
-            RHI::get_device()->waitForIdle();
-            RHI::get_device()->runGarbageCollection();
-            renderer->StopRenderer();
-
-            auto sample_end = std::chrono::high_resolution_clock::now();
-            auto sample_duration =
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    sample_end - sample_start)
-                    .count();
-
-            // Skip first sample for timing (shader compilation, etc.)
-            if (sample == 0) {
-                render_start = std::chrono::high_resolution_clock::now();
-                printf(
-                    "Sample 1/%d completed in %.2fs (warmup)\n",
-                    spp,
-                    sample_duration / 1000.0);
+        // Render loop for each frame
+        for (int frame = 0; frame < frames_to_render; ++frame) {
+            // Frame progress header
+            if (is_sequence) {
+                printf("\n========== Frame %d/%d ==========\n", 
+                       frame + 1, frames_to_render);
                 fflush(stdout);
-                continue;
             }
 
-            total_sample_time += sample_duration;
-            timed_samples++;
-
-            // Calculate progress and ETA (based on samples after warmup)
-            int progress_percent = ((sample + 1) * 100) / spp;
-            double avg_time_per_sample =
-                (double)total_sample_time / timed_samples;
-            int remaining_samples = spp - (sample + 1);
-            double eta_seconds =
-                (avg_time_per_sample * remaining_samples) / 1000.0;
-
-            // Create progress bar
-            const int bar_width = 40;
-            int filled = (bar_width * (sample + 1)) / spp;
-            char bar[bar_width + 1];
-            memset(bar, ' ', bar_width);
-            for (int i = 0; i < filled; ++i) {
-                bar[i] = '=';
+            // Update stage for animation (skip first frame)
+            if (is_sequence && frame > 0) {
+                stage->tick(delta_time);
+                stage->finish_tick();
             }
-            if (filled < bar_width) {
-                bar[filled] = '>';
-            }
-            bar[bar_width] = '\0';
 
-            // Format ETA
-            int eta_minutes = (int)(eta_seconds / 60);
-            int eta_secs = (int)(eta_seconds) % 60;
+            // Set time code
+            pxr::UsdTimeCode time_code(frame * delta_time);
+            stage->set_render_time(time_code);
+            render_params.frame = time_code;
 
-            // Print progress bar with ETA using printf
-            printf(
-                "\r[%s] %d%% (%d/%d) Sample: %.4fs Avg: %.4fs ",
-                bar,
-                progress_percent,
-                sample + 1,
-                spp,
-                sample_duration / 1000.0,
-                avg_time_per_sample / 1000.0);
+            // Render the scene with multiple samples
+            UsdPrim root = stage->get_usd_stage()->GetPseudoRoot();
 
-            if (remaining_samples > 0) {
-                if (eta_minutes > 0) {
-                    printf("ETA: %dm %ds", eta_minutes, eta_secs);
+            // Start timing (will be set after first sample)
+            auto render_start = std::chrono::high_resolution_clock::now();
+            long long total_sample_time = 0;
+            int timed_samples = 0;
+
+            for (int sample = 0; sample < spp; ++sample) {
+                auto sample_start = std::chrono::high_resolution_clock::now();
+
+                renderer->Render(root, render_params);
+                RHI::get_device()->waitForIdle();
+                RHI::get_device()->runGarbageCollection();
+                renderer->StopRenderer();
+
+                auto sample_end = std::chrono::high_resolution_clock::now();
+                auto sample_duration =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        sample_end - sample_start)
+                        .count();
+
+                // Skip first sample for timing (shader compilation, etc.)
+                if (sample == 0) {
+                    render_start = std::chrono::high_resolution_clock::now();
+                    printf(
+                        "Sample 1/%d completed in %.2fs (warmup)\n",
+                        spp,
+                        sample_duration / 1000.0);
+                    fflush(stdout);
+                    continue;
+                }
+
+                total_sample_time += sample_duration;
+                timed_samples++;
+
+                // Calculate progress and ETA (based on samples after warmup)
+                int progress_percent = ((sample + 1) * 100) / spp;
+                double avg_time_per_sample =
+                    (double)total_sample_time / timed_samples;
+                int remaining_samples = spp - (sample + 1);
+                double eta_seconds =
+                    (avg_time_per_sample * remaining_samples) / 1000.0;
+
+                // Create progress bar
+                const int bar_width = 40;
+                int filled = (bar_width * (sample + 1)) / spp;
+                char bar[bar_width + 1];
+                memset(bar, ' ', bar_width);
+                for (int i = 0; i < filled; ++i) {
+                    bar[i] = '=';
+                }
+                if (filled < bar_width) {
+                    bar[filled] = '>';
+                }
+                bar[bar_width] = '\0';
+
+                // Format ETA
+                int eta_minutes = (int)(eta_seconds / 60);
+                int eta_secs = (int)(eta_seconds) % 60;
+
+                // Print progress bar with ETA using printf
+                printf(
+                    "\r[%s] %d%% (%d/%d) Sample: %.4fs Avg: %.4fs ",
+                    bar,
+                    progress_percent,
+                    sample + 1,
+                    spp,
+                    sample_duration / 1000.0,
+                    avg_time_per_sample / 1000.0);
+
+                if (remaining_samples > 0) {
+                    if (eta_minutes > 0) {
+                        printf("ETA: %dm %ds", eta_minutes, eta_secs);
+                    }
+                    else {
+                        printf("ETA: %ds", eta_secs);
+                    }
                 }
                 else {
-                    printf("ETA: %ds", eta_secs);
+                    printf("Complete!");
                 }
+
+                fflush(stdout);
             }
-            else {
-                printf("Complete!");
+            printf("\n");
+
+            auto render_end = std::chrono::high_resolution_clock::now();
+            auto total_duration =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    render_end - render_start)
+                    .count();
+
+            printf(
+                "Render complete. Total time: %.2fs (excluding warmup)",
+                total_duration / 1000.0);
+            if (timed_samples > 0) {
+                printf(
+                    ", Avg per sample: %.2fs",
+                    total_sample_time / (double)timed_samples / 1000.0);
+            }
+            printf("\n");
+            fflush(stdout);
+
+            // Read back texture data
+            std::vector<uint8_t> texture_data;
+            bool success =
+                ReadTextureDirectly(renderer.get(), width, height, texture_data);
+
+            if (!success) {
+                success = ReadTextureCPU(
+                    renderer.get(), hgi, width, height, texture_data);
             }
 
+            if (!success) {
+                throw std::runtime_error("Failed to read back rendered texture");
+            }
+
+            // Generate output filename for this frame
+            std::string frame_output = GenerateSequenceFilename(
+                output_image, frame, frames_to_render);
+
+            // Save the image
+            auto save_start = std::chrono::high_resolution_clock::now();
+            printf("Saving image to: %s\n", frame_output.c_str());
+            fflush(stdout);
+
+            if (!SaveImageToFile(frame_output, width, height, texture_data)) {
+                throw std::runtime_error("Failed to save image to " + frame_output);
+            }
+
+            auto save_end = std::chrono::high_resolution_clock::now();
+            auto save_duration =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    save_end - save_start)
+                    .count();
+
+            printf("Image saved in %.2fs\n", save_duration / 1000.0);
             fflush(stdout);
         }
-        printf("\n");
 
-        auto render_end = std::chrono::high_resolution_clock::now();
-        auto total_duration =
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                render_end - render_start)
-                .count();
-
-        printf(
-            "Render complete. Total time: %.2fs (excluding warmup)",
-            total_duration / 1000.0);
-        if (timed_samples > 0) {
-            printf(
-                ", Avg per sample: %.2fs",
-                total_sample_time / (double)timed_samples / 1000.0);
+        if (is_sequence) {
+            printf("\n========================================\n");
+            printf("Sequence render completed successfully!\n");
+            printf("Total frames rendered: %d\n", frames_to_render);
+            printf("========================================\n");
         }
-        printf("\n");
-        fflush(stdout);
-
-        // Read back texture data
-        std::vector<uint8_t> texture_data;
-        bool success =
-            ReadTextureDirectly(renderer.get(), width, height, texture_data);
-
-        if (!success) {
-            success = ReadTextureCPU(
-                renderer.get(), hgi, width, height, texture_data);
+        else {
+            printf("Headless render completed successfully!\n");
         }
-
-        if (!success) {
-            throw std::runtime_error("Failed to read back rendered texture");
-        }
-
-        // Save the image
-        auto save_start = std::chrono::high_resolution_clock::now();
-        printf("Saving image to: %s\n", output_image.c_str());
-        fflush(stdout);
-
-        if (!SaveImageToFile(output_image, width, height, texture_data)) {
-            throw std::runtime_error("Failed to save image to " + output_image);
-        }
-
-        auto save_end = std::chrono::high_resolution_clock::now();
-        auto save_duration =
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                save_end - save_start)
-                .count();
-
-        printf("Image saved in %.2fs\n", save_duration / 1000.0);
-        printf("Headless render completed successfully!\n");
         fflush(stdout);
 
         // Cleanup
