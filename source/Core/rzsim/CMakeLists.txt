@@ -1,18 +1,13 @@
-# Remove the /wd5054 flag that Eigen injects into CUDA compilation
-if(MSVC)
-    get_target_property(_cuda_opts eigen INTERFACE_COMPILE_OPTIONS)
-    list(REMOVE_ITEM _cuda_opts "/wd5054")
-    set_target_properties(eigen PROPERTIES
-        INTERFACE_COMPILE_OPTIONS "${_cuda_opts}"
-    )
-endif()
+# Create the isolated CUDA library first
+add_subdirectory(rzsim_cuda)
 
+# Main rzsim library - links to both CUDA and geometry libraries
 RUZINO_ADD_LIB(
 	rzsim
 	SHARED
 	WITH_CUDA
-	PUBLIC_LIBS RHI Eigen3::Eigen
-	SKIP_DIRS nodes renderer_nodes geometry_nodes
+	PUBLIC_LIBS RHI geometry rzsim_cuda
+	SKIP_DIRS nodes renderer_nodes geometry_nodes rzsim_cuda
 )
 
 add_subdirectory(nodes)
