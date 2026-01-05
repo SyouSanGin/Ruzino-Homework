@@ -412,39 +412,51 @@ void verify_against_openvolulemesh(const Geometry& mesh)
     std::cout << "Faces: " << volumemesh->n_faces() << "\n";
     
     // For each vertex, get opposite faces from OpenVolumeMesh
-    for (unsigned v_idx = 0; v_idx < volumemesh->n_vertices(); ++v_idx) {
-        auto vh = OpenVolumeMesh::VertexHandle(v_idx);
+    // Note: We iterate through ALL cells and extract faces for each vertex
+    // rather than using vc_iter, since vc_iter may be incomplete when _topologyCheck=false
+    std::vector<std::vector<std::tuple<unsigned, unsigned, unsigned>>> ovm_opposite_by_vertex(
+        volumemesh->n_vertices());
+    
+    for (auto c_it = volumemesh->cells_begin(); c_it != volumemesh->cells_end(); ++c_it) {
+        // Get all faces of this cell
+        auto cell_faces = volumemesh->cell(*c_it).halffaces();
         
-        // Collect opposite faces from OpenVolumeMesh (with orientation)
-        std::vector<std::tuple<unsigned, unsigned, unsigned>> ovm_opposite_faces;
-        
-        for (auto vc_it = volumemesh->vc_iter(vh); vc_it.valid(); ++vc_it) {
-            // Get all faces of this cell
-            auto cell_faces = volumemesh->cell(*vc_it).halffaces();
+        for (auto hf : cell_faces) {
+            // Get vertices of this face in order
+            std::vector<unsigned> face_v;
+            auto he_begin = volumemesh->halfface(hf).halfedges()[0];
+            auto he = he_begin;
+            do {
+                auto from_v = volumemesh->halfedge(he).from_vertex();
+                face_v.push_back(from_v.idx());
+                he = volumemesh->next_halfedge_in_halfface(he, hf);
+            } while (he != he_begin && face_v.size() < 10);
             
-            for (auto hf : cell_faces) {
-                auto fh = volumemesh->face_handle(hf);
+            if (face_v.size() == 3) {
+                // This face is opposite to the 4th vertex of the cell
+                auto cv_it = volumemesh->cv_iter(*c_it);
+                std::set<unsigned> cell_verts;
+                for (; cv_it.valid(); ++cv_it) {
+                    cell_verts.insert((*cv_it).idx());
+                }
                 
-                // Get vertices of this face in order
-                std::vector<unsigned> face_v;
-                auto he_begin = volumemesh->halfface(hf).halfedges()[0];
-                auto he = he_begin;
-                do {
-                    auto from_v = volumemesh->halfedge(he).from_vertex();
-                    face_v.push_back(from_v.idx());
-                    he = volumemesh->next_halfedge_in_halfface(he, hf);
-                } while (he != he_begin && face_v.size() < 10);
-                
-                // Check if vertex v_idx is NOT in this face
-                bool contains_v = std::find(face_v.begin(), face_v.end(), v_idx) != face_v.end();
-                
-                if (!contains_v && face_v.size() == 3) {
-                    // This is an opposite face - keep orientation
-                    ovm_opposite_faces.push_back({face_v[0], face_v[1], face_v[2]});
+                // Find the vertex NOT in this face
+                for (unsigned v_idx : cell_verts) {
+                    if (std::find(face_v.begin(), face_v.end(), v_idx) == face_v.end()) {
+                        // v_idx is the opposite vertex
+                        if (v_idx < volumemesh->n_vertices()) {
+                            ovm_opposite_by_vertex[v_idx].push_back(
+                                {face_v[0], face_v[1], face_v[2]});
+                        }
+                    }
                 }
             }
         }
-        
+    }
+    
+    // Now compare OVM (extracted from full cell iteration) with GPU results
+    int mismatch_count = 0;
+    for (unsigned v_idx = 0; v_idx < volumemesh->n_vertices(); ++v_idx) {
         // Collect opposite faces from our implementation (with orientation)
         std::vector<std::tuple<unsigned, unsigned, unsigned>> our_opposite_faces;
         unsigned offset = offsetCPU[v_idx];
@@ -457,13 +469,13 @@ void verify_against_openvolulemesh(const Geometry& mesh)
             our_opposite_faces.push_back({a, b, c});
         }
         
-        // Compare with orientation
-        std::cout << "V" << v_idx << ": OVM=" << ovm_opposite_faces.size() 
-                  << ", Ours=" << our_opposite_faces.size();
+        const auto& ovm_opposite_faces = ovm_opposite_by_vertex[v_idx];
         
         // Check if counts match
         if (ovm_opposite_faces.size() != our_opposite_faces.size()) {
-            std::cout << " ✗ COUNT MISMATCH!\n";
+            std::cout << "V" << v_idx << ": OVM=" << ovm_opposite_faces.size() 
+                      << ", Ours=" << our_opposite_faces.size() << " ✗ COUNT MISMATCH!\n";
+            mismatch_count++;
             EXPECT_EQ(ovm_opposite_faces.size(), our_opposite_faces.size()) 
                 << "Vertex " << v_idx << " opposite face count mismatch";
             continue;
@@ -487,26 +499,19 @@ void verify_against_openvolulemesh(const Geometry& mesh)
             }
             if (!found) {
                 all_match = false;
-                std::cout << " ✗ ORIENTATION MISMATCH!\n";
+                std::cout << "V" << v_idx << " ✗ ORIENTATION MISMATCH!\n";
                 std::cout << "  Missing oriented face: (" << a << "," << b << "," << c << ")\n";
-                std::cout << "  OVM faces:\n";
-                for (auto [oa, ob, oc] : ovm_opposite_faces) {
-                    std::cout << "    (" << oa << "," << ob << "," << oc << ")\n";
-                }
-                std::cout << "  Our faces:\n";
-                for (auto [ua, ub, uc] : our_opposite_faces) {
-                    std::cout << "    (" << ua << "," << ub << "," << uc << ")\n";
-                }
+                mismatch_count++;
                 break;
             }
         }
         
-        if (all_match) {
-            std::cout << " ✓\n";
-        }
-        
         EXPECT_TRUE(all_match) 
             << "Vertex " << v_idx << " opposite faces orientation mismatch";
+    }
+    
+    if (mismatch_count == 0) {
+        std::cout << "Full OVM validation successful for " << volumemesh->n_cells() << " tetrahedra\n";
     }
 }
 
@@ -659,6 +664,103 @@ TEST(VolumeAdjacency, TetgenCube)
     std::cout << "\n=== TetGen Cube ===\n";
     std::cout << "Tetrahedra: " << num_tets << "\n";
     std::cout << "Vertices: " << mesh_comp->get_vertices().size() << "\n";
+    
+    // Debug: Check how many times face (9,12,13) appears
+    {
+        // Print all tetrahedra in TetGen output
+        const auto& indices = mesh_comp->get_face_vertex_indices();
+        std::map<std::set<int>, int> tet_map;
+        
+        for (int t = 0; t < num_tets; ++t) {
+            int base = t * 12;
+            std::set<int> tet_verts;
+            for (int f = 0; f < 4; ++f) {
+                for (int v = 0; v < 3; ++v) {
+                    tet_verts.insert(indices[base + f * 3 + v]);
+                }
+            }
+            tet_map[tet_verts]++;
+        }
+        
+        // Check for specific tets
+        std::set<int> target_1 = {6, 8, 10, 11};
+        std::set<int> target_2 = {6, 8, 11, 10};
+        std::set<int> target_3 = {8, 10, 11, 6};
+        
+        bool found_6_8_10_11 = false;
+        if (tet_map.count(target_1)) {
+            std::cout << "✓ Tetrahedron {6,8,10,11} FOUND in TetGen output\n";
+            found_6_8_10_11 = true;
+        } else {
+            std::cout << "✗ Tetrahedron {6,8,10,11} NOT in TetGen output\n";
+        }
+        
+        if (!found_6_8_10_11) {
+            std::cout << "Available tets containing {6,8,10,11} vertices:\n";
+            for (const auto& [tet, count] : tet_map) {
+                bool has_6 = tet.count(6) > 0;
+                bool has_8 = tet.count(8) > 0;
+                bool has_10 = tet.count(10) > 0;
+                bool has_11 = tet.count(11) > 0;
+                
+                if ((has_6 + has_8 + has_10 + has_11) >= 3) {
+                    std::cout << "  {";
+                    bool first = true;
+                    for (int v : tet) {
+                        if (!first) std::cout << ",";
+                        std::cout << v;
+                        first = false;
+                    }
+                    std::cout << "}\n";
+                }
+            }
+        }
+    }
+
+    
+    // Debug: print all tetrahedra to check for (2,9,12,13)
+    {
+        const auto& indices = mesh_comp->get_face_vertex_indices();
+        std::map<std::set<int>, int> tet_sets;
+        for (int t = 0; t < num_tets; ++t) {
+            int base = t * 12; // 4 faces * 3 vertices
+            std::set<int> tet_vertices;
+            for (int f = 0; f < 4; ++f) {
+                for (int v = 0; v < 3; ++v) {
+                    tet_vertices.insert(indices[base + f * 3 + v]);
+                }
+            }
+            tet_sets[tet_vertices]++;
+        }
+        
+        // Check if (2,9,12,13) exists
+        std::set<int> target_tet = {2, 9, 12, 13};
+        if (tet_sets.count(target_tet)) {
+            std::cout << "WARNING: Tetrahedron (2,9,12,13) FOUND in TetGen output!\n";
+            // Print vertex coordinates
+            const auto& verts = mesh_comp->get_vertices();
+            std::cout << "  V2: (" << verts[2].x << ", " << verts[2].y << ", " << verts[2].z << ")\n";
+            std::cout << "  V9: (" << verts[9].x << ", " << verts[9].y << ", " << verts[9].z << ")\n";
+            std::cout << "  V12: (" << verts[12].x << ", " << verts[12].y << ", " << verts[12].z << ")\n";
+            std::cout << "  V13: (" << verts[13].x << ", " << verts[13].y << ", " << verts[13].z << ")\n";
+            
+            // Compute volume to check if degenerate
+            glm::vec3 v2 = verts[2];
+            glm::vec3 v9 = verts[9];
+            glm::vec3 v12 = verts[12];
+            glm::vec3 v13 = verts[13];
+            glm::vec3 a = v9 - v2;
+            glm::vec3 b = v12 - v2;
+            glm::vec3 c = v13 - v2;
+            float volume = std::abs(glm::dot(a, glm::cross(b, c))) / 6.0f;
+            std::cout << "  Tetrahedron volume: " << volume << "\n";
+            if (volume < 1e-6f) {
+                std::cout << "  -> DEGENERATE (near-zero volume)!\n";
+            }
+        } else {
+            std::cout << "Tetrahedron (2,9,12,13) NOT found in TetGen output (as expected)\n";
+        }
+    }
     
     EXPECT_GT(num_tets, 10) << "Should generate at least 10 tetrahedra";
     EXPECT_LT(num_tets, 2000) << "Should not generate excessive tetrahedra";
