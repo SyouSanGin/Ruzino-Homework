@@ -18,6 +18,7 @@ struct ReducedBasisStorage {
     std::unique_ptr<ReducedOrderedBasis> cached_basis;
     std::string cached_geometry_hash;
     int cached_num_modes = 0;
+    bool cached_use_libigl = false;
     bool initialized = false;
 };
 
@@ -27,6 +28,7 @@ NODE_DECLARATION_FUNCTION(reduced_basis)
     b.add_input<int>("Dimension").default_val(2).min(2).max(3);
     b.add_input<int>("Num Modes").default_val(10).min(1).max(100);
     b.add_input<int>("Mode Index").default_val(0).min(0).max(99);
+    b.add_input<bool>("Use libigl").default_val(false);
 
     b.add_input<std::string>("Attribute Name").default_val("mode");
 
@@ -44,6 +46,7 @@ NODE_EXECUTION_FUNCTION(reduced_basis)
     int dimension = params.get_input<int>("Dimension");
     int num_modes = params.get_input<int>("Num Modes");
     int mode_index = params.get_input<int>("Mode Index");
+    bool use_libigl = params.get_input<bool>("Use libigl");
     std::string attr_name = params.get_input<std::string>("Attribute Name");
 
     // Get mesh component
@@ -69,11 +72,12 @@ NODE_EXECUTION_FUNCTION(reduced_basis)
 
     // Compute or use cached reduced order basis
     if (!storage.initialized || storage.cached_num_modes != num_modes ||
-        !storage.cached_basis) {
+        storage.cached_use_libigl != use_libigl || !storage.cached_basis) {
         try {
             storage.cached_basis =
-                std::make_unique<ReducedOrderedBasis>(input_geom, num_modes, dimension);
+                std::make_unique<ReducedOrderedBasis>(input_geom, num_modes, dimension, use_libigl);
             storage.cached_num_modes = num_modes;
+            storage.cached_use_libigl = use_libigl;
             storage.initialized = true;
         }
         catch (const std::exception& e) {

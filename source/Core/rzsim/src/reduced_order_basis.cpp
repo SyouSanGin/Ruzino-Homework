@@ -7,6 +7,7 @@
 #include <Eigen/Sparse>
 #include <Spectra/SymEigsSolver.h>
 #include <Spectra/MatOp/SparseSymMatProd.h>
+#include <igl/cotmatrix.h>
 #include <iostream>
 
 RUZINO_NAMESPACE_OPEN_SCOPE
@@ -17,7 +18,8 @@ using VolumeMesh = OpenVolumeMesh::GeometricTetrahedralMeshV3d;
 ReducedOrderedBasis::ReducedOrderedBasis(
     const Geometry& g,
     int num_modes,
-    int dimension)
+    int dimension,
+    bool use_libigl)
 {
     // Get mesh component
     auto mesh_comp = g.get_component<MeshComponent>();
@@ -36,10 +38,16 @@ ReducedOrderedBasis::ReducedOrderedBasis(
         }
         spdlog::info(
             "Assembling 3D Laplacian for tetrahedral mesh (vertices={}, "
-            "cells={})",
+            "cells={}) using {}",
             volumemesh->n_vertices(),
-            volumemesh->n_cells());
-        assemble_laplacian_3d(volumemesh.get());
+            volumemesh->n_cells(),
+            use_libigl ? "libigl" : "custom implementation");
+        
+        if (use_libigl) {
+            assemble_laplacian_3d_libigl(volumemesh.get());
+        } else {
+            assemble_laplacian_3d(volumemesh.get());
+        }
     }
     else if (dimension == 2) {
         // 2D case: assemble Laplace operator for surface mesh (triangles/quads)
@@ -50,10 +58,16 @@ ReducedOrderedBasis::ReducedOrderedBasis(
                 "Invalid surface mesh for 2D reduced order basis");
         }
         spdlog::info(
-            "Assembling 2D Laplacian for surface mesh (vertices={}, faces={})",
+            "Assembling 2D Laplacian for surface mesh (vertices={}, faces={}) using {}",
             openmesh->n_vertices(),
-            openmesh->n_faces());
-        assemble_laplacian_2d(openmesh.get());
+            openmesh->n_faces(),
+            use_libigl ? "libigl" : "custom implementation");
+        
+        if (use_libigl) {
+            assemble_laplacian_2d_libigl(openmesh.get());
+        } else {
+            assemble_laplacian_2d(openmesh.get());
+        }
     }
     else {
         throw std::runtime_error("Dimension must be 2 (surface) or 3 (volume)");
@@ -377,6 +391,112 @@ void ReducedOrderedBasis::assemble_laplacian_2d(void* mesh_ptr)
     std::cout << "Assembled 2D cotangent Laplacian matrix: " << n_vertices
               << " x " << n_vertices << " with " << laplacian_matrix_.nonZeros()
               << " non-zeros" << std::endl;
+}
+
+void ReducedOrderedBasis::assemble_laplacian_2d_libigl(void* mesh_ptr)
+{
+    auto mesh = static_cast<PolyMesh*>(mesh_ptr);
+    int n_vertices = mesh->n_vertices();
+
+    // Convert OpenMesh to Eigen matrices for libigl
+    Eigen::MatrixXd V(n_vertices, 3);
+    std::vector<std::vector<int>> faces;
+
+    // Extract vertices
+    int v_idx = 0;
+    for (auto v_it : mesh->vertices()) {
+        auto pt = mesh->point(v_it);
+        V(v_idx, 0) = pt[0];
+        V(v_idx, 1) = pt[1];
+        V(v_idx, 2) = pt[2];
+        v_idx++;
+    }
+
+    // Extract faces (triangulate quads)
+    for (auto f_it : mesh->faces()) {
+        std::vector<int> face_verts;
+        for (auto fv_it : mesh->fv_range(f_it)) {
+            face_verts.push_back(fv_it.idx());
+        }
+
+        if (face_verts.size() == 3) {
+            faces.push_back(face_verts);
+        } else if (face_verts.size() == 4) {
+            // Split quad into two triangles
+            faces.push_back({face_verts[0], face_verts[1], face_verts[2]});
+            faces.push_back({face_verts[0], face_verts[2], face_verts[3]});
+        }
+    }
+
+    // Convert faces to Eigen matrix
+    Eigen::MatrixXi F(faces.size(), 3);
+    for (size_t i = 0; i < faces.size(); i++) {
+        F(i, 0) = faces[i][0];
+        F(i, 1) = faces[i][1];
+        F(i, 2) = faces[i][2];
+    }
+
+    // Use libigl to compute cotangent Laplacian
+    Eigen::SparseMatrix<double> L;
+    igl::cotmatrix(V, F, L);
+
+    // Negate to get positive semi-definite matrix (libigl's cotmatrix is negative)
+    laplacian_matrix_ = (-L).cast<float>();
+
+    std::cout << "Assembled 2D cotangent Laplacian matrix using libigl: " 
+              << n_vertices << " x " << n_vertices 
+              << " with " << laplacian_matrix_.nonZeros() << " non-zeros" << std::endl;
+}
+
+void ReducedOrderedBasis::assemble_laplacian_3d_libigl(void* mesh_ptr)
+{
+    auto mesh = static_cast<VolumeMesh*>(mesh_ptr);
+    int n_vertices = mesh->n_vertices();
+
+    // Convert OpenVolumeMesh to Eigen matrices for libigl
+    Eigen::MatrixXd V(n_vertices, 3);
+    std::vector<std::vector<int>> cells;
+
+    // Extract vertices
+    int v_idx = 0;
+    for (auto v_it = mesh->vertices_begin(); v_it != mesh->vertices_end(); ++v_it) {
+        auto pt = mesh->vertex(*v_it);
+        V(v_idx, 0) = pt[0];
+        V(v_idx, 1) = pt[1];
+        V(v_idx, 2) = pt[2];
+        v_idx++;
+    }
+
+    // Extract tetrahedral cells
+    for (auto c_it = mesh->cells_begin(); c_it != mesh->cells_end(); ++c_it) {
+        std::vector<int> cell_verts;
+        for (auto cv_it = mesh->cv_iter(*c_it); cv_it.valid(); ++cv_it) {
+            cell_verts.push_back((*cv_it).idx());
+        }
+        if (cell_verts.size() == 4) {
+            cells.push_back(cell_verts);
+        }
+    }
+
+    // Convert cells to Eigen matrix
+    Eigen::MatrixXi T(cells.size(), 4);
+    for (size_t i = 0; i < cells.size(); i++) {
+        T(i, 0) = cells[i][0];
+        T(i, 1) = cells[i][1];
+        T(i, 2) = cells[i][2];
+        T(i, 3) = cells[i][3];
+    }
+
+    // Use libigl to compute cotangent Laplacian for tetrahedral mesh
+    Eigen::SparseMatrix<double> L;
+    igl::cotmatrix(V, T, L);
+
+    // Negate to get positive semi-definite matrix
+    laplacian_matrix_ = (-L).cast<float>();
+
+    std::cout << "Assembled 3D cotangent Laplacian matrix using libigl: " 
+              << n_vertices << " x " << n_vertices 
+              << " with " << laplacian_matrix_.nonZeros() << " non-zeros" << std::endl;
 }
 
 RUZINO_NAMESPACE_CLOSE_SCOPE

@@ -48,8 +48,9 @@ TEST(ReducedOrderBasis, GridMesh)
     // Create a 2x2 grid
     Geometry mesh = create_grid(2, 1.0f);
 
+    std::cout << "\n========== Custom Implementation ==========\n";
     // Create reduced order basis (dimension=2 for surface mesh)
-    ReducedOrderedBasis rob(mesh, 5, 2);
+    ReducedOrderedBasis rob(mesh, 5, 2, false);
 
     // Verify we got the expected number of modes
     EXPECT_GT(rob.basis.size(), 0);
@@ -66,6 +67,20 @@ TEST(ReducedOrderBasis, GridMesh)
         EXPECT_GE(rob.eigenvalues[i], -1e-6)
             << "Eigenvalue " << i << " is negative";
     }
+
+    std::cout << "\n========== libigl Implementation ==========\n";
+    // Compare with libigl
+    ReducedOrderedBasis rob_libigl(mesh, 5, 2, true);
+    print_eigenmode_info(rob_libigl);
+
+    // Compare eigenvalues
+    std::cout << "\nEigenvalue comparison:\n";
+    for (size_t i = 0; i < std::min(rob.eigenvalues.size(), rob_libigl.eigenvalues.size()); i++) {
+        float diff = std::abs(rob.eigenvalues[i] - rob_libigl.eigenvalues[i]);
+        std::cout << "  Mode " << i << ": custom=" << rob.eigenvalues[i] 
+                  << ", libigl=" << rob_libigl.eigenvalues[i] 
+                  << ", diff=" << diff << std::endl;
+    }
 }
 
 // Test with a circle mesh
@@ -74,8 +89,9 @@ TEST(ReducedOrderBasis, CircleMesh)
     // Create a circle mesh
     Geometry mesh = create_circle_face(16, 1.0f);
 
+    std::cout << "\n========== Custom Implementation ==========\n";
     // Create reduced order basis with 8 modes (dimension=2 for surface mesh)
-    ReducedOrderedBasis rob(mesh, 8, 2);
+    ReducedOrderedBasis rob(mesh, 8, 2, false);
 
     EXPECT_GT(rob.basis.size(), 0);
     EXPECT_EQ(rob.eigenvalues.size(), rob.basis.size());
@@ -87,6 +103,19 @@ TEST(ReducedOrderBasis, CircleMesh)
     for (size_t i = 0; i < rob.eigenvalues.size(); i++) {
         EXPECT_GE(rob.eigenvalues[i], -1e-6f)
             << "Eigenvalue " << i << " should be non-negative";
+    }
+
+    std::cout << "\n========== libigl Implementation ==========\n";
+    ReducedOrderedBasis rob_libigl(mesh, 8, 2, true);
+    print_eigenmode_info(rob_libigl);
+
+    // Compare eigenvalues
+    std::cout << "\nEigenvalue comparison:\n";
+    for (size_t i = 0; i < std::min(rob.eigenvalues.size(), rob_libigl.eigenvalues.size()); i++) {
+        float diff = std::abs(rob.eigenvalues[i] - rob_libigl.eigenvalues[i]);
+        std::cout << "  Mode " << i << ": custom=" << rob.eigenvalues[i] 
+                  << ", libigl=" << rob_libigl.eigenvalues[i] 
+                  << ", diff=" << diff << std::endl;
     }
 }
 
@@ -126,8 +155,9 @@ TEST(ReducedOrderBasis, TetrahedralMesh)
 
     Geometry tet_mesh = geom_algorithm::tetrahedralize(sphere, params);
 
+    std::cout << "\n========== Custom Implementation ==========\n";
     // Create reduced order basis (dimension=3 for volume mesh)
-    ReducedOrderedBasis rob(tet_mesh, 10, 3);
+    ReducedOrderedBasis rob(tet_mesh, 10, 3, false);
 
     EXPECT_GT(rob.basis.size(), 0);
     EXPECT_EQ(rob.basis.size(), rob.eigenvalues.size());
@@ -143,6 +173,19 @@ TEST(ReducedOrderBasis, TetrahedralMesh)
 
     std::cout << "Tetrahedral mesh vertices: " << rob.laplacian_matrix_.rows()
               << std::endl;
+
+    std::cout << "\n========== libigl Implementation ==========\n";
+    ReducedOrderedBasis rob_libigl(tet_mesh, 10, 3, true);
+    print_eigenmode_info(rob_libigl);
+
+    // Compare eigenvalues
+    std::cout << "\nEigenvalue comparison:\n";
+    for (size_t i = 0; i < std::min(rob.eigenvalues.size(), rob_libigl.eigenvalues.size()); i++) {
+        float diff = std::abs(rob.eigenvalues[i] - rob_libigl.eigenvalues[i]);
+        std::cout << "  Mode " << i << ": custom=" << rob.eigenvalues[i] 
+                  << ", libigl=" << rob_libigl.eigenvalues[i] 
+                  << ", diff=" << diff << std::endl;
+    }
 }
 
 int main(int argc, char** argv)

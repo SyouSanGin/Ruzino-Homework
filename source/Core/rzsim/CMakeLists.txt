@@ -6,7 +6,7 @@ RUZINO_ADD_LIB(
 	rzsim
 	SHARED
 	WITH_CUDA
-	PUBLIC_LIBS RHI geometry rzsim_cuda
+	PUBLIC_LIBS RHI geometry rzsim_cuda igl_core
 	SKIP_DIRS nodes renderer_nodes geometry_nodes rzsim_cuda
 )
 
