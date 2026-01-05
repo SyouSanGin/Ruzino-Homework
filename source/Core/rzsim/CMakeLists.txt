@@ -16,3 +16,7 @@ target_include_directories(rzsim PUBLIC ${CMAKE_SOURCE_DIR}/external/spectra/inc
 add_subdirectory(nodes)
 add_subdirectory(renderer_nodes)
 add_subdirectory(geometry_nodes)
+
+# Tests
+add_executable(reduced_basis_simple tests/reduced_basis_simple.cpp)
+target_link_libraries(reduced_basis_simple PRIVATE rzsim geometry igl_core)

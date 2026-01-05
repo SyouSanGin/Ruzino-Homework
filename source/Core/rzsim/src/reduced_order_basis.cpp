@@ -84,6 +84,9 @@ void ReducedOrderedBasis::assemble_laplacian_3d(void* mesh_ptr)
 
     // Triplets for sparse matrix assembly
     std::vector<Eigen::Triplet<double>> triplets;
+    
+    // Debug: check first tetrahedron
+    bool first_tet = true;
 
     // Iterate over all cells (tetrahedra) and compute cotangent Laplacian
     for (auto c_it = mesh->cells_begin(); c_it != mesh->cells_end(); ++c_it) {
@@ -100,77 +103,137 @@ void ReducedOrderedBasis::assemble_laplacian_3d(void* mesh_ptr)
         if (vertex_ids.size() != 4)
             continue;  // Skip non-tetrahedral cells
 
-        // Compute cotangent weights for all 6 edges of the tetrahedron
-        // Edge (i,j) has cotangent weight from the two opposite vertices
-        for (int e = 0; e < 6; e++) {
-            int edge_pairs[6][2] = { { 0, 1 }, { 0, 2 }, { 0, 3 },
-                                     { 1, 2 }, { 1, 3 }, { 2, 3 } };
-            int i = edge_pairs[e][0];
-            int j = edge_pairs[e][1];
+        auto p0 = positions[0];
+        auto p1 = positions[1];
+        auto p2 = positions[2];
+        auto p3 = positions[3];
 
-            // Find the two vertices not on this edge
-            std::vector<int> opposite;
-            for (int k = 0; k < 4; k++) {
-                if (k != i && k != j) {
-                    opposite.push_back(k);
-                }
+        // Compute edge lengths following libigl's numbering:
+        // L[0] = edge 3-0, L[1] = edge 3-1, L[2] = edge 3-2
+        // L[3] = edge 1-2, L[4] = edge 2-0, L[5] = edge 0-1
+        double l[6];
+        l[0] = (p3 - p0).GetLength();
+        l[1] = (p3 - p1).GetLength();
+        l[2] = (p3 - p2).GetLength();
+        l[3] = (p1 - p2).GetLength();
+        l[4] = (p2 - p0).GetLength();
+        l[5] = (p0 - p1).GetLength();
+
+        // Compute face areas following libigl's numbering:
+        // Face 0 (opposite vertex 0): triangle 1-2-3, uses edges l[1], l[2], l[3]
+        // Face 1 (opposite vertex 1): triangle 0-2-3, uses edges l[0], l[2], l[4]
+        // Face 2 (opposite vertex 2): triangle 0-1-3, uses edges l[0], l[1], l[5]
+        // Face 3 (opposite vertex 3): triangle 0-1-2, uses edges l[3], l[4], l[5]
+        
+        auto heron = [](double a, double b, double c) {
+            double s = (a + b + c) / 2.0;
+            double area_sq = s * (s - a) * (s - b) * (s - c);
+            return std::sqrt(std::max(0.0, area_sq));
+        };
+
+        double s[4];  // face areas
+        s[0] = heron(l[1], l[2], l[3]);
+        s[1] = heron(l[0], l[2], l[4]);
+        s[2] = heron(l[0], l[1], l[5]);
+        s[3] = heron(l[3], l[4], l[5]);
+
+        // Compute volume
+        double vol = std::abs(((p1 - p0) * pxr::GfCross(p2 - p0, p3 - p0))) / 6.0;
+
+        if (vol < 1e-12)
+            continue;
+
+        // Compute H_sqr for dihedral angles using law of cosines
+        // Following libigl's dihedral_angles_intrinsic.cpp EXACTLY
+        double H_sqr[6];
+        H_sqr[0] = (1.0/16.0) * (4.0 * l[3]*l[3] * l[0]*l[0] - 
+                   ((l[1]*l[1] + l[4]*l[4]) - (l[2]*l[2] + l[5]*l[5])) * 
+                   ((l[1]*l[1] + l[4]*l[4]) - (l[2]*l[2] + l[5]*l[5])));
+        H_sqr[1] = (1.0/16.0) * (4.0 * l[4]*l[4] * l[1]*l[1] - 
+                   ((l[2]*l[2] + l[5]*l[5]) - (l[3]*l[3] + l[0]*l[0])) * 
+                   ((l[2]*l[2] + l[5]*l[5]) - (l[3]*l[3] + l[0]*l[0])));
+        H_sqr[2] = (1.0/16.0) * (4.0 * l[5]*l[5] * l[2]*l[2] - 
+                   ((l[3]*l[3] + l[0]*l[0]) - (l[4]*l[4] + l[1]*l[1])) * 
+                   ((l[3]*l[3] + l[0]*l[0]) - (l[4]*l[4] + l[1]*l[1])));
+        H_sqr[3] = (1.0/16.0) * (4.0 * l[0]*l[0] * l[3]*l[3] - 
+                   ((l[4]*l[4] + l[1]*l[1]) - (l[5]*l[5] + l[2]*l[2])) * 
+                   ((l[4]*l[4] + l[1]*l[1]) - (l[5]*l[5] + l[2]*l[2])));
+        H_sqr[4] = (1.0/16.0) * (4.0 * l[1]*l[1] * l[4]*l[4] - 
+                   ((l[5]*l[5] + l[2]*l[2]) - (l[0]*l[0] + l[3]*l[3])) * 
+                   ((l[5]*l[5] + l[2]*l[2]) - (l[0]*l[0] + l[3]*l[3])));
+        H_sqr[5] = (1.0/16.0) * (4.0 * l[2]*l[2] * l[5]*l[5] - 
+                   ((l[0]*l[0] + l[3]*l[3]) - (l[1]*l[1] + l[4]*l[4])) * 
+                   ((l[0]*l[0] + l[3]*l[3]) - (l[1]*l[1] + l[4]*l[4])));
+
+        // Compute cos of dihedral angles
+        double cos_theta[6];
+        cos_theta[0] = (H_sqr[0] - s[1]*s[1] - s[2]*s[2]) / (-2.0 * s[1] * s[2]);
+        cos_theta[1] = (H_sqr[1] - s[2]*s[2] - s[0]*s[0]) / (-2.0 * s[2] * s[0]);
+        cos_theta[2] = (H_sqr[2] - s[0]*s[0] - s[1]*s[1]) / (-2.0 * s[0] * s[1]);
+        cos_theta[3] = (H_sqr[3] - s[3]*s[3] - s[0]*s[0]) / (-2.0 * s[3] * s[0]);
+        cos_theta[4] = (H_sqr[4] - s[3]*s[3] - s[1]*s[1]) / (-2.0 * s[3] * s[1]);
+        cos_theta[5] = (H_sqr[5] - s[3]*s[3] - s[2]*s[2]) / (-2.0 * s[3] * s[2]);
+
+        // Compute sin of dihedral angles using volume formula
+        double sin_theta[6];
+        sin_theta[0] = vol / ((2.0/(3.0*l[0])) * s[1] * s[2]);
+        sin_theta[1] = vol / ((2.0/(3.0*l[1])) * s[2] * s[0]);
+        sin_theta[2] = vol / ((2.0/(3.0*l[2])) * s[0] * s[1]);
+        sin_theta[3] = vol / ((2.0/(3.0*l[3])) * s[3] * s[0]);
+        sin_theta[4] = vol / ((2.0/(3.0*l[4])) * s[3] * s[1]);
+        sin_theta[5] = vol / ((2.0/(3.0*l[5])) * s[3] * s[2]);
+
+        // Compute cotangent weights: C = (1/6) * edge_length * cot(dihedral_angle)
+        // Following libigl's cotmatrix_entries.cpp formula
+        double C[6];
+        for (int i = 0; i < 6; i++) {
+            if (std::abs(sin_theta[i]) > 1e-12) {
+                C[i] = (1.0 / 6.0) * l[i] * cos_theta[i] / sin_theta[i];
+            } else {
+                C[i] = 0.0;
             }
+        }
+            
+        if (first_tet) {
+            std::cout << "First tet vertex IDs: " << vertex_ids[0] << " " << vertex_ids[1] << " " << vertex_ids[2] << " " << vertex_ids[3] << std::endl;
+            std::cout << "First tet vertex positions:" << std::endl;
+            for (int i = 0; i < 4; i++) {
+                std::cout << "  v" << i << ": (" << positions[i][0] << ", " << positions[i][1] << ", " << positions[i][2] << ")" << std::endl;
+            }
+            std::cout << "Edge lengths (custom): l[0]=" << l[0] << " l[1]=" << l[1] << " l[2]=" << l[2] << " l[3]=" << l[3] << " l[4]=" << l[4] << " l[5]=" << l[5] << std::endl;
+            std::cout << "Face areas (custom): s[0]=" << s[0] << " s[1]=" << s[1] << " s[2]=" << s[2] << " s[3]=" << s[3] << std::endl;
+            std::cout << "Volume (custom): " << vol << std::endl;
+            std::cout << "H_sqr: " << H_sqr[0] << " " << H_sqr[1] << " " << H_sqr[2] << " " << H_sqr[3] << " " << H_sqr[4] << " " << H_sqr[5] << std::endl;
+            std::cout << "cos_theta: " << cos_theta[0] << " " << cos_theta[1] << " " << cos_theta[2] << " " << cos_theta[3] << " " << cos_theta[4] << " " << cos_theta[5] << std::endl;
+            std::cout << "sin_theta: " << sin_theta[0] << " " << sin_theta[1] << " " << sin_theta[2] << " " << sin_theta[3] << " " << sin_theta[4] << " " << sin_theta[5] << std::endl;
+            std::cout << "C (cotangent weights): " << C[0] << " " << C[1] << " " << C[2] << " " << C[3] << " " << C[4] << " " << C[5] << std::endl;
+            first_tet = false;
+        }
 
-            if (opposite.size() != 2)
-                continue;
+        // Add to Laplacian matrix following libigl's cotmatrix.cpp convention
+        // IMPORTANT: edges are defined as [1-2, 2-0, 0-1, 3-0, 3-1, 3-2]
+        // C values are computed in order [3-0, 3-1, 3-2, 1-2, 2-0, 0-1]
+        // These are opposite edge pairs! C[i] for edge i is applied to its opposite edge.
+        // This is correct for tetrahedral cotangent Laplacian: use opposite edge cotangents.
+        int edges[6][2] = {
+            {1, 2}, // edge 0: vertices 1-2 uses C[0] (computed for opposite edge 3-0)
+            {2, 0}, // edge 1: vertices 2-0 uses C[1] (computed for opposite edge 3-1)
+            {0, 1}, // edge 2: vertices 0-1 uses C[2] (computed for opposite edge 3-2)
+            {3, 0}, // edge 3: vertices 3-0 uses C[3] (computed for opposite edge 1-2)
+            {3, 1}, // edge 4: vertices 3-1 uses C[4] (computed for opposite edge 2-0)
+            {3, 2}  // edge 5: vertices 3-2 uses C[5] (computed for opposite edge 0-1)
+        };
+        
+        // Assembly: use C values directly (they correspond to opposite edges by design)
+        for (int e = 0; e < 6; e++) {
+            int i = vertex_ids[edges[e][0]];
+            int j = vertex_ids[edges[e][1]];
+            double weight = C[e];  // Use C directly, NOT C_reordered!
 
-            // Compute dihedral angle cotangent contribution
-            auto vi = positions[i];
-            auto vj = positions[j];
-            auto vk = positions[opposite[0]];
-            auto vl = positions[opposite[1]];
-
-            // Edge vector
-            auto eij = vj - vi;
-            double eij_len_sq =
-                eij[0] * eij[0] + eij[1] * eij[1] + eij[2] * eij[2];
-            double eij_len = std::sqrt(eij_len_sq);
-
-            if (eij_len < 1e-12)
-                continue;
-
-            // Vectors from edge to opposite vertices
-            auto eki = vk - vi;
-            auto eli = vl - vi;
-
-            // Cross products to get face normals
-            auto nk_x = eij[1] * eki[2] - eij[2] * eki[1];
-            auto nk_y = eij[2] * eki[0] - eij[0] * eki[2];
-            auto nk_z = eij[0] * eki[1] - eij[1] * eki[0];
-            double nk_norm = std::sqrt(nk_x * nk_x + nk_y * nk_y + nk_z * nk_z);
-
-            auto nl_x = eij[1] * eli[2] - eij[2] * eli[1];
-            auto nl_y = eij[2] * eli[0] - eij[0] * eli[2];
-            auto nl_z = eij[0] * eli[1] - eij[1] * eli[0];
-            double nl_norm = std::sqrt(nl_x * nl_x + nl_y * nl_y + nl_z * nl_z);
-
-            if (nk_norm < 1e-12 || nl_norm < 1e-12)
-                continue;
-
-            // Dihedral angle cosine
-            double cos_theta =
-                (nk_x * nl_x + nk_y * nl_y + nk_z * nl_z) / (nk_norm * nl_norm);
-            double sin_theta =
-                std::sqrt(std::max(0.0, 1.0 - cos_theta * cos_theta));
-
-            if (sin_theta < 1e-12)
-                continue;
-
-            double cot_theta = cos_theta / sin_theta;
-            double weight = cot_theta * eij_len / 6.0;
-
-            int vi_idx = vertex_ids[i];
-            int vj_idx = vertex_ids[j];
-
-            triplets.emplace_back(vi_idx, vj_idx, weight);
-            triplets.emplace_back(vj_idx, vi_idx, weight);
-            triplets.emplace_back(vi_idx, vi_idx, -weight);
-            triplets.emplace_back(vj_idx, vj_idx, -weight);
+            triplets.emplace_back(i, j, weight);
+            triplets.emplace_back(j, i, weight);
+            triplets.emplace_back(i, i, -weight);
+            triplets.emplace_back(j, j, -weight);
         }
     }
 
@@ -468,12 +531,21 @@ void ReducedOrderedBasis::assemble_laplacian_3d_libigl(void* mesh_ptr)
     }
 
     // Extract tetrahedral cells
+    bool first_tet = true;
     for (auto c_it = mesh->cells_begin(); c_it != mesh->cells_end(); ++c_it) {
         std::vector<int> cell_verts;
         for (auto cv_it = mesh->cv_iter(*c_it); cv_it.valid(); ++cv_it) {
             cell_verts.push_back((*cv_it).idx());
         }
         if (cell_verts.size() == 4) {
+            if (first_tet) {
+                std::cout << "libigl first tet vertex IDs: " << cell_verts[0] << " " << cell_verts[1] << " " << cell_verts[2] << " " << cell_verts[3] << std::endl;
+                std::cout << "libigl first tet vertex positions:" << std::endl;
+                for (int i = 0; i < 4; i++) {
+                    std::cout << "  v" << i << ": (" << V(cell_verts[i], 0) << ", " << V(cell_verts[i], 1) << ", " << V(cell_verts[i], 2) << ")" << std::endl;
+                }
+                first_tet = false;
+            }
             cells.push_back(cell_verts);
         }
     }
@@ -489,11 +561,26 @@ void ReducedOrderedBasis::assemble_laplacian_3d_libigl(void* mesh_ptr)
 
     // Use libigl to compute cotangent Laplacian for tetrahedral mesh
     Eigen::SparseMatrix<double> L;
+    
+    // DEBUG: Call cotmatrix_entries directly to see C values
+    Eigen::MatrixXd C_libigl;
+    igl::cotmatrix_entries(V, T, C_libigl);
+    std::cout << "libigl cotmatrix_entries first row C values: ";
+    for (int c = 0; c < 6; c++) {
+        std::cout << C_libigl(0, c) << " ";
+    }
+    std::cout << std::endl;
+    
     igl::cotmatrix(V, T, L);
 
     // Negate to get positive semi-definite matrix
     laplacian_matrix_ = (-L).cast<float>();
-
+    // DEBUG: Print first few matrix elements
+    std::cout << "First diagonal elements (libigl): ";
+    for (int i = 0; i < std::min(5, static_cast<int>(laplacian_matrix_.rows())); i++) {
+        std::cout << laplacian_matrix_.coeff(i, i) << " ";
+    }
+    std::cout << std::endl;
     std::cout << "Assembled 3D cotangent Laplacian matrix using libigl: " 
               << n_vertices << " x " << n_vertices 
               << " with " << laplacian_matrix_.nonZeros() << " non-zeros" << std::endl;
