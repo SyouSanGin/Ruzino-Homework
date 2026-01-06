@@ -241,7 +241,7 @@ static bool solve_newton(
         // Solve for Newton direction
         Eigen::BiCGSTAB<Eigen::SparseMatrix<double>> solver;
         solver.setMaxIterations(300);
-        solver.setTolerance(1e-6);
+        solver.setTolerance(1e-8);
         solver.compute(H);
 
         if (solver.info() != Eigen::Success) {
