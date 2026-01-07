@@ -1,3 +1,4 @@
+#include <cusparse.h>
 #include <stdio.h>
 #include <thrust/device_vector.h>
 #include <thrust/reduce.h>
@@ -6,7 +7,6 @@
 #include <thrust/transform.h>
 #include <thrust/transform_reduce.h>
 #include <thrust/unique.h>
-#include <cusparse.h>
 
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
@@ -17,7 +17,6 @@
 
 #include "RZSolver/Solver.hpp"
 #include "rzsim_cuda/mass_spring_implicit.cuh"
-
 
 RUZINO_NAMESPACE_OPEN_SCOPE
 
@@ -158,7 +157,7 @@ cuda::CUDALinearBufferHandle build_edge_set_gpu(
 
     // Copy unique edges to output buffer (interleaved format)
     auto output_buffer =
-        cuda::create_cuda_linear_buffer<int>(num_unique_edges * 2);
+        cuda::create_cuda_linear_buffer<int>(size_t(num_unique_edges * 2));
 
     int* output_ptr = output_buffer->get_device_ptr<int>();
 
@@ -542,10 +541,13 @@ CSRMatrix assemble_hessian_gpu(
     // Estimate maximum triplets: diagonal + springs * 36
     int max_triplets = num_particles * 3 + num_springs * 36;
 
-    auto row_indices_buf = cuda::create_cuda_linear_buffer<int>(max_triplets);
-    auto col_indices_buf = cuda::create_cuda_linear_buffer<int>(max_triplets);
-    auto values_buf = cuda::create_cuda_linear_buffer<float>(max_triplets);
-    auto triplet_count_buf = cuda::create_cuda_linear_buffer<int>(1);
+    auto row_indices_buf =
+        cuda::create_cuda_linear_buffer<int>((size_t)max_triplets);
+    auto col_indices_buf =
+        cuda::create_cuda_linear_buffer<int>((size_t)max_triplets);
+    auto values_buf =
+        cuda::create_cuda_linear_buffer<float>((size_t)max_triplets);
+    auto triplet_count_buf = cuda::create_cuda_linear_buffer<int>((size_t)1);
 
     // Initialize count to 0
     int zero = 0;
@@ -655,10 +657,13 @@ CSRMatrix assemble_hessian_gpu(
 
     // Create new buffers from thrust vectors
     // Note: explicitly cast to size_t to avoid matching the wrong overload
-    cuda::CUDALinearBufferHandle final_row_buf = cuda::create_cuda_linear_buffer<int>((size_t)nnz_unique);
-    cuda::CUDALinearBufferHandle final_col_buf = cuda::create_cuda_linear_buffer<int>((size_t)nnz_unique);
-    cuda::CUDALinearBufferHandle final_val_buf = cuda::create_cuda_linear_buffer<float>((size_t)nnz_unique);
-    
+    cuda::CUDALinearBufferHandle final_row_buf =
+        cuda::create_cuda_linear_buffer<int>((size_t)nnz_unique);
+    cuda::CUDALinearBufferHandle final_col_buf =
+        cuda::create_cuda_linear_buffer<int>((size_t)nnz_unique);
+    cuda::CUDALinearBufferHandle final_val_buf =
+        cuda::create_cuda_linear_buffer<float>((size_t)nnz_unique);
+
     // Copy data from thrust vectors to buffers
     cudaMemcpy(
         final_row_buf->get_device_ptr<int>(),
@@ -688,12 +693,12 @@ CSRMatrix assemble_hessian_gpu(
 
     // Convert COO to CSR format using cuSPARSE
     auto row_offsets_buf =
-        cuda::create_cuda_linear_buffer<int>(matrix_size + 1);
+        cuda::create_cuda_linear_buffer<int>(size_t(matrix_size + 1));
 
     // Use cuSPARSE for COO to CSR conversion
     cusparseHandle_t handle;
     cusparseCreate(&handle);
-    
+
     cusparseXcoo2csr(
         handle,
         final_row_buf->get_device_ptr<int>(),
@@ -701,7 +706,7 @@ CSRMatrix assemble_hessian_gpu(
         matrix_size,
         row_offsets_buf->get_device_ptr<int>(),
         CUSPARSE_INDEX_BASE_ZERO);
-    
+
     cusparseDestroy(handle);
     cudaDeviceSynchronize();
 
