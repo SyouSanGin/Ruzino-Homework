@@ -5,7 +5,9 @@
 #include "GCore/Components/MeshComponent.h"
 #include "GCore/Components/PointsComponent.h"
 #include "GCore/geom_payload.hpp"
+#include "RHI/internal/cuda_extension.hpp"
 #include "nodes/core/def/node_def.hpp"
+#include "rzsim_cuda/adjacency_map.cuh"
 #include "rzsim_cuda/mass_spring_implicit.cuh"
 #include "spdlog/spdlog.h"
 
@@ -13,65 +15,13 @@ NODE_DEF_OPEN_SCOPE
 
 // Storage for persistent GPU simulation state
 struct MassSpringImplicitGPUStorage {
-    // Device buffers (persistent across frames)
-    cuda::CUDALinearBufferHandle d_velocities;        // 3*n floats
-    cuda::CUDALinearBufferHandle d_rest_positions;    // 3*n floats
-    cuda::CUDALinearBufferHandle d_springs;           // 2*m ints
-    cuda::CUDALinearBufferHandle d_rest_lengths;      // m floats
-    cuda::CUDALinearBufferHandle d_spring_stiffness;  // m floats
+    cuda::CUDALinearBufferHandle positions_buffer;
+    cuda::CUDALinearBufferHandle velocities_buffer;
+    cuda::CUDALinearBufferHandle springs_buffer;
 
-    // Temporary device buffers
-    cuda::CUDALinearBufferHandle d_positions;   // 3*n floats
-    cuda::CUDALinearBufferHandle d_x_tilde;     // 3*n floats
-    cuda::CUDALinearBufferHandle d_gradient;    // 3*n floats
-    cuda::CUDALinearBufferHandle d_search_dir;  // 3*n floats
-    cuda::CUDALinearBufferHandle d_temp_vec;    // 3*n floats
-    cuda::CUDALinearBufferHandle d_M_diag;      // 3*n floats
-    cuda::CUDALinearBufferHandle d_f_ext;       // 3*n floats
-
-    // CSR format Hessian matrix
-    cuda::CUDALinearBufferHandle d_row_offsets;  // (3*n+1) ints
-    cuda::CUDALinearBufferHandle d_col_indices;  // nnz ints
-    cuda::CUDALinearBufferHandle d_values;       // nnz floats
-
-    int num_particles = 0;
-    int num_springs = 0;
-    int nnz = 0;  // Non-zeros in Hessian
-    bool initialized = false;
+    size_t geom_hash = 0;
 
     constexpr static bool has_storage = false;
-
-    void allocate(int n_particles, int n_springs, int hessian_nnz)
-    {
-        num_particles = n_particles;
-        num_springs = n_springs;
-        nnz = hessian_nnz;
-
-        // Allocate persistent buffers
-        d_velocities = cuda::create_cuda_linear_buffer<float>(3 * n_particles);
-        d_rest_positions =
-            cuda::create_cuda_linear_buffer<float>(3 * n_particles);
-        d_springs = cuda::create_cuda_linear_buffer<int>(2 * n_springs);
-        d_rest_lengths = cuda::create_cuda_linear_buffer<float>(n_springs);
-        d_spring_stiffness = cuda::create_cuda_linear_buffer<float>(n_springs);
-
-        // Allocate temporary buffers
-        d_positions = cuda::create_cuda_linear_buffer<float>(3 * n_particles);
-        d_x_tilde = cuda::create_cuda_linear_buffer<float>(3 * n_particles);
-        d_gradient = cuda::create_cuda_linear_buffer<float>(3 * n_particles);
-        d_search_dir = cuda::create_cuda_linear_buffer<float>(3 * n_particles);
-        d_temp_vec = cuda::create_cuda_linear_buffer<float>(3 * n_particles);
-        d_M_diag = cuda::create_cuda_linear_buffer<float>(3 * n_particles);
-        d_f_ext = cuda::create_cuda_linear_buffer<float>(3 * n_particles);
-
-        // Allocate CSR matrix buffers
-        d_row_offsets =
-            cuda::create_cuda_linear_buffer<int>(3 * n_particles + 1);
-        d_col_indices = cuda::create_cuda_linear_buffer<int>(hessian_nnz);
-        d_values = cuda::create_cuda_linear_buffer<float>(hessian_nnz);
-
-        initialized = true;
-    }
 };
 
 NODE_DECLARATION_FUNCTION(mass_spring_implicit_gpu)
@@ -156,48 +106,24 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
         return true;
     }
 
-    // Convert positions to flat array
-    std::vector<float> positions_flat(3 * num_particles);
-    for (int i = 0; i < num_particles; i++) {
-        positions_flat[3 * i] = positions[i].x;
-        positions_flat[3 * i + 1] = positions[i].y;
-        positions_flat[3 * i + 2] = positions[i].z;
+    if (input_geom.hash() != storage.geom_hash) {
+        // Write positions to GPU buffer
+        storage.positions_buffer = cuda::create_cuda_linear_buffer(positions);
+        storage.velocities_buffer =
+            cuda::create_cuda_linear_buffer<glm::vec3>(num_particles);
+
+        auto face_indices = mesh_component->get_face_vertex_indices();
+        auto triangles = cuda::create_cuda_linear_buffer(face_indices);
+
+        storage.springs_buffer =
+            rzsim_cuda::build_edge_set_gpu(storage.positions_buffer, triangles);
+
+        // Assert the size is 13968
     }
 
     // Prepare output arrays
     std::vector<float> positions_out(3 * num_particles);
     std::vector<float> velocities_out(3 * num_particles);
-
-    // Initialize storage if needed
-    if (!storage.initialized) {
-        // Estimate Hessian NNZ based on mesh connectivity
-        int hessian_nnz = 3 * num_particles * 10;  // ~10 neighbors per vertex
-        storage.allocate(num_particles, 0, hessian_nnz);
-    }
-
-    // Call GPU simulation, passing device pointer from storage
-    bool success = rzsim_cuda::mass_spring_implicit_gpu_step(
-        reinterpret_cast<float*>(storage.d_positions->get_device_ptr()),
-        positions_flat.data(),
-        num_particles,
-        face_vertex_indices.data(),
-        face_vertex_indices.size(),
-        face_counts.data(),
-        face_counts.size(),
-        positions_out.data(),
-        velocities_out.data(),
-        mass,
-        stiffness,
-        damping,
-        max_iterations,
-        tolerance,
-        gravity,
-        restitution,
-        dt);
-
-    if (!success) {
-        spdlog::warn("[GPU] Simulation failed");
-    }
 
     // Convert back to glm format
     std::vector<glm::vec3> new_positions(num_particles);

@@ -75,6 +75,8 @@ static void initialize_springs(
         storage.rest_lengths.push_back(rest_len);
         storage.spring_stiffness.push_back(stiffness);
     }
+
+    printf("Edge set has %zu springs\n", storage.springs.size());
 }
 
 // Helper: Compute total energy
