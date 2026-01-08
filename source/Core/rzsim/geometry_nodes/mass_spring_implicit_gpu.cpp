@@ -70,7 +70,7 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
     float damping = params.get_input<float>("Damping");
     int max_iterations = params.get_input<int>("Newton Iterations");
     float tolerance = params.get_input<float>("Newton Tolerance");
-    tolerance = std::max(tolerance, 1e-5f);
+    tolerance = std::max(tolerance, 1e-6f);
     float gravity = params.get_input<float>("Gravity");
     float restitution = params.get_input<float>("Ground Restitution");
     bool flip_normal = params.get_input<bool>("Flip Normal");
@@ -182,7 +182,6 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
         "[GPU] Starting Newton iterations, max_iter={}", max_iterations);
 
     bool converged = false;
-    float initial_grad_norm = 0.0f;
     for (int iter = 0; iter < max_iterations; iter++) {
         spdlog::info("[GPU] === Newton iteration {} ===", iter);
 
@@ -207,21 +206,6 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
         float grad_norm =
             rzsim_cuda::compute_vector_norm_gpu(d_gradients, num_particles * 3);
 
-        // Record initial gradient norm
-        if (iter == 0) {
-            initial_grad_norm = grad_norm;
-            spdlog::info(
-                "[GPU] Initial gradient norm={:.6e}, target={:.6e}",
-                initial_grad_norm,
-                initial_grad_norm / 1000.0f);
-        }
-
-        spdlog::info(
-            "[GPU] Iteration {}: grad_norm={:.6e}, ratio={:.6e}",
-            iter,
-            grad_norm,
-            grad_norm / (initial_grad_norm + 1e-20f));
-
         // Check for convergence
         if (!std::isfinite(grad_norm)) {
             spdlog::error(
@@ -229,14 +213,16 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
             break;
         }
 
+        auto dof = num_particles * 3;
+
+        grad_norm = grad_norm / dof;
+
         // Converge when gradient is 1/1000 of initial gradient
-        if (iter > 0 && grad_norm < initial_grad_norm / 100.0f) {
+        if (iter > 0 && grad_norm < tolerance) {
             spdlog::info(
-                "[GPU] Converged at iteration {} with grad_norm={:.6e} "
-                "(ratio={:.6e})",
+                "[GPU] Converged at iteration {} with grad_norm={:.6e}",
                 iter,
-                grad_norm,
-                grad_norm / initial_grad_norm);
+                grad_norm);
             converged = true;
             break;
         }
@@ -262,7 +248,7 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
 
         // Adaptive CG tolerance based on gradient magnitude
         // CG residual should be 0.1% of gradient norm, but not too small
-        float cg_tol = std::max(1e-8f, grad_norm * 1e-2f);
+        float cg_tol = std::max(1e-9f, grad_norm * 1e-4f);
 
         Ruzino::Solver::SolverConfig solver_config;
         solver_config.tolerance = cg_tol;
@@ -335,7 +321,7 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
             std::numeric_limits<float>::infinity();  // Start with +infinity so
                                                      // first check passes
 
-        while (E_candidate > E_current && alpha > 1e-8f && ls_iter < 20) {
+        while (E_candidate > E_current && ls_iter < 50) {
             // x_candidate = x_new + alpha * p (computed on GPU)
             rzsim_cuda::axpy_gpu(
                 alpha, d_p, d_x_new, d_x_candidate, num_particles * 3);
@@ -350,20 +336,6 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
                 stiffness,
                 dt,
                 num_particles);
-
-            // Log line search progress for first few iterations
-            if (iter < 3 || (iter < 10 && ls_iter < 3)) {
-                float energy_reduction = E_current - E_candidate;
-                spdlog::info(
-                    "[GPU] Iter {}, LS {}: alpha={:.3e}, E: {:.6e} -> {:.6e}, "
-                    "reduction={:.6e}",
-                    iter,
-                    ls_iter,
-                    alpha,
-                    E_current,
-                    E_candidate,
-                    energy_reduction);
-            }
 
             if (E_candidate <= E_current) {
                 // Accept step - copy result directly on GPU
@@ -389,12 +361,13 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
             ls_iter++;
         }
 
-        if (alpha < 1e-8f) {
+        if (alpha < 1e-7f) {
             spdlog::warn(
                 "[GPU] Iter {}: Line search failed after {} attempts, could "
-                "not reduce energy",
+                "not reduce energy (final alpha={:.3e})",
                 iter,
-                ls_iter);
+                ls_iter,
+                alpha);
             // Do not accept step if we couldn't find energy descent
             // This prevents divergence - we should break from Newton iterations
             break;
