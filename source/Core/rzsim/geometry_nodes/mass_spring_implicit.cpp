@@ -253,8 +253,18 @@ static bool solve_newton(
             spring_stiffness,
             dt);
 
-        for (int i = 0; i < std::min(10ll, grad.size()); i++) {
-            spdlog::info("  grad[{}] = {:.6e}", i, grad[i]);
+        // Print full gradient for small problems (iter 0 and 1)
+        if ((iter == 0 || iter == 1) && grad.size() <= 100) {
+            printf("[CPU] === Full gradient at iter %d ===\n", iter);
+            for (int i = 0; i < grad.size(); i++) {
+                printf("  grad[%d] = %.12e\n", i, grad[i]);
+            }
+            printf("[CPU] === End gradient ===\n");
+        }
+        else if (iter == 0) {
+            for (int i = 0; i < std::min(10ll, grad.size()); i++) {
+                spdlog::info("  grad[{}] = {:.6e}", i, grad[i]);
+            }
         }
 
         double grad_inf_norm = grad.lpNorm<Eigen::Infinity>();
@@ -284,27 +294,53 @@ static bool solve_newton(
             dt,
             num_particles);
 
-        printf("[CPU] Assembling Hessian: %d particles, %zu springs\n", num_particles, springs.size());
+        printf(
+            "[CPU] Assembling Hessian: %d particles, %zu springs\n",
+            num_particles,
+            springs.size());
         printf("[CPU] dt = %.6f, stiffness = %.6f\n", dt, spring_stiffness[0]);
         printf("[CPU] Matrix size: %lld x %lld\n", H.rows(), H.cols());
         spdlog::info("[CPU] Hessian non-zeros: {}", H.nonZeros());
-        
-        // Print first 10 non-zero entries (in COO format for comparison)
-        printf("[CPU] First 10 non-zero entries (COO format):\n");
-        int count = 0;
-        for (int k = 0; k < H.outerSize() && count < 10; ++k) {
-            for (Eigen::SparseMatrix<double>::InnerIterator it(H, k); it && count < 10; ++it, ++count) {
-                printf("  (%lld, %lld) = %.6e\n", it.row(), it.col(), it.value());
+
+        // Print all entries for iter 0 and 1 if small matrix
+        if (H.rows() <= 100 && (iter == 0 || iter == 1)) {
+            printf("[CPU] === Full Hessian at iter %d ===\n", iter);
+            for (int k = 0; k < H.outerSize(); ++k) {
+                for (Eigen::SparseMatrix<double>::InnerIterator it(H, k); it;
+                     ++it) {
+                    printf(
+                        "  H(%lld, %lld) = %.12e\n",
+                        it.row(),
+                        it.col(),
+                        it.value());
+                }
             }
+            printf("[CPU] === End Hessian ===\n");
         }
-        
-        // Print CSR format info (Eigen uses CSR by default for row-major)
-        printf("[CPU] CSR Format (Eigen internal):\n");
-        printf("  First 5 row_offsets: ");
-        for (int i = 0; i < std::min(5, (int)H.rows() + 1); i++) {
-            printf("%d ", (int)H.outerIndexPtr()[i]);
+        else if (iter == 0) {
+            // Print first 10 non-zero entries (in COO format for comparison)
+            printf("[CPU] First 10 non-zero entries (COO format):\n");
+            int count = 0;
+            for (int k = 0; k < H.outerSize() && count < 10; ++k) {
+                for (Eigen::SparseMatrix<double>::InnerIterator it(H, k);
+                     it && count < 10;
+                     ++it, ++count) {
+                    printf(
+                        "  (%lld, %lld) = %.6e\n",
+                        it.row(),
+                        it.col(),
+                        it.value());
+                }
+            }
+
+            // Print CSR format info (Eigen uses CSR by default for row-major)
+            printf("[CPU] CSR Format (Eigen internal):\n");
+            printf("  First 5 row_offsets: ");
+            for (int i = 0; i < std::min(5, (int)H.rows() + 1); i++) {
+                printf("%d ", (int)H.outerIndexPtr()[i]);
+            }
+            printf("\n");
         }
-        printf("\n");
 
         // Solve for Newton direction
         Eigen::ConjugateGradient<Eigen::SparseMatrix<double>> solver;
@@ -323,7 +359,14 @@ static bool solve_newton(
             spdlog::warn("Newton solve failed at iteration {}", iter);
             return false;
         }
-
+        // Print full p for small problems (iter 0 and 1)
+        if ((iter == 0 || iter == 1) && p.size() <= 100) {
+            printf("[CPU] === Full Newton direction p at iter %d ===\n", iter);
+            for (int i = 0; i < p.size(); i++) {
+                printf("  p[%d] = %.12e\n", i, p[i]);
+            }
+            printf("[CPU] === End p ===\n");
+        }
         spdlog::debug(
             "Newton iter {}: grad_norm={:.6e}, solver_iters={}",
             iter,

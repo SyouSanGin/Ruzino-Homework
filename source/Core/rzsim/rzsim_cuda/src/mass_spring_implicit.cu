@@ -524,8 +524,9 @@ __global__ void compute_spring_hessian_kernel(
         2.0f * k / l0_sq *
         (2.0f * outer + (diff_sq - l0_sq) * Eigen::Matrix3f::Identity());
 
+    // TEMPORARY: Disable PSD projection to debug
     // Use custom PSD projection (Eigen's solver doesn't work on CUDA device)
-    H_diff = project_psd_custom(H_diff);
+    // H_diff = project_psd_custom(H_diff);
 
     // Scale by dt^2
     float scale = dt * dt;
