@@ -204,13 +204,9 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
             num_particles,
             d_gradients);
 
-        // Check gradient norm for convergence
-        auto grad_host = d_gradients->get_host_vector<float>();
-        float grad_norm = 0.0f;
-        for (int i = 0; i < num_particles * 3; i++) {
-            grad_norm += grad_host[i] * grad_host[i];
-        }
-        grad_norm = std::sqrt(grad_norm);
+        // Check gradient norm for convergence (computed on GPU)
+        float grad_norm = rzsim_cuda::compute_vector_norm_gpu(
+            d_gradients, num_particles * 3);
 
         // Record initial gradient norm
         if (iter == 0) {
@@ -284,30 +280,11 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
                 grad_norm);
         }
 
-        // Negate gradient for RHS: -grad
+        // Negate gradient for RHS: -grad (do on GPU)
         auto d_neg_grad =
             cuda::create_cuda_linear_buffer<float>(num_particles * 3);
-        std::vector<float> neg_grad_host(num_particles * 3);
-        for (int i = 0; i < num_particles * 3; i++) {
-            neg_grad_host[i] =
-                -grad_host[i];  // Reuse grad_host from convergence check
-        }
-        d_neg_grad->assign_host_vector(neg_grad_host);
-
-        if (iter == 0) {
-            float neg_grad_norm = 0.0f;
-            for (int i = 0; i < num_particles * 3; i++) {
-                neg_grad_norm += neg_grad_host[i] * neg_grad_host[i];
-            }
-            neg_grad_norm = std::sqrt(neg_grad_norm);
-            spdlog::info(
-                "[GPU] CG RHS ||-grad|| = {:.6e}, grad[0:3]=({:.6f}, {:.6f}, "
-                "{:.6f})",
-                neg_grad_norm,
-                -grad_host[0],
-                -grad_host[1],
-                -grad_host[2]);
-        }
+        
+        rzsim_cuda::negate_gpu(d_gradients, d_neg_grad, num_particles * 3);
 
         // Solve on GPU
         auto result = solver->solveGPU(
@@ -320,15 +297,11 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
             reinterpret_cast<float*>(d_p->get_device_ptr()),
             solver_config);
 
-        // Check if Newton direction is valid
-        auto p_host = d_p->get_host_vector<float>();
-        float p_dot_grad = 0.0f;
-        float p_norm_sq = 0.0f;
-        for (int i = 0; i < num_particles * 3; i++) {
-            p_dot_grad += p_host[i] * grad_host[i];
-            p_norm_sq += p_host[i] * p_host[i];
-        }
-        float p_norm = std::sqrt(p_norm_sq);
+        // Check if Newton direction is valid (computed on GPU)
+        float p_dot_grad = rzsim_cuda::compute_dot_product_gpu(
+            d_p, d_gradients, num_particles * 3);
+        float p_norm = rzsim_cuda::compute_vector_norm_gpu(
+            d_p, num_particles * 3);
         float cosine = p_dot_grad / (p_norm * grad_norm + 1e-20f);
 
         if (!result.converged) {
@@ -391,13 +364,9 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
                                                      // first check passes
 
         while (E_candidate > E_current && alpha > 1e-8f && ls_iter < 20) {
-            // x_candidate = x_new + alpha * p
-            auto x_new_host = d_x_new->get_host_vector<float>();
-            std::vector<float> x_cand_host(num_particles * 3);
-            for (int i = 0; i < num_particles * 3; i++) {
-                x_cand_host[i] = x_new_host[i] + alpha * p_host[i];
-            }
-            d_x_candidate->assign_host_vector(x_cand_host);
+            // x_candidate = x_new + alpha * p (computed on GPU)
+            rzsim_cuda::axpy_gpu(
+                alpha, d_p, d_x_new, d_x_candidate, num_particles * 3);
 
             E_candidate = rzsim_cuda::compute_energy_gpu(
                 d_x_candidate,
@@ -425,7 +394,7 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
             }
 
             if (E_candidate <= E_current) {
-                // Accept step
+                // Accept step - copy result directly on GPU
                 spdlog::info(
                     "[GPU] Iter {}: Line search accepted at LS iter {}, "
                     "alpha={:.3e}",
@@ -433,8 +402,14 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
                     ls_iter,
                     alpha);
 
-                auto x_cand_final = d_x_candidate->get_host_vector<float>();
-                d_x_new->assign_host_vector(x_cand_final);
+                // Copy d_x_candidate to d_x_new on GPU
+                float* x_cand_ptr = d_x_candidate->get_device_ptr<float>();
+                float* x_new_ptr = d_x_new->get_device_ptr<float>();
+                cudaMemcpy(
+                    x_new_ptr,
+                    x_cand_ptr,
+                    num_particles * 3 * sizeof(float),
+                    cudaMemcpyDeviceToDevice);
                 break;
             }
 

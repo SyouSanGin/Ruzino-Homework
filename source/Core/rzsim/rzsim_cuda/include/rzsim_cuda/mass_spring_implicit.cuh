@@ -78,6 +78,32 @@ float compute_energy_gpu(
     float dt,
     int num_particles);
 
+// GPU vector operations to avoid CPU-GPU transfers
+RZSIM_CUDA_API
+float compute_vector_norm_gpu(
+    cuda::CUDALinearBufferHandle vec,
+    int size);
+
+RZSIM_CUDA_API
+float compute_dot_product_gpu(
+    cuda::CUDALinearBufferHandle vec1,
+    cuda::CUDALinearBufferHandle vec2,
+    int size);
+
+RZSIM_CUDA_API
+void axpy_gpu(
+    float alpha,
+    cuda::CUDALinearBufferHandle x,
+    cuda::CUDALinearBufferHandle y,
+    cuda::CUDALinearBufferHandle result,
+    int size);
+
+RZSIM_CUDA_API
+void negate_gpu(
+    cuda::CUDALinearBufferHandle in,
+    cuda::CUDALinearBufferHandle out,
+    int size);
+
 }  // namespace rzsim_cuda
 
 RUZINO_NAMESPACE_CLOSE_SCOPE

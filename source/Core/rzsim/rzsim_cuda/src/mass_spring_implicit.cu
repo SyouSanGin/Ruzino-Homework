@@ -1,6 +1,7 @@
 #include <cusparse.h>
 #include <stdio.h>
 #include <thrust/device_vector.h>
+#include <thrust/inner_product.h>
 #include <thrust/reduce.h>
 #include <thrust/remove.h>
 #include <thrust/sort.h>
@@ -920,6 +921,97 @@ float compute_energy_gpu(
     float total_energy = E_inertial + dt * dt * E_spring + E_potential;
 
     return total_energy;
+}
+
+// Functors for thrust operations (must be defined outside functions for CUDA compatibility)
+struct square_op {
+    __device__ float operator()(float x) const { return x * x; }
+};
+
+// Kernel for axpy: result = y + alpha * x
+__global__ void axpy_kernel(float alpha, const float* x, const float* y, float* result, int size)
+{
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid < size) {
+        result[tid] = y[tid] + alpha * x[tid];
+    }
+}
+
+// Kernel for negation: out = -in
+__global__ void negate_kernel(const float* in, float* out, int size)
+{
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid < size) {
+        out[tid] = -in[tid];
+    }
+}
+
+// GPU vector operations to avoid CPU-GPU transfers
+float compute_vector_norm_gpu(cuda::CUDALinearBufferHandle vec, int size)
+{
+    float* vec_ptr = reinterpret_cast<float*>(vec->get_device_ptr());
+    thrust::device_ptr<float> d_vec(vec_ptr);
+    
+    // Compute sum of squares using functor
+    float sum_sq = thrust::transform_reduce(
+        thrust::device,
+        d_vec,
+        d_vec + size,
+        square_op(),
+        0.0f,
+        thrust::plus<float>());
+    
+    return sqrtf(sum_sq);
+}
+
+float compute_dot_product_gpu(
+    cuda::CUDALinearBufferHandle vec1,
+    cuda::CUDALinearBufferHandle vec2,
+    int size)
+{
+    float* vec1_ptr = reinterpret_cast<float*>(vec1->get_device_ptr());
+    float* vec2_ptr = reinterpret_cast<float*>(vec2->get_device_ptr());
+    
+    thrust::device_ptr<float> d_vec1(vec1_ptr);
+    thrust::device_ptr<float> d_vec2(vec2_ptr);
+    
+    return thrust::inner_product(
+        thrust::device,
+        d_vec1,
+        d_vec1 + size,
+        d_vec2,
+        0.0f);
+}
+
+void axpy_gpu(
+    float alpha,
+    cuda::CUDALinearBufferHandle x,
+    cuda::CUDALinearBufferHandle y,
+    cuda::CUDALinearBufferHandle result,
+    int size)
+{
+    float* x_ptr = reinterpret_cast<float*>(x->get_device_ptr());
+    float* y_ptr = reinterpret_cast<float*>(y->get_device_ptr());
+    float* result_ptr = reinterpret_cast<float*>(result->get_device_ptr());
+    
+    int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+    axpy_kernel<<<num_blocks, block_size>>>(alpha, x_ptr, y_ptr, result_ptr, size);
+    cudaDeviceSynchronize();
+}
+
+void negate_gpu(
+    cuda::CUDALinearBufferHandle in,
+    cuda::CUDALinearBufferHandle out,
+    int size)
+{
+    float* in_ptr = reinterpret_cast<float*>(in->get_device_ptr());
+    float* out_ptr = reinterpret_cast<float*>(out->get_device_ptr());
+    
+    int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+    negate_kernel<<<num_blocks, block_size>>>(in_ptr, out_ptr, size);
+    cudaDeviceSynchronize();
 }
 
 }  // namespace rzsim_cuda
