@@ -187,21 +187,12 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
         velocities_debug[1].y,
         velocities_debug[1].z);
 
-    // Compute gradient
-    rzsim_cuda::compute_gradient_gpu(
-        d_positions,
-        d_next_positions,
-        d_M_diag,
-        d_f_ext,
-        d_springs,
-        d_rest_lengths,
-        stiffness,
-        dt,
-        num_particles,
-        d_gradients);
-
     // Newton's method iterations
-    auto d_x_new = d_next_positions;  // Use next_positions as x_new
+    auto d_x_new = cuda::create_cuda_linear_buffer<float>(num_particles * 3);
+    // Initialize x_new = x_tilde (explicit step result)
+    auto x_tilde_init = d_next_positions->get_host_vector<float>();
+    d_x_new->assign_host_vector(x_tilde_init);
+    
     auto d_p = cuda::create_cuda_linear_buffer<float>(num_particles * 3);  // Newton direction
     
     spdlog::info("[GPU] Starting Newton iterations, max_iter={}, tol={:.2e}", max_iterations, tolerance);
@@ -283,6 +274,16 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
         }
         d_neg_grad->assign_host_vector(neg_grad_host);
         
+        if (iter == 0) {
+            float neg_grad_norm = 0.0f;
+            for (int i = 0; i < num_particles * 3; i++) {
+                neg_grad_norm += neg_grad_host[i] * neg_grad_host[i];
+            }
+            neg_grad_norm = std::sqrt(neg_grad_norm);
+            spdlog::info("[GPU] CG RHS ||-grad|| = {:.6e}, grad[0:3]=({:.6f}, {:.6f}, {:.6f})",
+                         neg_grad_norm, -grad_host[0], -grad_host[1], -grad_host[2]);
+        }
+        
         // Solve on GPU
         auto result = solver->solveGPU(
             hessian.num_rows,
@@ -294,15 +295,98 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
             reinterpret_cast<float*>(d_p->get_device_ptr()),
             solver_config);
         
+        // Debug: check what CG actually wrote to d_p
+        if (iter == 0) {
+            auto p_after_cg = d_p->get_host_vector<float>();
+            spdlog::info("[GPU] After CG: p[0:6] = ({:.6e}, {:.6e}, {:.6e}, {:.6e}, {:.6e}, {:.6e})",
+                         p_after_cg[0], p_after_cg[1], p_after_cg[2], p_after_cg[3], p_after_cg[4], p_after_cg[5]);
+        }
+        
         if (!result.converged) {
-            spdlog::warn(
+            spdlog::error(
                 "[GPU] Newton solve failed at iteration {}: {} (iters={}, residual={:.6e})",
                 iter,
                 result.error_message,
                 result.iterations,
                 result.final_residual);
+            
+            // Test with CPU solver for comparison
+            if (iter == 0) {
+                spdlog::info("[GPU] Testing same system with CPU Eigen solver...");
+                
+                // Copy matrix to host
+                auto row_offsets_host = hessian.row_offsets->get_host_vector<int>();
+                auto col_indices_host = hessian.col_indices->get_host_vector<int>();
+                auto values_host = hessian.values->get_host_vector<float>();
+                
+                // Convert CSR to Eigen sparse matrix
+                std::vector<Eigen::Triplet<float>> triplets;
+                for (int i = 0; i < hessian.num_rows; i++) {
+                    for (int j = row_offsets_host[i]; j < row_offsets_host[i+1]; j++) {
+                        triplets.emplace_back(i, col_indices_host[j], values_host[j]);
+                    }
+                }
+                
+                Eigen::SparseMatrix<float> H_cpu(hessian.num_rows, hessian.num_cols);
+                H_cpu.setFromTriplets(triplets.begin(), triplets.end());
+                
+                // Setup RHS
+                Eigen::VectorXf b_cpu(num_particles * 3);
+                for (int i = 0; i < num_particles * 3; i++) {
+                    b_cpu[i] = neg_grad_host[i];
+                }
+                
+                // Solve with Eigen CG
+                Eigen::ConjugateGradient<Eigen::SparseMatrix<float>, Eigen::Lower|Eigen::Upper> cg_cpu;
+                cg_cpu.setMaxIterations(1000);
+                cg_cpu.setTolerance(0.1f);
+                cg_cpu.compute(H_cpu);
+                
+                Eigen::VectorXf x_cpu = cg_cpu.solve(b_cpu);
+                
+                spdlog::info(
+                    "[CPU CG] iterations={}, error={:.6e}, ||solution||={:.6e}",
+                    cg_cpu.iterations(),
+                    cg_cpu.error(),
+                    x_cpu.norm());
+                
+                // Check if solutions differ
+                auto p_gpu_host = d_p->get_host_vector<float>();
+                float diff_norm = 0.0f;
+                for (int i = 0; i < num_particles * 3; i++) {
+                    float d = p_gpu_host[i] - x_cpu[i];
+                    diff_norm += d * d;
+                }
+                diff_norm = std::sqrt(diff_norm);
+                spdlog::info("[CPU vs GPU] Solution difference norm: {:.6e}", diff_norm);
+            }
+            
             break;
         }
+        
+        // Check if Newton direction is valid
+        auto p_check = d_p->get_host_vector<float>();
+        float p_norm = 0.0f;
+        for (int i = 0; i < num_particles * 3; i++) {
+            p_norm += p_check[i] * p_check[i];
+        }
+        p_norm = std::sqrt(p_norm);
+        
+        if (iter == 0) {
+            spdlog::info(
+                "[GPU] CG converged: iters={}, residual={:.6e}, ||p||={:.6e}",
+                result.iterations,
+                result.final_residual,
+                p_norm);
+        }
+        
+        if (p_norm < 1e-12f) {
+            spdlog::warn("[GPU] Newton direction is nearly zero (||p||={:.6e})", p_norm);
+            converged = true;
+            break;
+        }
+        
+        spdlog::info("[GPU] About to start line search for iter {}, p_norm={:.6e}", iter, p_norm);
         
         spdlog::debug(
             "[GPU] Newton iter {}: grad_norm={:.6e}, CG_iters={}, residual={:.6e}",
@@ -310,6 +394,8 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
             grad_inf_norm / dt,
             result.iterations,
             result.final_residual);
+        
+        spdlog::info("[GPU] Before line search at iter {}", iter);
         
         // Line search with energy descent
         float E_current = rzsim_cuda::compute_energy_gpu(
@@ -322,6 +408,18 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
             stiffness,
             dt,
             num_particles);
+        
+        if (iter == 0) {
+            spdlog::info("[GPU] Initial energy E_current = {:.6e}", E_current);
+            
+            // Debug: check first few values of x_new and p
+            auto x_new_debug = d_x_new->get_host_vector<float>();
+            auto p_debug = d_p->get_host_vector<float>();
+            spdlog::info("[GPU] x_new[0:3] = ({:.6f}, {:.6f}, {:.6f})", 
+                         x_new_debug[0], x_new_debug[1], x_new_debug[2]);
+            spdlog::info("[GPU] p[0:3] = ({:.6f}, {:.6f}, {:.6f})", 
+                         p_debug[0], p_debug[1], p_debug[2]);
+        }
         
         float alpha = 1.0f;
         auto d_x_candidate = cuda::create_cuda_linear_buffer<float>(num_particles * 3);
@@ -348,6 +446,27 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
                 dt,
                 num_particles);
             
+            if (iter == 0 && ls_iter < 5) {
+                // Check for NaN/Inf in x_candidate
+                bool has_nan = false;
+                float max_val = 0.0f;
+                for (int i = 0; i < std::min(30, num_particles * 3); i++) {
+                    if (!std::isfinite(x_cand_host[i])) {
+                        has_nan = true;
+                        spdlog::error("[GPU] x_candidate[{}] = {} (NOT FINITE!)", i, x_cand_host[i]);
+                    }
+                    max_val = std::max(max_val, std::abs(x_cand_host[i]));
+                }
+                spdlog::info("[GPU] Line search {}: alpha={:.3e}, E_candidate={:.6e} (vs E_current={:.6e}), max|x_cand|={:.3e}{}",
+                       ls_iter, alpha, E_candidate, E_current, max_val, has_nan ? " <-- HAS NaN/Inf!" : "");
+                
+                if (ls_iter == 0) {
+                    spdlog::info("[GPU] x_cand[0:6] = ({:.6f}, {:.6f}, {:.6f}, {:.6f}, {:.6f}, {:.6f})",
+                                 x_cand_host[0], x_cand_host[1], x_cand_host[2],
+                                 x_cand_host[3], x_cand_host[4], x_cand_host[5]);
+                }
+            }
+            
             if (E_candidate <= E_current || alpha < 1e-8f) {
                 if (alpha < 1e-8f && E_candidate > E_current) {
                     spdlog::warn("[GPU] Line search failed to reduce energy");
@@ -362,6 +481,18 @@ NODE_EXECUTION_FUNCTION(mass_spring_implicit_gpu)
                 // Accept step
                 auto x_cand_final = d_x_candidate->get_host_vector<float>();
                 d_x_new->assign_host_vector(x_cand_final);
+                
+                // Debug: check if x_new actually changed
+                if (iter == 0) {
+                    auto x_tilde_check = d_next_positions->get_host_vector<float>();
+                    float diff = 0.0f;
+                    for (int i = 0; i < std::min(9, num_particles * 3); i++) {
+                        diff += std::abs(x_cand_final[i] - x_tilde_check[i]);
+                    }
+                    spdlog::info("[GPU] Line search accepted: alpha={:.3e}, E: {:.6e} -> {:.6e}, ||x_new - x_tilde||_1={:.6e}",
+                           alpha, E_current, E_candidate, diff);
+                }
+                
                 break;
             }
             
