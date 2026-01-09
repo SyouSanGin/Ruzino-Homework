@@ -681,6 +681,7 @@ __global__ void build_mass_positions_kernel(
 }
 
 // Kernel to build spring positions using vertex iteration and binary search
+// For each adjacency index, store 36 positions if j > i, otherwise store -1
 __global__ void build_spring_positions_kernel(
     const int* unique_rows,
     const int* unique_cols,
@@ -688,9 +689,8 @@ __global__ void build_spring_positions_kernel(
     const int* vertex_offsets,
     int nnz,
     int num_particles,
-    int* spring_positions,  // Output: flattened array storing 36 positions per
-                            // edge
-    int* write_offset)      // Atomic counter for output position
+    int total_adjacencies,
+    int* spring_positions)  // Output: [total_adjacencies * 36]
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= num_particles)
@@ -701,13 +701,19 @@ __global__ void build_spring_positions_kernel(
 
     for (int idx = start; idx < end; idx++) {
         int j = adjacent_vertices[idx];
-        if (j <= i)
-            continue;  // Only process j > i
+        int base_out = idx * 36;
+        
+        if (j <= i) {
+            // Mark as unused
+            for (int k = 0; k < 36; k++) {
+                spring_positions[base_out + k] = -1;
+            }
+            continue;
+        }
 
-        // Allocate 36 positions for this edge
-        int base_out = atomicAdd(write_offset, 36);
+        // Store 36 positions for this edge
         int count = 0;
-
+        
         // Same order as generation: (i,i), (i,j), (j,i), (j,j)
         for (int block_r = 0; block_r < 2; block_r++) {
             for (int block_c = 0; block_c < 2; block_c++) {
@@ -818,12 +824,20 @@ CSRStructure build_hessian_structure_gpu(
 
     cudaDeviceSynchronize();
 
+    // Get total adjacencies count
+    int total_adjacencies;
+    cudaMemcpy(
+        &total_adjacencies,
+        vertex_offsets->get_device_ptr<int>() + num_particles,
+        sizeof(int),
+        cudaMemcpyDeviceToHost);
+    
     // Allocate CSR arrays
     structure.col_indices = cuda::create_cuda_linear_buffer<int>(nnz);
     structure.row_offsets = cuda::create_cuda_linear_buffer<int>(n + 1);
     structure.mass_value_positions = cuda::create_cuda_linear_buffer<int>(n);
     structure.spring_value_positions =
-        cuda::create_cuda_linear_buffer<int>(num_edges * 36);
+        cuda::create_cuda_linear_buffer<int>(total_adjacencies * 36);
 
     // Copy unique columns
     cudaMemcpy(
@@ -869,9 +883,6 @@ CSRStructure build_hessian_structure_gpu(
         n,
         structure.mass_value_positions->get_device_ptr<int>());
 
-    auto d_spring_write_offset = cuda::create_cuda_linear_buffer<int>(1);
-    cudaMemset(d_spring_write_offset->get_device_ptr<int>(), 0, sizeof(int));
-
     int vertex_blocks = (num_particles + block_size - 1) / block_size;
     build_spring_positions_kernel<<<vertex_blocks, block_size>>>(
         d_all_rows->get_device_ptr<int>(),
@@ -880,8 +891,8 @@ CSRStructure build_hessian_structure_gpu(
         vertex_offsets->get_device_ptr<int>(),
         nnz,
         num_particles,
-        structure.spring_value_positions->get_device_ptr<int>(),
-        d_spring_write_offset->get_device_ptr<int>());
+        total_adjacencies,
+        structure.spring_value_positions->get_device_ptr<int>());
 
     cudaDeviceSynchronize();
 
@@ -898,12 +909,11 @@ __global__ void fill_spring_hessian_values_kernel(
     const int* adjacent_vertices,
     const int* vertex_offsets,
     const float* rest_lengths,
-    const int* value_positions,  // Pre-computed positions in values array
+    const int* value_positions,  // Pre-computed positions: [total_adjacencies * 36]
     float stiffness,
     float dt,
     int num_particles,
-    float* values,      // Output CSR values array
-    int* edge_counter)  // Atomic counter to track which edge we're processing
+    float* values)  // Output CSR values array
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= num_particles)
@@ -943,9 +953,8 @@ __global__ void fill_spring_hessian_values_kernel(
         float scale = dt * dt;
         H_diff *= scale;
 
-        // Get this edge's index for position lookup
-        int edge_idx = atomicAdd(edge_counter, 1);
-        int base_pos = edge_idx * 36;
+        // Use adjacency index directly for position lookup
+        int base_pos = idx * 36;
         int count = 0;
 
         // 4 blocks: (i,i), (i,j), (j,i), (j,j)
@@ -1011,9 +1020,6 @@ void update_hessian_values_gpu(
         values->get_device_ptr<float>());
 
     // Fill spring contributions - use vertex iteration
-    auto d_edge_counter = cuda::create_cuda_linear_buffer<int>(1);
-    cudaMemset(d_edge_counter->get_device_ptr<int>(), 0, sizeof(int));
-
     int vertex_blocks = (num_particles + block_size - 1) / block_size;
     fill_spring_hessian_values_kernel<<<vertex_blocks, block_size>>>(
         x_curr->get_device_ptr<float>(),
@@ -1024,8 +1030,7 @@ void update_hessian_values_gpu(
         stiffness,
         dt,
         num_particles,
-        values->get_device_ptr<float>(),
-        d_edge_counter->get_device_ptr<int>());
+        values->get_device_ptr<float>());
 
     cudaDeviceSynchronize();
 }
