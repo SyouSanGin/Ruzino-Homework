@@ -458,78 +458,6 @@ __device__ Eigen::Matrix3f project_psd_custom(const Eigen::Matrix3f& H)
 // NEW: Zero-sort direct-fill implementation
 // ============================================================================
 
-// Kernel to count total edges (for matrix structure)
-__global__ void count_total_edges_kernel(
-    const int* adjacent_vertices,
-    const int* vertex_offsets,
-    int num_particles,
-    int* total_count)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= num_particles)
-        return;
-
-    int start = vertex_offsets[i];
-    int end = vertex_offsets[i + 1];
-    int count = 0;
-    for (int idx = start; idx < end; idx++) {
-        int j = adjacent_vertices[idx];
-        if (j > i)
-            count++;
-    }
-    atomicAdd(total_count, count);
-}
-
-// Kernel to generate matrix entries - parallelized per vertex+neighbor
-__global__ void generate_matrix_entries_kernel(
-    const int* adjacent_vertices,
-    const int* vertex_offsets,
-    int num_particles,
-    int* rows,
-    int* cols,
-    int* write_offset)  // Atomic counter for writing position
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= num_particles)
-        return;
-
-    int n = num_particles * 3;
-
-    // First, write mass diagonal entries
-    for (int d = 0; d < 3; d++) {
-        int dof = i * 3 + d;
-        int pos = atomicAdd(write_offset, 1);
-        rows[pos] = dof;
-        cols[pos] = dof;
-    }
-
-    // Then, write spring entries for neighbors with j > i
-    int start = vertex_offsets[i];
-    int end = vertex_offsets[i + 1];
-
-    for (int idx = start; idx < end; idx++) {
-        int j = adjacent_vertices[idx];
-        if (j <= i)
-            continue;  // Only process j > i to avoid duplicates
-
-        // Generate 36 entries for this edge (vi, vj)
-        for (int block_r = 0; block_r < 2; block_r++) {
-            for (int block_c = 0; block_c < 2; block_c++) {
-                int base_r = (block_r == 0 ? i : j) * 3;
-                int base_c = (block_c == 0 ? i : j) * 3;
-
-                for (int local_r = 0; local_r < 3; local_r++) {
-                    for (int local_c = 0; local_c < 3; local_c++) {
-                        int pos = atomicAdd(write_offset, 1);
-                        rows[pos] = base_r + local_r;
-                        cols[pos] = base_c + local_c;
-                    }
-                }
-            }
-        }
-    }
-}
-
 // Binary search helper for finding (row, col) in sorted unique arrays
 __device__ int find_entry_position(
     const int* unique_rows,
@@ -563,78 +491,6 @@ __device__ int find_entry_position(
     return -1;  // Not found (should never happen for valid structure)
 }
 
-// Kernel to build mass diagonal positions using binary search
-__global__ void build_mass_positions_kernel(
-    const int* unique_rows,
-    const int* unique_cols,
-    int nnz,
-    int num_dofs,
-    int* mass_positions)
-{
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (tid >= num_dofs)
-        return;
-
-    // Mass diagonal: find position of (tid, tid)
-    mass_positions[tid] =
-        find_entry_position(unique_rows, unique_cols, nnz, tid, tid);
-}
-
-// Kernel to build spring positions using vertex iteration and binary search
-// For each adjacency index, store 36 positions if j > i, otherwise store -1
-__global__ void build_spring_positions_kernel(
-    const int* unique_rows,
-    const int* unique_cols,
-    const int* adjacent_vertices,
-    const int* vertex_offsets,
-    int nnz,
-    int num_particles,
-    int total_adjacencies,
-    int* spring_positions)  // Output: [total_adjacencies * 36]
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= num_particles)
-        return;
-
-    int start = vertex_offsets[i];
-    int end = vertex_offsets[i + 1];
-
-    for (int idx = start; idx < end; idx++) {
-        int j = adjacent_vertices[idx];
-        int base_out = idx * 36;
-
-        if (j <= i) {
-            // Mark as unused
-            for (int k = 0; k < 36; k++) {
-                spring_positions[base_out + k] = -1;
-            }
-            continue;
-        }
-
-        // Store 36 positions for this edge
-        int count = 0;
-
-        // Same order as generation: (i,i), (i,j), (j,i), (j,j)
-        for (int block_r = 0; block_r < 2; block_r++) {
-            for (int block_c = 0; block_c < 2; block_c++) {
-                int vi = (block_r == 0 ? i : j);
-                int vj = (block_c == 0 ? i : j);
-
-                for (int local_r = 0; local_r < 3; local_r++) {
-                    for (int local_c = 0; local_c < 3; local_c++) {
-                        int row = vi * 3 + local_r;
-                        int col = vj * 3 + local_c;
-                        int pos = find_entry_position(
-                            unique_rows, unique_cols, nnz, row, col);
-                        spring_positions[base_out + count] = pos;
-                        count++;
-                    }
-                }
-            }
-        }
-    }
-}
-
 // Build CSR sparsity pattern once during initialization (GPU version)
 CSRStructure build_hessian_structure_gpu(
     cuda::CUDALinearBufferHandle adjacent_vertices,
@@ -643,26 +499,28 @@ CSRStructure build_hessian_structure_gpu(
 {
     CSRStructure structure;
     int n = num_particles * 3;
-    int block_size = 256;
 
-    // Count total edges (j > i) across all vertices
-    auto d_total_edges = cuda::create_cuda_linear_buffer<int>(1);
-    cudaMemset(d_total_edges->get_device_ptr<int>(), 0, sizeof(int));
+    const int* adj_ptr = adjacent_vertices->get_device_ptr<int>();
+    const int* offsets_ptr = vertex_offsets->get_device_ptr<int>();
 
-    int count_blocks = (num_particles + block_size - 1) / block_size;
-    count_total_edges_kernel<<<count_blocks, block_size>>>(
-        adjacent_vertices->get_device_ptr<int>(),
-        vertex_offsets->get_device_ptr<int>(),
-        num_particles,
-        d_total_edges->get_device_ptr<int>());
-    cudaDeviceSynchronize();
-
-    int num_edges;
-    cudaMemcpy(
-        &num_edges,
-        d_total_edges->get_device_ptr<int>(),
-        sizeof(int),
-        cudaMemcpyDeviceToHost);
+    // Count total edges (j > i) using thrust::transform_reduce
+    auto counting_iter = thrust::make_counting_iterator(0);
+    int num_edges = thrust::transform_reduce(
+        thrust::device,
+        counting_iter,
+        counting_iter + num_particles,
+        [adj_ptr, offsets_ptr] __device__(int i) -> int {
+            int start = offsets_ptr[i];
+            int end = offsets_ptr[i + 1];
+            int count = 0;
+            for (int idx = start; idx < end; idx++) {
+                if (adj_ptr[idx] > i)
+                    count++;
+            }
+            return count;
+        },
+        0,
+        thrust::plus<int>());
 
     int num_mass_entries = n;
     int num_spring_entries = num_edges * 36;
@@ -674,18 +532,47 @@ CSRStructure build_hessian_structure_gpu(
     auto d_write_offset = cuda::create_cuda_linear_buffer<int>(1);
     cudaMemset(d_write_offset->get_device_ptr<int>(), 0, sizeof(int));
 
-    // Generate all (row, col) pairs on GPU
-    int num_blocks = (num_particles + block_size - 1) / block_size;
+    int* rows = d_all_rows->get_device_ptr<int>();
+    int* cols = d_all_cols->get_device_ptr<int>();
+    int* write_offset = d_write_offset->get_device_ptr<int>();
 
-    generate_matrix_entries_kernel<<<num_blocks, block_size>>>(
-        adjacent_vertices->get_device_ptr<int>(),
-        vertex_offsets->get_device_ptr<int>(),
-        num_particles,
-        d_all_rows->get_device_ptr<int>(),
-        d_all_cols->get_device_ptr<int>(),
-        d_write_offset->get_device_ptr<int>());
+    // Generate all (row, col) pairs on GPU using GPUParallelFor
+    cuda::GPUParallelFor(
+        "generate_matrix_entries", num_particles, GPU_LAMBDA_Ex(int i) {
+            // First, write mass diagonal entries
+            for (int d = 0; d < 3; d++) {
+                int dof = i * 3 + d;
+                int pos = atomicAdd(write_offset, 1);
+                rows[pos] = dof;
+                cols[pos] = dof;
+            }
 
-    cudaDeviceSynchronize();
+            // Then, write spring entries for neighbors with j > i
+            int start = offsets_ptr[i];
+            int end = offsets_ptr[i + 1];
+
+            for (int idx = start; idx < end; idx++) {
+                int j = adj_ptr[idx];
+                if (j <= i)
+                    continue;
+
+                // Generate 36 entries for this edge (vi, vj)
+                for (int block_r = 0; block_r < 2; block_r++) {
+                    for (int block_c = 0; block_c < 2; block_c++) {
+                        int base_r = (block_r == 0 ? i : j) * 3;
+                        int base_c = (block_c == 0 ? i : j) * 3;
+
+                        for (int local_r = 0; local_r < 3; local_r++) {
+                            for (int local_c = 0; local_c < 3; local_c++) {
+                                int pos = atomicAdd(write_offset, 1);
+                                rows[pos] = base_r + local_r;
+                                cols[pos] = base_c + local_c;
+                            }
+                        }
+                    }
+                }
+            }
+        });
 
     // Sort by (row, col) using thrust
     thrust::device_ptr<int> rows_ptr(d_all_rows->get_device_ptr<int>());
@@ -774,27 +661,59 @@ CSRStructure build_hessian_structure_gpu(
 
     cudaDeviceSynchronize();
 
-    // Build position mappings on GPU using binary search
-    int mass_blocks = (n + block_size - 1) / block_size;
-    build_mass_positions_kernel<<<mass_blocks, block_size>>>(
-        d_all_rows->get_device_ptr<int>(),
-        d_all_cols->get_device_ptr<int>(),
-        nnz,
-        n,
-        structure.mass_value_positions->get_device_ptr<int>());
+    // Build mass diagonal positions using GPUParallelFor
+    const int* unique_rows = d_all_rows->get_device_ptr<int>();
+    const int* unique_cols = d_all_cols->get_device_ptr<int>();
+    int* mass_positions = structure.mass_value_positions->get_device_ptr<int>();
 
-    int vertex_blocks = (num_particles + block_size - 1) / block_size;
-    build_spring_positions_kernel<<<vertex_blocks, block_size>>>(
-        d_all_rows->get_device_ptr<int>(),
-        d_all_cols->get_device_ptr<int>(),
-        adjacent_vertices->get_device_ptr<int>(),
-        vertex_offsets->get_device_ptr<int>(),
-        nnz,
-        num_particles,
-        total_adjacencies,
-        structure.spring_value_positions->get_device_ptr<int>());
+    cuda::GPUParallelFor(
+        "build_mass_positions", n, GPU_LAMBDA_Ex(int i) {
+            mass_positions[i] =
+                find_entry_position(unique_rows, unique_cols, nnz, i, i);
+        });
 
-    cudaDeviceSynchronize();
+    // Build spring positions using GPUParallelFor
+    int* spring_positions =
+        structure.spring_value_positions->get_device_ptr<int>();
+
+    cuda::GPUParallelFor(
+        "build_spring_positions", num_particles, GPU_LAMBDA_Ex(int i) {
+            int start = offsets_ptr[i];
+            int end = offsets_ptr[i + 1];
+
+            for (int idx = start; idx < end; idx++) {
+                int j = adj_ptr[idx];
+                int base_out = idx * 36;
+
+                if (j <= i) {
+                    // Mark as unused
+                    for (int k = 0; k < 36; k++) {
+                        spring_positions[base_out + k] = -1;
+                    }
+                    continue;
+                }
+
+                // Store 36 positions for this edge
+                int count = 0;
+                for (int block_r = 0; block_r < 2; block_r++) {
+                    for (int block_c = 0; block_c < 2; block_c++) {
+                        int vi = (block_r == 0 ? i : j);
+                        int vj = (block_c == 0 ? i : j);
+
+                        for (int local_r = 0; local_r < 3; local_r++) {
+                            for (int local_c = 0; local_c < 3; local_c++) {
+                                int row = vi * 3 + local_r;
+                                int col = vj * 3 + local_c;
+                                int pos = find_entry_position(
+                                    unique_rows, unique_cols, nnz, row, col);
+                                spring_positions[base_out + count] = pos;
+                                count++;
+                            }
+                        }
+                    }
+                }
+            }
+        });
 
     structure.num_rows = n;
     structure.num_cols = n;
@@ -890,7 +809,6 @@ void update_hessian_values_gpu(
     cuda::CUDALinearBufferHandle values)
 {
     int num_dofs = num_particles * 3;
-    int block_size = 256;
 
     // Zero out values array
     cudaMemset(
@@ -909,7 +827,9 @@ void update_hessian_values_gpu(
             values_ptr[pos] = M_diag_ptr[i] + regularization;
         });
 
-    // Fill spring contributions - use vertex iteration
+    // Fill spring contributions - manual kernel launch for complex Eigen
+    // operations
+    int block_size = 256;
     int vertex_blocks = (num_particles + block_size - 1) / block_size;
     fill_spring_hessian_values_kernel<<<vertex_blocks, block_size>>>(
         x_curr->get_device_ptr<float>(),
