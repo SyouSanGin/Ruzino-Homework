@@ -289,6 +289,18 @@ NODE_EXECUTION_FUNCTION(neo_hookean_gpu)
 
     // Substep loop
     float dt_sub = dt / substeps;
+    spdlog::info("[NeoHookean] dt={}, substeps={}, dt_sub={}, dt_sub^2={}", 
+        dt, substeps, dt_sub, dt_sub * dt_sub);
+    
+    // Debug: print M_diag values
+    auto M_diag_host = storage.mass_matrix_buffer->get_host_vector<float>();
+    if (!M_diag_host.empty()) {
+        spdlog::info("[NeoHookean] M_diag[0]={}, M_diag[1]={}, M_diag[2]={}", 
+            M_diag_host[0], M_diag_host[1], M_diag_host[2]);
+        spdlog::info("[NeoHookean] Expected M/dt_sub^2 = {}", 
+            M_diag_host[0] / (dt_sub * dt_sub));
+    }
+    
     for (int substep = 0; substep < substeps; ++substep) {
         spdlog::info("[NeoHookean] Substep {}/{}", substep + 1, substeps);
         // Setup external forces on GPU
