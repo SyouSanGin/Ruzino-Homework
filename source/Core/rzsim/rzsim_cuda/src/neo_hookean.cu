@@ -563,6 +563,17 @@ __device__ void compute_element_hessian(
             }
         }
     }
+    
+    // The matrix should be symmetric - verify in debug mode
+    // (Uncomment for debugging)
+    // for (int i = 0; i < 12; i++) {
+    //     for (int j = i + 1; j < 12; j++) {
+    //         float diff = fabsf(K_elem(i,j) - K_elem(j,i));
+    //         if (diff > 1e-5f * fmaxf(fabsf(K_elem(i,j)), 1e-10f)) {
+    //             printf("Hessian asymmetry at (%d,%d): %e vs %e\n", i, j, K_elem(i,j), K_elem(j,i));
+    //         }
+    //     }
+    // }
 }
 
 // Binary search for entry position (same as mass-spring)
@@ -930,11 +941,17 @@ __global__ void fill_hessian_values_nh_kernel(
     K_elem *= (dt * dt);
 
     // Write to CSR values array
+    // CRITICAL: Eigen uses column-major order, but we need row-major for CSR
+    // K_elem.data()[i] gives column-major, but positions[] expects row-major
     const int* positions = &value_positions[elem_idx * 144];
-    for (int i = 0; i < 144; i++) {
-        int pos = positions[i];
-        if (pos >= 0) {
-            atomicAdd(&values[pos], K_elem.data()[i]);
+    for (int row = 0; row < 12; row++) {
+        for (int col = 0; col < 12; col++) {
+            int idx = row * 12 + col;  // Row-major index
+            int pos = positions[idx];
+            if (pos >= 0) {
+                // Use (row, col) to access Eigen matrix correctly
+                atomicAdd(&values[pos], K_elem(row, col));
+            }
         }
     }
 }
