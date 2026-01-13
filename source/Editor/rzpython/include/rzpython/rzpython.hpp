@@ -34,6 +34,20 @@ using cuda_array_f64 = nanobind::ndarray<double, nanobind::device::cuda>;
 using cuda_array_i32 = nanobind::ndarray<int32_t, nanobind::device::cuda>;
 using cuda_array_i64 = nanobind::ndarray<int64_t, nanobind::device::cuda>;
 
+// Helper structure for zero-copy CUDA array transfer
+template<typename T>
+struct CudaArrayView {
+    T* data;
+    std::vector<size_t> shape;
+    
+    CudaArrayView(T* data, std::vector<size_t> shape)
+        : data(data), shape(std::move(shape)) {}
+    
+    // Convenience constructor for 1D arrays
+    CudaArrayView(T* data, size_t size)
+        : data(data), shape{size} {}
+};
+
 // Initialize Python interpreter
 RZPYTHON_API void initialize();
 

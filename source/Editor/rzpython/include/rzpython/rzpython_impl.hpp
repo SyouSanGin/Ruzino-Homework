@@ -142,6 +142,46 @@ void send(const std::string& name, const T& value)
     }
 }
 
+// Specialized send for CudaArrayView - zero-copy transfer to Python
+template<typename T>
+void send(const std::string& name, const CudaArrayView<T>& cuda_view)
+{
+    if (!initialized) {
+        throw std::runtime_error("Python interpreter not initialized");
+    }
+
+    try {
+        // Create nanobind ndarray from CUDA pointer without copying
+        size_t ndim = cuda_view.shape.size();
+        
+        // Create ndarray with external ownership
+        nb::ndarray<nb::pytorch, T, nb::device::cuda> array(
+            cuda_view.data,
+            ndim,
+            cuda_view.shape.data(),
+            nb::handle()  // No owner - we don't manage the memory
+        );
+        
+        nb::object py_obj = nb::cast(array);
+        
+        // Store in our map to keep it alive
+        bound_objects[name] = py_obj;
+        
+        // Add to Python's main dict
+        PyDict_SetItemString(main_dict, name.c_str(), py_obj.ptr());
+    }
+    catch (const nb::cast_error& e) {
+        throw std::runtime_error(
+            "Failed to send CUDA array to Python variable '" + name +
+            "': " + e.what());
+    }
+    catch (const std::exception& e) {
+        throw std::runtime_error(
+            "Failed to send CUDA array to Python variable '" + name +
+            "': " + e.what());
+    }
+}
+
 }  // namespace python
 
 RUZINO_NAMESPACE_CLOSE_SCOPE
