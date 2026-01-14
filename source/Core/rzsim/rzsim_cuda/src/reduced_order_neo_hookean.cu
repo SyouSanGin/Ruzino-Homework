@@ -1,4 +1,6 @@
+#include <cublas_v2.h>
 #include <cuda_runtime.h>
+#include <cusparse.h>
 #include <device_launch_parameters.h>
 
 #include <Eigen/Eigen>
@@ -9,6 +11,7 @@
 #include "RHI/internal/cuda_extension.hpp"
 #include "rzsim_cuda/adjacency_map.cuh"
 #include "rzsim_cuda/reduced_order_neo_hookean.cuh"
+
 
 // Include glm after CUDA headers to avoid conflicts
 #ifndef __CUDACC__
@@ -342,11 +345,7 @@ void map_reduced_velocities_to_full_gpu(
 }
 
 // ============================================================================
-// Kernel: Sparse matrix-dense matrix multiply (CSR * dense)
-// ============================================================================
-
-// ============================================================================
-// Kernel: Dense transpose matrix multiply (A^T * B)
+// Kernel: Sparse matrix-dense matrix multiply using cuSPARSE (CSR * dense)
 // ============================================================================
 
 void compute_reduced_hessian_gpu(
@@ -361,61 +360,201 @@ void compute_reduced_hessian_gpu(
     int full_dof = num_particles * 3;
     int reduced_dof = num_basis * 12;
 
-    // Step 1: temp = H_x * J
-    // H_x is [full_dof, full_dof] sparse CSR
-    // J is [full_dof, reduced_dof] dense
-    // temp is [full_dof, reduced_dof] dense
+    // Create cuSPARSE handle
+    cusparseHandle_t cusparseHandle;
+    cusparseStatus_t status = cusparseCreate(&cusparseHandle);
+    if (status != CUSPARSE_STATUS_SUCCESS) {
+        printf("[ReducedOrder] Failed to create cuSPARSE handle: %d\n", status);
+        return;
+    }
 
     const int* row_offsets_ptr =
         hessian_structure.row_offsets->get_device_ptr<int>();
     const int* col_indices_ptr =
         hessian_structure.col_indices->get_device_ptr<int>();
     const float* hessian_values_ptr = hessian_values->get_device_ptr<float>();
-    const float* jacobian_ptr = jacobian->get_device_ptr<float>();
+    float* jacobian_ptr = jacobian->get_device_ptr<float>();
     float* temp_buffer_ptr = temp_buffer->get_device_ptr<float>();
+    float* H_q_ptr = H_q->get_device_ptr<float>();
 
-    cuda::GPUParallelFor(
-        "sparse_dense_multiply", full_dof, [=] __device__(int row) {
-            int row_start = row_offsets_ptr[row];
-            int row_end = row_offsets_ptr[row + 1];
+    // Step 1: temp = H_x * J using cuSPARSE SpMM
+    // H_x is [full_dof, full_dof] sparse CSR
+    // J is [full_dof, reduced_dof] dense (column-major for cuSPARSE)
+    // temp is [full_dof, reduced_dof] dense (column-major)
 
-            // For each column in the dense output
-            for (int dc = 0; dc < reduced_dof; ++dc) {
-                float sum = 0.0f;
+    // Create sparse matrix descriptor for H_x (CSR format)
+    cusparseSpMatDescr_t matH_desc;
+    status = cusparseCreateCsr(
+        &matH_desc,
+        full_dof,               // rows
+        full_dof,               // cols
+        hessian_structure.nnz,  // nnz
+        const_cast<int*>(row_offsets_ptr),
+        const_cast<int*>(col_indices_ptr),
+        const_cast<float*>(hessian_values_ptr),
+        CUSPARSE_INDEX_32I,  // row offsets type
+        CUSPARSE_INDEX_32I,  // col indices type
+        CUSPARSE_INDEX_BASE_ZERO,
+        CUDA_R_32F);  // data type
 
-                // Multiply row of sparse matrix with column dc of dense matrix
-                for (int idx = row_start; idx < row_end; ++idx) {
-                    int col = col_indices_ptr[idx];
-                    float val = hessian_values_ptr[idx];
-                    sum += val * jacobian_ptr[col * reduced_dof + dc];
-                }
+    if (status != CUSPARSE_STATUS_SUCCESS) {
+        printf(
+            "[ReducedOrder] Failed to create sparse matrix descriptor: %d\n",
+            status);
+        cusparseDestroy(cusparseHandle);
+        return;
+    }
 
-                temp_buffer_ptr[row * reduced_dof + dc] = sum;
-            }
-        });
+    // Create dense matrix descriptor for J [full_dof, reduced_dof]
+    // (column-major)
+    cusparseDnMatDescr_t matJ_desc;
+    status = cusparseCreateDnMat(
+        &matJ_desc,
+        full_dof,     // rows
+        reduced_dof,  // cols
+        full_dof,     // leading dimension (column-major stride)
+        jacobian_ptr,
+        CUDA_R_32F,
+        CUSPARSE_ORDER_COL);  // column-major
 
-    // Step 2: H_q = J^T * temp
+    if (status != CUSPARSE_STATUS_SUCCESS) {
+        printf(
+            "[ReducedOrder] Failed to create Jacobian dense matrix descriptor: "
+            "%d\n",
+            status);
+        cusparseDestroySpMat(matH_desc);
+        cusparseDestroy(cusparseHandle);
+        return;
+    }
+
+    // Create dense matrix descriptor for temp [full_dof, reduced_dof]
+    // (column-major)
+    cusparseDnMatDescr_t matTemp_desc;
+    status = cusparseCreateDnMat(
+        &matTemp_desc,
+        full_dof,     // rows
+        reduced_dof,  // cols
+        full_dof,     // leading dimension
+        temp_buffer_ptr,
+        CUDA_R_32F,
+        CUSPARSE_ORDER_COL);  // column-major
+
+    if (status != CUSPARSE_STATUS_SUCCESS) {
+        printf(
+            "[ReducedOrder] Failed to create temp dense matrix descriptor: "
+            "%d\n",
+            status);
+        cusparseDestroyDnMat(matJ_desc);
+        cusparseDestroySpMat(matH_desc);
+        cusparseDestroy(cusparseHandle);
+        return;
+    }
+
+    // Allocate workspace for SpMM
+    float alpha = 1.0f;
+    float beta = 0.0f;
+    size_t bufferSize = 0;
+
+    status = cusparseSpMM_bufferSize(
+        cusparseHandle,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,  // H_x not transposed
+        CUSPARSE_OPERATION_NON_TRANSPOSE,  // J not transposed
+        &alpha,
+        matH_desc,
+        matJ_desc,
+        &beta,
+        matTemp_desc,
+        CUDA_R_32F,
+        CUSPARSE_SPMM_ALG_DEFAULT,
+        &bufferSize);
+
+    if (status != CUSPARSE_STATUS_SUCCESS) {
+        printf("[ReducedOrder] Failed to get SpMM buffer size: %d\n", status);
+        cusparseDestroyDnMat(matTemp_desc);
+        cusparseDestroyDnMat(matJ_desc);
+        cusparseDestroySpMat(matH_desc);
+        cusparseDestroy(cusparseHandle);
+        return;
+    }
+
+    void* dBuffer = nullptr;
+    if (bufferSize > 0) {
+        cudaMalloc(&dBuffer, bufferSize);
+    }
+
+    // Perform SpMM: temp = H_x * J
+    status = cusparseSpMM(
+        cusparseHandle,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        &alpha,
+        matH_desc,
+        matJ_desc,
+        &beta,
+        matTemp_desc,
+        CUDA_R_32F,
+        CUSPARSE_SPMM_ALG_DEFAULT,
+        dBuffer);
+
+    if (status != CUSPARSE_STATUS_SUCCESS) {
+        printf("[ReducedOrder] SpMM failed: %d\n", status);
+    }
+
+    if (dBuffer) {
+        cudaFree(dBuffer);
+    }
+
+    // Step 2: H_q = J^T * temp using cuBLAS gemm
     // J^T is [reduced_dof, full_dof]
     // temp is [full_dof, reduced_dof]
     // H_q is [reduced_dof, reduced_dof]
 
-    float* H_q_ptr = H_q->get_device_ptr<float>();
+    // Create cuBLAS handle for dense matrix multiply
+    cublasHandle_t cublasHandle;
+    cublasStatus_t cublas_status = cublasCreate(&cublasHandle);
+    if (cublas_status != CUBLAS_STATUS_SUCCESS) {
+        printf(
+            "[ReducedOrder] Failed to create cuBLAS handle: %d\n",
+            cublas_status);
+        cusparseDestroyDnMat(matTemp_desc);
+        cusparseDestroyDnMat(matJ_desc);
+        cusparseDestroySpMat(matH_desc);
+        cusparseDestroy(cusparseHandle);
+        return;
+    }
 
-    cuda::GPUParallelFor(
-        "dense_transpose_multiply",
-        reduced_dof * reduced_dof,
-        [=] __device__(int idx) {
-            int row = idx / reduced_dof;
-            int col = idx % reduced_dof;
+    // cublasSgemm: C = alpha * op(A) * op(B) + beta * C
+    // We want: H_q = J^T * temp
+    // In column-major: H_q = J^T * temp
+    // cublasSgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta,
+    // C, ldc) C[m,n] = op(A)[m,k] * op(B)[k,n] H_q[reduced_dof, reduced_dof] =
+    // J^T[reduced_dof, full_dof] * temp[full_dof, reduced_dof]
+    cublas_status = cublasSgemm(
+        cublasHandle,
+        CUBLAS_OP_T,  // J transposed
+        CUBLAS_OP_N,  // temp not transposed
+        reduced_dof,  // m: rows of J^T
+        reduced_dof,  // n: cols of temp
+        full_dof,     // k: cols of J^T = rows of temp
+        &alpha,
+        jacobian_ptr,     // J [full_dof, reduced_dof] in column-major
+        full_dof,         // lda: leading dimension of J
+        temp_buffer_ptr,  // temp [full_dof, reduced_dof] in column-major
+        full_dof,         // ldb: leading dimension of temp
+        &beta,
+        H_q_ptr,       // H_q [reduced_dof, reduced_dof] in column-major
+        reduced_dof);  // ldc: leading dimension of H_q
 
-            float sum = 0.0f;
-            for (int i = 0; i < full_dof; ++i) {
-                sum += jacobian_ptr[i * reduced_dof + row] *
-                       temp_buffer_ptr[i * reduced_dof + col];
-            }
+    if (cublas_status != CUBLAS_STATUS_SUCCESS) {
+        printf("[ReducedOrder] cublasSgemm failed: %d\n", cublas_status);
+    }
 
-            H_q_ptr[row * reduced_dof + col] = sum;
-        });
+    // Cleanup
+    cublasDestroy(cublasHandle);
+    cusparseDestroyDnMat(matTemp_desc);
+    cusparseDestroyDnMat(matJ_desc);
+    cusparseDestroySpMat(matH_desc);
+    cusparseDestroy(cusparseHandle);
 }
 
 // ============================================================================
