@@ -273,8 +273,8 @@ NODE_EXECUTION_FUNCTION(neo_hookean_gpu)
         int newton_iter_count = 0;
 
         for (int iter = 0; iter < max_iterations; iter++) {
-            // Compute gradient at current x_new
-            rzsim_cuda::compute_gradient_nh_gpu(
+            // Compute negative gradient at current x_new (for Newton's method)
+            rzsim_cuda::compute_neg_gradient_nh_gpu(
                 storage.x_new_buffer,
                 d_next_positions,
                 d_M_diag,
@@ -288,10 +288,10 @@ NODE_EXECUTION_FUNCTION(neo_hookean_gpu)
                 dt_sub,
                 num_particles,
                 storage.num_elements,
-                d_gradients);
+                storage.neg_gradient_buffer);
 
             float grad_norm = rzsim_cuda::compute_vector_norm_nh_gpu(
-                d_gradients, num_particles * 3);
+                storage.neg_gradient_buffer, num_particles * 3);
 
             if (!std::isfinite(grad_norm)) {
                 spdlog::error(
@@ -337,10 +337,6 @@ NODE_EXECUTION_FUNCTION(neo_hookean_gpu)
             solver_config.use_preconditioner = true;
             solver_config.verbose = false;
 
-            // Negate gradient for RHS
-            rzsim_cuda::negate_nh_gpu(
-                d_gradients, storage.neg_gradient_buffer, num_particles * 3);
-
             // Zero out the solution buffer before solving
             cudaMemset(
                 reinterpret_cast<void*>(
@@ -348,7 +344,7 @@ NODE_EXECUTION_FUNCTION(neo_hookean_gpu)
                 0,
                 num_particles * 3 * sizeof(float));
 
-            // Solve on GPU
+            // Solve on GPU (neg_gradient_buffer already contains -gradient)
             auto result = storage.solver->solveGPU(
                 storage.hessian_structure.num_rows,
                 storage.hessian_structure.nnz,

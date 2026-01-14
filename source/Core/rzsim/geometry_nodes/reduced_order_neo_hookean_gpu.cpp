@@ -453,7 +453,8 @@ NODE_EXECUTION_FUNCTION(reduced_order_neo_hookean_gpu)
                 storage.ro_data,
                 storage.next_positions_buffer);
 
-            rzsim_cuda::compute_gradient_nh_gpu(
+            // Compute negative gradient in full space (for Newton's method)
+            rzsim_cuda::compute_neg_gradient_nh_gpu(
                 storage.x_new_buffer,
                 storage.next_positions_buffer,
                 d_M_diag,
@@ -469,10 +470,9 @@ NODE_EXECUTION_FUNCTION(reduced_order_neo_hookean_gpu)
                 storage.num_elements,
                 d_gradients);
 
-
-            // Project negative gradient to reduced space: -grad_q = -J^T * grad_x
-            // Compute negative gradient directly to avoid extra negate kernel
-            rzsim_cuda::compute_reduced_neg_gradient_gpu(
+            // Project negative gradient to reduced space: -grad_q = J^T * (-grad_x)
+            // Since we already have negative gradient, just use regular projection
+            rzsim_cuda::compute_reduced_gradient_gpu(
                 storage.jacobian,
                 d_gradients,
                 num_particles,

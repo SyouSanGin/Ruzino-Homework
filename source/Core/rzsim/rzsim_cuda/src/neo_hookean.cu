@@ -397,13 +397,13 @@ __global__ void compute_gradient_nh_kernel(
     if (i >= num_particles)
         return;
 
-    // Initialize with inertial term: M * (x - x_tilde)
+    // Initialize with negative inertial term: -M * (x - x_tilde)
     grad[i * 3 + 0] =
-        M_diag[i * 3 + 0] * (x_curr[i * 3 + 0] - x_tilde[i * 3 + 0]);
+        -M_diag[i * 3 + 0] * (x_curr[i * 3 + 0] - x_tilde[i * 3 + 0]);
     grad[i * 3 + 1] =
-        M_diag[i * 3 + 1] * (x_curr[i * 3 + 1] - x_tilde[i * 3 + 1]);
+        -M_diag[i * 3 + 1] * (x_curr[i * 3 + 1] - x_tilde[i * 3 + 1]);
     grad[i * 3 + 2] =
-        M_diag[i * 3 + 2] * (x_curr[i * 3 + 2] - x_tilde[i * 3 + 2]);
+        -M_diag[i * 3 + 2] * (x_curr[i * 3 + 2] - x_tilde[i * 3 + 2]);
 }
 
 // Accumulate elastic forces from elements (now includes gravity)
@@ -483,16 +483,17 @@ __global__ void accumulate_elastic_forces_kernel(
     // Compute gravity force per vertex: F_g = (density * volume / 4) * gravity (lumped FEM)
     float gravity_force_z = (density * volume / 4.0f) * gravity;
 
-    // Add elastic forces + gravity to gradient
+    // Add negative elastic forces + gravity to negative gradient
     // gradient includes dt² scaling for both elastic and gravity terms
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 3; j++) {
             int idx = tet[i] * 3 + j;
             if (idx >= 0 && idx < num_particles * 3) {
-                float force = dt * dt * grad_local[i * 3 + j];
-                // Add gravity force (negative z direction)
+                // Negative elastic forces (already scaled by dt²)
+                float force = -dt * dt * grad_local[i * 3 + j];
+                // Add negative gravity force (positive z direction for negative gradient)
                 if (j == 2) {
-                    force -= dt * dt * gravity_force_z;
+                    force += dt * dt * gravity_force_z;
                 }
                 atomicAdd(&grad[idx], force);
             }
@@ -500,7 +501,7 @@ __global__ void accumulate_elastic_forces_kernel(
     }
 }
 
-void compute_gradient_nh_gpu(
+void compute_neg_gradient_nh_gpu(
     cuda::CUDALinearBufferHandle x_curr,
     cuda::CUDALinearBufferHandle x_tilde,
     cuda::CUDALinearBufferHandle M_diag,
@@ -514,13 +515,13 @@ void compute_gradient_nh_gpu(
     float dt,
     int num_particles,
     int num_elements,
-    cuda::CUDALinearBufferHandle grad)
+    cuda::CUDALinearBufferHandle neg_grad)
 {
     int block_size = 256;
     int num_blocks_particles = (num_particles + block_size - 1) / block_size;
     int num_blocks_elements = (num_elements + block_size - 1) / block_size;
 
-    // First pass: inertial term only
+    // First pass: negative inertial term only
     compute_gradient_nh_kernel<<<num_blocks_particles, block_size>>>(
         x_curr->get_device_ptr<float>(),
         x_tilde->get_device_ptr<float>(),
@@ -534,9 +535,9 @@ void compute_gradient_nh_gpu(
         dt,
         num_particles,
         num_elements,
-        grad->get_device_ptr<float>());
+        neg_grad->get_device_ptr<float>());
 
-    // Second pass: elastic forces + gravity
+    // Second pass: negative elastic forces + gravity
     accumulate_elastic_forces_kernel<<<num_blocks_elements, block_size>>>(
         x_curr->get_device_ptr<float>(),
         volume_adjacency.adjacency_buffer()->get_device_ptr<unsigned>(),
@@ -552,7 +553,7 @@ void compute_gradient_nh_gpu(
         dt,
         num_elements,
         num_particles,
-        grad->get_device_ptr<float>());
+        neg_grad->get_device_ptr<float>());
 
     cudaDeviceSynchronize();
 }

@@ -63,9 +63,9 @@ void setup_external_forces_nh_gpu(
     int num_particles,
     cuda::CUDALinearBufferHandle f_ext);
 
-// Compute gradient of Neo-Hookean energy
+// Compute negative gradient of Neo-Hookean energy (for Newton's method)
 RZSIM_CUDA_API
-void compute_gradient_nh_gpu(
+void compute_neg_gradient_nh_gpu(
     cuda::CUDALinearBufferHandle x_curr,
     cuda::CUDALinearBufferHandle x_tilde,
     cuda::CUDALinearBufferHandle M_diag,
@@ -80,7 +80,7 @@ void compute_gradient_nh_gpu(
     float dt,
     int num_particles,
     int num_elements,
-    cuda::CUDALinearBufferHandle grad);
+    cuda::CUDALinearBufferHandle neg_grad);   // Output: negative gradient
 
 // Build CSR sparsity pattern once during initialization
 RZSIM_CUDA_API
