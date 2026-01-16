@@ -107,32 +107,7 @@ struct NeoHookeanGPUStorage {
         Dm_inv_buffer = Dm_inv;
         volumes_buffer = volumes;
 
-        // Diagnostic: Check volumes
-        auto volumes_host = volumes->get_host_vector<float>();
-        float min_volume =
-            *std::min_element(volumes_host.begin(), volumes_host.end());
-        float max_volume =
-            *std::max_element(volumes_host.begin(), volumes_host.end());
-        float total_volume =
-            std::accumulate(volumes_host.begin(), volumes_host.end(), 0.0f);
-        spdlog::info(
-            "[NeoHookean] Volume statistics: min={:.6e}, max={:.6e}, "
-            "total={:.6e}, avg={:.6e}",
-            min_volume,
-            max_volume,
-            total_volume,
-            total_volume / num_elements);
-
-        // Check for problematic volumes
-        int num_small = std::count_if(
-            volumes_host.begin(), volumes_host.end(), [](float v) {
-                return v < 1e-10f;
-            });
-        if (num_small > 0) {
-            spdlog::warn(
-                "[NeoHookean] Found {} degenerate tetrahedra (volume < 1e-10)",
-                num_small);
-        }
+        // Degenerate volume check removed as requested
 
         // Initialize velocities to zero
         std::vector<glm::vec3> initial_velocities(
@@ -432,6 +407,7 @@ NODE_EXECUTION_FUNCTION(neo_hookean_gpu)
     // Track statistics
     int max_newton_iterations = 0;
     int max_line_search_iterations = 0;
+    int max_cg_iterations = 0;
 
     // Log initial state
     if (substeps > 0) {
@@ -607,14 +583,18 @@ NODE_EXECUTION_FUNCTION(neo_hookean_gpu)
                     storage.newton_direction_buffer->get_device_ptr()),
                 solver_config);
 
+            max_cg_iterations = std::max(max_cg_iterations, result.iterations);
+
             if (!result.converged) {
                 spdlog::warn(
                     "[NeoHookean] CG solver did not converge in iteration {}",
                     iter);
                 spdlog::warn(
-                    "[NeoHookean]   CG info: iterations={}, residual={:.6e}",
+                    "[NeoHookean]   CG info: iterations={}, residual={:.6e}, "
+                    "error: {}",
                     result.iterations,
-                    result.final_residual);
+                    result.final_residual,
+                    result.error_message);
             }
 
             // Ensure BC DOFs have zero Newton direction
@@ -741,9 +721,10 @@ NODE_EXECUTION_FUNCTION(neo_hookean_gpu)
     // Log simulation statistics
     spdlog::info(
         "[NeoHookean] Simulation complete - Max Newton iterations: {}, Max "
-        "line search iterations: {}",
+        "line search iterations: {}, Max CG iterations: {}",
         max_newton_iterations,
-        max_line_search_iterations);
+        max_line_search_iterations,
+        max_cg_iterations);
 
     // Update geometry with new positions
     auto final_positions = d_positions->get_host_vector<glm::vec3>();

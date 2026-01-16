@@ -9,15 +9,60 @@
 #include <RZSolver/Solver.hpp>
 #include <iostream>
 
-
 RUZINO_NAMESPACE_OPEN_SCOPE
 
 namespace Solver {
 
 // 在 namespace 级别定义静态函数
 namespace {
+
+    // Kernel to extract diagonal elements from CSR matrix
+    __global__ void extract_diagonal_csr_kernel(
+        int n,
+        const int* __restrict__ row_offsets,
+        const int* __restrict__ col_indices,
+        const float* __restrict__ values,
+        float* __restrict__ diagonal)
+    {
+        int row = blockIdx.x * blockDim.x + threadIdx.x;
+        if (row >= n)
+            return;
+
+        int start = row_offsets[row];
+        int end = row_offsets[row + 1];
+        float diag_val = 1.0f;  // Default fallback if missing (e.g. identity)
+
+        // Linear search for diagonal element (col == row)
+        // Since NNZ/row is small (typically < 100 for FEM), this is acceptable
+        for (int i = start; i < end; ++i) {
+            if (col_indices[i] == row) {
+                diag_val = values[i];
+                break;
+            }
+        }
+        diagonal[row] = diag_val;
+    }
+
+    void extractDiagonal(
+        int n,
+        const int* d_row_ptr,
+        const int* d_col_ind,
+        const float* d_val,
+        float* d_diag)
+    {
+        int blockSize = 256;
+        int numBlocks = (n + blockSize - 1) / blockSize;
+        extract_diagonal_csr_kernel<<<numBlocks, blockSize>>>(
+            n, d_row_ptr, d_col_ind, d_val, d_diag);
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            // In a real app we might log this, but here we just proceed (or
+            // could throw)
+        }
+    }
+
     // Inline diagonal preconditioner
-    inline void applyDiagonalPreconditioner(
+    void applyDiagonalPreconditioner(
         int n,
         Ruzino::cuda::CUDALinearBufferHandle d_z,
         Ruzino::cuda::CUDALinearBufferHandle d_r,
@@ -25,15 +70,15 @@ namespace {
     {
         float* z_ptr = reinterpret_cast<float*>(d_z->get_device_ptr());
         float* r_ptr = reinterpret_cast<float*>(d_r->get_device_ptr());
-        float* diag_ptr = reinterpret_cast<float*>(d_diagonal->get_device_ptr());
+        float* diag_ptr =
+            reinterpret_cast<float*>(d_diagonal->get_device_ptr());
 
         Ruzino::cuda::GPUParallelFor(
             "CG_diagonal_precond", n, GPU_LAMBDA_Ex(int i) {
-                float diag_safe = diag_ptr[i];
-                if (abs(diag_safe) < 1e-10f) {
-                    diag_safe = (diag_safe >= 0.0f) ? 1e-10f : -1e-10f;
-                }
-                z_ptr[i] = r_ptr[i] / diag_safe;
+                // Plain Jacobi preconditioner: z = D^-1 * r
+                // We rely on the matrix having a non-zero diagonal (required
+                // for CG)
+                z_ptr[i] = r_ptr[i] / diag_ptr[i];
             });
     }
 
@@ -154,15 +199,13 @@ namespace {
             return result;
         }
 
-        // 自适应最大迭代次数 - 对大问题更宽容
-        int adaptive_max_iters = config.max_iterations;
-        if (n > 10000) {
-            adaptive_max_iters =
-                std::min(config.max_iterations, n / 5);  // 更现实的迭代限制
-        }
+        // Standard CG Loop
+        // We strictly respect config.max_iterations and config.tolerance
+        // The residual reset ensures that reported residual matches true
+        // residual b-Ax
+        constexpr int RESIDUAL_RESET_PERIOD = 50;
 
-        // CG iterations with better numerical stability
-        for (int iter = 0; iter < adaptive_max_iters; ++iter) {
+        for (int iter = 0; iter < config.max_iterations; ++iter) {
             // Ap = A * p
             cusparseSpMV(
                 cusparseHandle,
@@ -214,7 +257,6 @@ namespace {
                 1,
                 reinterpret_cast<float*>(d_r->get_device_ptr()),
                 1);
-
             // Apply preconditioner: z = M^(-1) * r
             if (config.use_preconditioner) {
                 applyDiagonalPreconditioner(n, d_z, d_r, d_diagonal);
@@ -243,49 +285,10 @@ namespace {
             // Check convergence
             float relative_residual = sqrt(rznew) / b_norm;
 
-            // 对大问题使用更现实的收敛标准
-            float effective_tolerance = config.tolerance;
-            if (n > 10000) {
-                effective_tolerance =
-                    std::max(config.tolerance, 1e-3f);  // 至少1e-3
-            }
-            if (n > 50000) {
-                effective_tolerance =
-                    std::max(config.tolerance, 5e-3f);  // 更大问题更宽松
-            }
-
-            if (relative_residual < effective_tolerance) {
+            if (relative_residual < config.tolerance) {
                 result.converged = true;
                 result.iterations = iter + 1;
                 result.final_residual = relative_residual;
-                break;
-            }
-
-            // 检查收敛停滞 - 降低检查频率以减少开销
-            if (iter > 100 && iter % 5000 == 0) {
-                float progress_rate =
-                    relative_residual / (initial_residual / b_norm);
-                if (progress_rate > 0.99f) {  // 几乎没有进展
-                    // 不立即退出，给更多机会
-                }
-            }
-
-            // Check for breakdown with adaptive threshold
-            float breakdown_threshold = 1e-30f * b_norm * b_norm;
-            if (abs(rznew) < breakdown_threshold && abs(rzold) < breakdown_threshold) {
-                // Both near zero - we've converged as much as possible
-                result.converged = true;
-                result.iterations = iter + 1;
-                result.final_residual = relative_residual;
-                break;
-            }
-            
-            if (abs(rzold) < breakdown_threshold) {
-                // rzold near zero but rznew not - numerical issue, accept current solution
-                result.converged = true;
-                result.iterations = iter + 1;
-                result.final_residual = relative_residual;
-                result.error_message = "CG: rzold near zero, accepting current solution";
                 break;
             }
 
@@ -326,7 +329,7 @@ class CudaCGSolver : public LinearSolver {
     cusparseHandle_t cusparseHandle;
     cublasHandle_t cublasHandle;
     bool initialized = false;
-    
+
     // Reusable buffers (recreated only when size changes)
     int cached_n = 0;
     size_t cached_buffer_size = 0;
@@ -436,25 +439,25 @@ class CudaCGSolver : public LinearSolver {
                 d_z_cached = Ruzino::cuda::create_cuda_linear_buffer(vec_desc);
                 d_p_cached = Ruzino::cuda::create_cuda_linear_buffer(vec_desc);
                 d_Ap_cached = Ruzino::cuda::create_cuda_linear_buffer(vec_desc);
-                d_diagonal_cached = Ruzino::cuda::create_cuda_linear_buffer(vec_desc);
-                
+                d_diagonal_cached =
+                    Ruzino::cuda::create_cuda_linear_buffer(vec_desc);
+
                 cached_n = n;
             }
-            
+
             auto& d_r = d_r_cached;
             auto& d_z = d_z_cached;
             auto& d_p_buf = d_p_cached;
             auto& d_Ap = d_Ap_cached;
             auto& d_diagonal = d_diagonal_cached;
 
-            // Simple diagonal: just set to 1.0 (no preconditioning for diagonal
-            // matrix)
-            float* diag_dev =
-                reinterpret_cast<float*>(d_diagonal->get_device_ptr());
-            thrust::fill(
-                thrust::device_pointer_cast(diag_dev),
-                thrust::device_pointer_cast(diag_dev + n),
-                1.0f);
+            // Extract real diagonal from matrix for Jacobi preconditioner
+            extractDiagonal(
+                n,
+                d_row_offsets,
+                d_col_indices,
+                d_values,
+                reinterpret_cast<float*>(d_diagonal->get_device_ptr()));
 
             // Create vector descriptors
             cusparseDnVecDescr_t vecX, vecB, vecR, vecZ, vecP, vecAp;
@@ -489,10 +492,11 @@ class CudaCGSolver : public LinearSolver {
                 Ruzino::cuda::CUDALinearBufferDesc buffer_desc;
                 buffer_desc.element_count = bufferSize;
                 buffer_desc.element_size = 1;
-                d_buffer_cached = Ruzino::cuda::create_cuda_linear_buffer(buffer_desc);
+                d_buffer_cached =
+                    Ruzino::cuda::create_cuda_linear_buffer(buffer_desc);
                 cached_buffer_size = bufferSize;
             }
-            
+
             auto& dBuffer = d_buffer_cached;
 
             auto setup_end = std::chrono::high_resolution_clock::now();

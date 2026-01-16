@@ -247,6 +247,8 @@ namespace {
 
                 // Check convergence
                 relative_residual = abs(g[m + 1]) / b_norm;
+                result.final_residual = relative_residual;
+
                 if (relative_residual < config.tolerance) {
                     m++;
                     break;
@@ -356,6 +358,16 @@ class CudaGMRESSolver : public LinearSolver {
     cublasHandle_t cublasHandle;
     bool initialized = false;
 
+    // Reusable buffers
+    int cached_n = 0;
+    int cached_restart = 0;
+    size_t cached_buffer_size = 0;
+
+    Ruzino::cuda::CUDALinearBufferHandle d_r_cached;
+    Ruzino::cuda::CUDALinearBufferHandle d_w_cached;
+    Ruzino::cuda::CUDALinearBufferHandle d_V_cached;  // Size depends on restart
+    Ruzino::cuda::CUDALinearBufferHandle d_buffer_cached;
+
    public:
     CudaGMRESSolver()
     {
@@ -389,6 +401,149 @@ class CudaGMRESSolver : public LinearSolver {
         return true;
     }
 
+    // GPU-only interface implementation
+    SolverResult solveGPU(
+        int n,
+        int nnz,
+        const int* d_row_offsets,
+        const int* d_col_indices,
+        const float* d_values,
+        const float* d_b,
+        float* d_x,
+        const SolverConfig& config = SolverConfig{}) override
+    {
+        auto start_time = std::chrono::high_resolution_clock::now();
+        SolverResult result;
+
+        try {
+            // Adaptive restart size based on problem size and sparsity
+            int restart;
+            if (n <= 500) {
+                restart = std::min(100, std::max(30, n / 5));
+            }
+            else if (n <= 2000) {
+                restart = std::min(80, std::max(20, n / 25));
+            }
+            else {
+                restart = std::min(50, std::max(10, n / 50));
+            }
+
+            // Create cuSPARSE matrix descriptor
+            cusparseSpMatDescr_t matA_desc;
+            cusparseCreateCsr(
+                &matA_desc,
+                n,
+                n,
+                nnz,
+                (void*)d_row_offsets,
+                (void*)d_col_indices,
+                (void*)d_values,
+                CUSPARSE_INDEX_32I,
+                CUSPARSE_INDEX_32I,
+                CUSPARSE_INDEX_BASE_ZERO,
+                CUDA_R_32F);
+
+            // Reuse or allocate temporary vectors
+            if (cached_n != n || cached_restart != restart) {
+                Ruzino::cuda::CUDALinearBufferDesc vec_desc;
+                vec_desc.element_count = n;
+                vec_desc.element_size = sizeof(float);
+
+                d_r_cached = Ruzino::cuda::create_cuda_linear_buffer(vec_desc);
+                d_w_cached = Ruzino::cuda::create_cuda_linear_buffer(vec_desc);
+
+                Ruzino::cuda::CUDALinearBufferDesc v_desc;
+                v_desc.element_count = n * (restart + 1);
+                v_desc.element_size = sizeof(float);
+                d_V_cached = Ruzino::cuda::create_cuda_linear_buffer(v_desc);
+
+                cached_n = n;
+                cached_restart = restart;
+            }
+
+            auto& d_r = d_r_cached;
+            auto& d_w = d_w_cached;
+            auto& d_V = d_V_cached;
+
+            // Create vector descriptors
+            cusparseDnVecDescr_t vecX, vecW;
+            cusparseCreateDnVec(&vecX, n, (void*)d_x, CUDA_R_32F);
+            cusparseCreateDnVec(
+                &vecW, n, (void*)d_w->get_device_ptr(), CUDA_R_32F);
+
+            // Query SpMV buffer size
+            size_t bufferSize = 0;
+            const float one = 1.0f, zero = 0.0f;
+            cusparseSpMV_bufferSize(
+                cusparseHandle,
+                CUSPARSE_OPERATION_NON_TRANSPOSE,
+                (const void*)&one,
+                matA_desc,
+                vecX,
+                (const void*)&zero,
+                vecW,
+                CUDA_R_32F,
+                CUSPARSE_SPMV_ALG_DEFAULT,
+                &bufferSize);
+
+            if (cached_buffer_size < bufferSize) {
+                Ruzino::cuda::CUDALinearBufferDesc buffer_desc;
+                buffer_desc.element_count = bufferSize;
+                buffer_desc.element_size = 1;
+                d_buffer_cached =
+                    Ruzino::cuda::create_cuda_linear_buffer(buffer_desc);
+                cached_buffer_size = bufferSize;
+            }
+            auto& dBuffer = d_buffer_cached;
+
+            // Borrow buffers for implementation API
+            Ruzino::cuda::CUDALinearBufferDesc vec_existing_desc;
+            vec_existing_desc.element_count = n;
+            vec_existing_desc.element_size = sizeof(float);
+
+            auto d_x_buf = Ruzino::cuda::borrow_cuda_linear_buffer(
+                vec_existing_desc, (void*)d_x);
+            auto d_b_buf = Ruzino::cuda::borrow_cuda_linear_buffer(
+                vec_existing_desc, (void*)d_b);
+
+            auto setup_end = std::chrono::high_resolution_clock::now();
+            result.setup_time =
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    setup_end - start_time);
+
+            result = performOptimizedGMRESImpl(
+                cublasHandle,
+                cusparseHandle,
+                config,
+                n,
+                restart,
+                matA_desc,
+                dBuffer,
+                d_b_buf,
+                d_x_buf,
+                d_r,
+                d_w,
+                d_V,
+                vecX,
+                vecW);
+
+            cusparseDestroyDnVec(vecX);
+            cusparseDestroyDnVec(vecW);
+            cusparseDestroySpMat(matA_desc);
+
+            auto end_time = std::chrono::high_resolution_clock::now();
+            result.solve_time =
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    end_time - setup_end);
+        }
+        catch (const std::exception& e) {
+            result.error_message = std::string("GPU solve failed: ") + e.what();
+            result.converged = false;
+        }
+
+        return result;
+    }
+
     SolverResult solve(
         const Eigen::SparseMatrix<float>& A,
         const Eigen::VectorXf& b,
@@ -401,20 +556,10 @@ class CudaGMRESSolver : public LinearSolver {
         try {
             int n = A.rows();
             int nnz = A.nonZeros();
-            // Adaptive restart size based on problem size and sparsity
-            // For small problems, use larger restart to ensure convergence
-            int restart;
-            if (n <= 500) {
-                restart = std::min(100, std::max(30, n / 5));  // Generous for small problems
-            } else if (n <= 2000) {
-                restart = std::min(80, std::max(20, n / 25));
-            } else {
-                restart = std::min(50, std::max(10, n / 50));  // Original for large problems
-            }
 
             if (config.verbose) {
                 std::cout << "CUDA GMRES: n=" << n << ", nnz=" << nnz
-                          << ", restart=" << restart << std::endl;
+                          << std::endl;
             }
 
             // CSR conversion (same as BiCGSTAB)
@@ -456,88 +601,26 @@ class CudaGMRESSolver : public LinearSolver {
                 Ruzino::cuda::create_cuda_linear_buffer(csrColInd);
             auto d_b = Ruzino::cuda::create_cuda_linear_buffer<float>(n);
             auto d_x = Ruzino::cuda::create_cuda_linear_buffer<float>(n);
-            auto d_r = Ruzino::cuda::create_cuda_linear_buffer<float>(n);
-            auto d_w = Ruzino::cuda::create_cuda_linear_buffer<float>(n);
-            auto d_V = Ruzino::cuda::create_cuda_linear_buffer<float>(
-                n * (restart + 1));
 
             d_b->assign_host_vector(
                 std::vector<float>(b.data(), b.data() + b.size()));
             d_x->assign_host_vector(
                 std::vector<float>(x.data(), x.data() + x.size()));
 
-            cusparseSpMatDescr_t matA_desc;
-            cusparseCreateCsr(
-                &matA_desc,
-                n,
+            // Call GPU solve
+            result = solveGPU(
                 n,
                 nnz,
-                reinterpret_cast<void*>(d_csrRowPtr->get_device_ptr()),
-                reinterpret_cast<void*>(d_csrColInd->get_device_ptr()),
-                reinterpret_cast<void*>(d_csrValues->get_device_ptr()),
-                CUSPARSE_INDEX_32I,
-                CUSPARSE_INDEX_32I,
-                CUSPARSE_INDEX_BASE_ZERO,
-                CUDA_R_32F);
-
-            cusparseDnVecDescr_t vecX_desc, vecW_desc;
-            cusparseCreateDnVec(
-                &vecX_desc,
-                n,
-                reinterpret_cast<void*>(d_x->get_device_ptr()),
-                CUDA_R_32F);
-            cusparseCreateDnVec(
-                &vecW_desc,
-                n,
-                reinterpret_cast<void*>(d_w->get_device_ptr()),
-                CUDA_R_32F);
-
-            size_t bufferSize = 0;
-            const float one = 1.0f, zero = 0.0f;
-            cusparseSpMV_bufferSize(
-                cusparseHandle,
-                CUSPARSE_OPERATION_NON_TRANSPOSE,
-                &one,
-                matA_desc,
-                vecX_desc,
-                &zero,
-                vecW_desc,
-                CUDA_R_32F,
-                CUSPARSE_SPMV_ALG_DEFAULT,
-                &bufferSize);
-            auto dBuffer =
-                Ruzino::cuda::create_cuda_linear_buffer<uint8_t>(bufferSize);
-
-            auto iteration_start_time =
-                std::chrono::high_resolution_clock::now();
-
-            // 简化的GMRES实现 - 专注于正确性和效率
-            result = performOptimizedGMRES(
-                config,
-                n,
-                restart,
-                matA_desc,
-                dBuffer,
-                d_b,
-                d_x,
-                d_r,
-                d_w,
-                d_V,
-                vecX_desc,
-                vecW_desc);
-
-            auto iteration_end_time = std::chrono::high_resolution_clock::now();
-            result.solve_time =
-                std::chrono::duration_cast<std::chrono::microseconds>(
-                    iteration_end_time - iteration_start_time);
+                reinterpret_cast<const int*>(d_csrRowPtr->get_device_ptr()),
+                reinterpret_cast<const int*>(d_csrColInd->get_device_ptr()),
+                reinterpret_cast<const float*>(d_csrValues->get_device_ptr()),
+                reinterpret_cast<const float*>(d_b->get_device_ptr()),
+                reinterpret_cast<float*>(d_x->get_device_ptr()),
+                config);
 
             auto result_vec = d_x->get_host_vector<float>();
             x = Eigen::Map<Eigen::VectorXf>(
                 result_vec.data(), result_vec.size());
-
-            cusparseDestroySpMat(matA_desc);
-            cusparseDestroyDnVec(vecX_desc);
-            cusparseDestroyDnVec(vecW_desc);
         }
         catch (const std::exception& e) {
             result.error_message = e.what();
@@ -545,38 +628,6 @@ class CudaGMRESSolver : public LinearSolver {
         }
 
         return result;
-    }
-
-   private:
-    SolverResult performOptimizedGMRES(
-        const SolverConfig& config,
-        int n,
-        int restart,
-        cusparseSpMatDescr_t matA_desc,
-        Ruzino::cuda::CUDALinearBufferHandle dBuffer,
-        Ruzino::cuda::CUDALinearBufferHandle d_b,
-        Ruzino::cuda::CUDALinearBufferHandle d_x,
-        Ruzino::cuda::CUDALinearBufferHandle d_r,
-        Ruzino::cuda::CUDALinearBufferHandle d_w,
-        Ruzino::cuda::CUDALinearBufferHandle d_V,
-        cusparseDnVecDescr_t vecX_desc,
-        cusparseDnVecDescr_t vecW_desc)
-    {
-        return performOptimizedGMRESImpl(
-            cublasHandle,
-            cusparseHandle,
-            config,
-            n,
-            restart,
-            matA_desc,
-            dBuffer,
-            d_b,
-            d_x,
-            d_r,
-            d_w,
-            d_V,
-            vecX_desc,
-            vecW_desc);
     }
 };
 
