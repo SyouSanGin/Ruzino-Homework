@@ -148,6 +148,23 @@ void update_reduced_velocities_gpu(
     int num_basis,
     cuda::CUDALinearBufferHandle q_dot);  // [num_basis * 12]
 
+// Apply Dirichlet boundary conditions to velocities (set BC DOFs to zero)
+RZSIM_CUDA_API
+void apply_dirichlet_bc_to_velocities_gpu(
+    cuda::CUDALinearBufferHandle bc_dofs,  // [num_bc_dofs] - DOF indices
+    int num_bc_dofs,
+    cuda::CUDALinearBufferHandle velocities,  // [num_particles] glm::vec3
+    int num_particles);
+
+// Apply Dirichlet boundary conditions to positions (set BC vertices to rest pose)
+RZSIM_CUDA_API
+void apply_bc_to_positions_gpu(
+    cuda::CUDALinearBufferHandle bc_dofs,      // [num_bc_dofs] - DOF indices
+    int num_bc_dofs,
+    cuda::CUDALinearBufferHandle positions,    // [num_particles * 3]
+    cuda::CUDALinearBufferHandle rest_positions,  // [num_particles * 3]
+    int num_particles);
+
 }  // namespace rzsim_cuda
 
 RUZINO_NAMESPACE_CLOSE_SCOPE

@@ -846,6 +846,103 @@ NODE_EXECUTION_FUNCTION(reduced_order_neo_hookean_gpu)
     rzsim_cuda::map_reduced_to_full_gpu(
         storage.q_reduced, storage.ro_data, d_positions);
 
+    // Apply Dirichlet BC to positions (enforce BC vertices at rest pose)
+    if (storage.num_bc_dofs > 0) {
+        // Save current positions before BC
+        cuda::CUDALinearBufferHandle positions_before_bc =
+            cuda::create_cuda_linear_buffer<float>(num_particles * 3);
+        positions_before_bc->copy_from_device(d_positions.Get());
+
+        // Apply BC: set BC vertices to rest pose
+        rzsim_cuda::apply_bc_to_positions_gpu(
+            storage.bc_dofs_buffer,
+            storage.num_bc_dofs,
+            d_positions,
+            storage.ro_data.rest_positions,
+            num_particles);
+
+        // Now we need to find q_new such that map(q_new) ≈ positions (with BC enforced)
+        // Use local linearization: positions ≈ positions_before_bc + J * delta_q
+        // Solve: (J^T * J) * delta_q = J^T * (positions - positions_before_bc)
+        
+        int reduced_dof = storage.num_basis * 12;
+        
+        // Compute Jacobian at current q
+        rzsim_cuda::compute_jacobian_gpu(
+            storage.q_reduced, storage.ro_data, storage.jacobian);
+
+        // Compute delta_x = positions - positions_before_bc
+        cuda::CUDALinearBufferHandle delta_x =
+            cuda::create_cuda_linear_buffer<float>(num_particles * 3);
+        
+        // delta_x = 1.0 * positions - 1.0 * positions_before_bc
+        cudaMemcpy(
+            delta_x->get_device_ptr<float>(),
+            d_positions->get_device_ptr<float>(),
+            num_particles * 3 * sizeof(float),
+            cudaMemcpyDeviceToDevice);
+        rzsim_cuda::axpy_nh_gpu(
+            -1.0f, positions_before_bc, delta_x, delta_x, num_particles * 3);
+
+        // Compute rhs = J^T * delta_x
+        rzsim_cuda::compute_reduced_gradient_gpu(
+            storage.jacobian,
+            delta_x,
+            num_particles,
+            storage.num_basis,
+            storage.grad_reduced);
+
+        // Compute J^T * J
+        cuda::CUDALinearBufferHandle JtJ_pos =
+            cuda::create_cuda_linear_buffer<float>(reduced_dof * reduced_dof);
+        rzsim_cuda::compute_jacobian_gram_matrix_gpu(
+            storage.jacobian, num_particles, storage.num_basis, JtJ_pos);
+
+        // Solve (J^T * J) * delta_q = J^T * delta_x
+        cuda::CUDALinearBufferHandle delta_q =
+            cuda::create_cuda_linear_buffer<float>(reduced_dof);
+        
+        Ruzino::Solver::SolverConfig solver_config_pos;
+        solver_config_pos.tolerance = 1e-9f;
+        solver_config_pos.verbose = false;
+
+        auto solver_result_pos = storage.solver->solveDenseGPU(
+            reduced_dof,
+            JtJ_pos->get_device_ptr<float>(),
+            storage.grad_reduced->get_device_ptr<float>(),
+            delta_q->get_device_ptr<float>(),
+            solver_config_pos);
+
+        if (solver_result_pos.converged) {
+            spdlog::info(
+                "[ReducedNeoHookean] Position BC projection converged (iter={}, residual={})",
+                solver_result_pos.iterations,
+                solver_result_pos.final_residual);
+            
+            // Update q: q_new = q + delta_q
+            // First copy current q to temp
+            cuda::CUDALinearBufferHandle q_temp =
+                cuda::create_cuda_linear_buffer<float>(reduced_dof);
+            cudaMemcpy(
+                q_temp->get_device_ptr<float>(),
+                storage.q_reduced->get_device_ptr<float>(),
+                reduced_dof * sizeof(float),
+                cudaMemcpyDeviceToDevice);
+            
+            // q = q + delta_q
+            rzsim_cuda::axpy_nh_gpu(
+                1.0f, delta_q, q_temp, storage.q_reduced, reduced_dof);
+            
+            // Remap to get final positions with BC enforced
+            rzsim_cuda::map_reduced_to_full_gpu(
+                storage.q_reduced, storage.ro_data, d_positions);
+        } else {
+            spdlog::warn(
+                "[ReducedNeoHookean] Position BC projection solver failed: {}",
+                solver_result_pos.error_message);
+        }
+    }
+
     // Project reduced velocities to full space before collision handling
     // v_full = J * q_dot
     rzsim_cuda::compute_jacobian_gpu(
@@ -863,6 +960,15 @@ NODE_EXECUTION_FUNCTION(reduced_order_neo_hookean_gpu)
         num_particles,
         storage.num_basis,
         storage.velocities_buffer);
+
+    // Apply Dirichlet BC to full-space velocities (set BC vertices to zero velocity)
+    if (storage.num_bc_dofs > 0) {
+        rzsim_cuda::apply_dirichlet_bc_to_velocities_gpu(
+            storage.bc_dofs_buffer,
+            storage.num_bc_dofs,
+            storage.velocities_buffer,
+            num_particles);
+    }
 
     // Save full-space velocity before collision for verification
     cuda::CUDALinearBufferHandle velocities_before_collision =

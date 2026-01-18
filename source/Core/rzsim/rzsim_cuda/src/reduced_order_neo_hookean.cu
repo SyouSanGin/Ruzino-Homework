@@ -724,6 +724,100 @@ void compute_jacobian_gram_matrix_gpu(
 }
 
 // ============================================================================
+// Kernel: Apply Dirichlet BC to velocities
+// ============================================================================
+
+__global__ void apply_bc_to_velocities_kernel(
+    const int* bc_dofs,     // [num_bc_dofs] - DOF indices
+    int num_bc_dofs,
+    glm::vec3* velocities,  // [num_particles]
+    int num_particles)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_bc_dofs) return;
+
+    int dof = bc_dofs[idx];
+    int vertex = dof / 3;
+    int component = dof % 3;
+
+    if (vertex < num_particles) {
+        // Access glm::vec3 components using pointer arithmetic
+        float* vel_ptr = reinterpret_cast<float*>(&velocities[vertex]);
+        vel_ptr[component] = 0.0f;
+    }
+}
+
+void apply_dirichlet_bc_to_velocities_gpu(
+    cuda::CUDALinearBufferHandle bc_dofs,
+    int num_bc_dofs,
+    cuda::CUDALinearBufferHandle velocities,
+    int num_particles)
+{
+    const int* bc_dofs_ptr = bc_dofs->get_device_ptr<int>();
+    glm::vec3* velocities_ptr = velocities->get_device_ptr<glm::vec3>();
+
+    int threads_per_block = 256;
+    int num_blocks = (num_bc_dofs + threads_per_block - 1) / threads_per_block;
+
+    apply_bc_to_velocities_kernel<<<num_blocks, threads_per_block>>>(
+        bc_dofs_ptr, num_bc_dofs, velocities_ptr, num_particles);
+
+    cudaDeviceSynchronize();
+    auto err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf(
+            "[ReducedOrder] apply_bc_to_velocities kernel failed: %s\n",
+            cudaGetErrorString(err));
+    }
+}
+
+// ============================================================================
+// Kernel: Apply Dirichlet BC to positions (set to rest pose)
+// ============================================================================
+
+__global__ void apply_bc_to_positions_kernel(
+    const int* bc_dofs,        // [num_bc_dofs] - DOF indices
+    int num_bc_dofs,
+    float* positions,          // [num_particles * 3]
+    const float* rest_positions,  // [num_particles * 3]
+    int num_particles)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_bc_dofs) return;
+
+    int dof = bc_dofs[idx];
+    if (dof < num_particles * 3) {
+        positions[dof] = rest_positions[dof];
+    }
+}
+
+void apply_bc_to_positions_gpu(
+    cuda::CUDALinearBufferHandle bc_dofs,
+    int num_bc_dofs,
+    cuda::CUDALinearBufferHandle positions,
+    cuda::CUDALinearBufferHandle rest_positions,
+    int num_particles)
+{
+    const int* bc_dofs_ptr = bc_dofs->get_device_ptr<int>();
+    float* positions_ptr = positions->get_device_ptr<float>();
+    const float* rest_positions_ptr = rest_positions->get_device_ptr<float>();
+
+    int threads_per_block = 256;
+    int num_blocks = (num_bc_dofs + threads_per_block - 1) / threads_per_block;
+
+    apply_bc_to_positions_kernel<<<num_blocks, threads_per_block>>>(
+        bc_dofs_ptr, num_bc_dofs, positions_ptr, rest_positions_ptr, num_particles);
+
+    cudaDeviceSynchronize();
+    auto err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf(
+            "[ReducedOrder] apply_bc_to_positions kernel failed: %s\n",
+            cudaGetErrorString(err));
+    }
+}
+
+// ============================================================================
 // Kernel: Explicit step in reduced space
 // ============================================================================
 
