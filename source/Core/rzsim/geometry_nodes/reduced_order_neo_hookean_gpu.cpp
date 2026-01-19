@@ -986,27 +986,6 @@ NODE_EXECUTION_FUNCTION(reduced_order_neo_hookean_gpu)
     rzsim_cuda::handle_ground_collision_nh_gpu(
         d_positions, storage.velocities_buffer, restitution, num_particles);
 
-    // Check if collision actually occurred (compare velocities)
-    auto v_before = velocities_before_collision->get_host_vector<glm::vec3>();
-    auto v_after = storage.velocities_buffer->get_host_vector<glm::vec3>();
-    bool collision_occurred = false;
-    float max_velocity_change = 0.0f;
-    for (int i = 0; i < num_particles; ++i) {
-        glm::vec3 change = v_after[i] - v_before[i];
-        float change_mag = glm::length(change);
-        max_velocity_change = std::max(max_velocity_change, change_mag);
-        if (change_mag > 1e-6f) {
-            collision_occurred = true;
-        }
-    }
-
-    if (collision_occurred) {
-        spdlog::debug(
-            "[ReducedNeoHookean] Collision detected, max velocity change: "
-            "{:.6e}",
-            max_velocity_change);
-    }
-
     // Project modified full-space velocities back to reduced space
     // Solve: (J^T * J) * q_dot = J^T * v_full for proper projection
     // First compute rhs = J^T * v_full
