@@ -1,7 +1,7 @@
 #pragma once
-#include "optix/WorkQueue.cuh"
 #if RUZINO_WITH_CUDA
 
+#include "optix/WorkQueue.cuh"
 #include <RHI/api.h>
 #include <cuda.h>
 #include <cuda_runtime.h>

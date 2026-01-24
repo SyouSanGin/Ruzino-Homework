@@ -1,4 +1,6 @@
 # Create the isolated CUDA library first
+if (RUZINO_WITH_CUDA)
+
 add_subdirectory(rzsim_cuda)
 
 # Main rzsim library - links to both CUDA and geometry libraries
@@ -23,3 +25,5 @@ target_link_libraries(nn_boundary_detector PRIVATE  rzpython)
 
 # Tests
 target_link_libraries(reduced_basis_simple_test PRIVATE rzsim geometry igl_core)
+
+endif()

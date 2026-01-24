@@ -34,7 +34,7 @@
 #include <windows.h>
 #endif
 
-#ifdef RUZINO_WITH_CUDA
+#if RUZINO_WITH_CUDA
 #include "RHI/internal/cuda_extension.hpp"
 #include <cuda_runtime.h>
 #endif
@@ -210,7 +210,7 @@ public:
         return result;
     }
 
-#ifdef RUZINO_WITH_CUDA
+#if RUZINO_WITH_CUDA
     // Get output texture as CUDA buffer (zero-copy to GPU)
     // name: optional texture name (uses default if empty)
     cuda::CUDALinearBufferHandle get_output_cuda_buffer(const std::string& name = "") {
@@ -297,7 +297,7 @@ NB_MODULE(hd_RUZINO_py, m)
              nb::arg("name") = "",
              "Get the rendered texture as a float array (RGBA, row-major). "
              "Optional name parameter to get specific named texture from present nodes.")
-#ifdef RUZINO_WITH_CUDA
+#if RUZINO_WITH_CUDA
         .def("get_output_cuda_buffer", &HydraRenderer::get_output_cuda_buffer,
              nb::arg("name") = "",
              "Get the rendered texture as CUDA buffer (GPU memory, zero-copy). "
@@ -365,7 +365,7 @@ NB_MODULE(hd_RUZINO_py, m)
     }, nb::arg("payload"), 
     "Wrap RenderGlobalPayload in meta_any for node system use");
 
-#ifdef RUZINO_WITH_CUDA
+#if RUZINO_WITH_CUDA
     // CUDA buffer binding - expose as capsule for nanobind dlpack support
     nb::class_<cuda::ICUDALinearBuffer, nvrhi::IResource>(m, "CUDALinearBuffer")
         .def("get_device_ptr", [](cuda::ICUDALinearBuffer& buf) {
