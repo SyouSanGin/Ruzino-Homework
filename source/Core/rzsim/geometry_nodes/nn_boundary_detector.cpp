@@ -102,10 +102,8 @@ NODE_EXECUTION_FUNCTION(nn_boundary_detector)
 
         // Initialize basis set
         python::send("model_name", model_path);
-        std::string init_result = python::call<std::string>(
-            "deducer.initialize_basis_set(model_name)");
+        python::call<void>("deducer.initialize_basis_set(model_name)");
         python::flush_python_output();
-        spdlog::info("Basis set initialization: {}", init_result);
 
         spdlog::info(
             "Detecting Dirichlet boundary on {} vertices with "
@@ -142,7 +140,6 @@ NODE_EXECUTION_FUNCTION(nn_boundary_detector)
                                "distance_threshold=distance_threshold)";
 
         python::call<void>(detection_code);
-        python::flush_python_output();
 
         // Retrieve results
         std::vector<float> boundary_values =

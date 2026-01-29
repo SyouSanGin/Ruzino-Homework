@@ -48,16 +48,14 @@ NODE_EXECUTION_FUNCTION(shape_space_geometry_gen)
 
         // Initialize basis set
         python::send("model_name", model_path);
-        std::string init_result = python::call<std::string>(
-            "deducer.initialize_basis_set(model_name)");
-        spdlog::info("Basis set initialization: {}", init_result);
+        python::call<void>("deducer.initialize_basis_set(model_name)");
 
+        Geometry geometry;
         // Generate geometry directly through Python API
         if (has_shape_code_2) {
             python::send(
                 "shape_codes", std::vector<float>{ shape_code, shape_code_2 });
-            python::call<void>(
-                "_generated_geom = "
+            geometry = python::call<Geometry>(
                 "deducer.generate_geometry_direct(shape_codes)");
             spdlog::info(
                 "Generated geometry with dual shape codes [{:.2f}, {:.2f}]",
@@ -66,15 +64,11 @@ NODE_EXECUTION_FUNCTION(shape_space_geometry_gen)
         }
         else {
             python::send("shape_code", shape_code);
-            python::call<void>(
-                "_generated_geom = "
+            geometry = python::call<Geometry>(
                 "deducer.generate_geometry_direct(shape_code)");
             spdlog::info(
                 "Generated geometry with shape code {:.2f}", shape_code);
         }
-
-        // Get the generated geometry from Python
-        Geometry geometry = python::get<Geometry>("_generated_geom");
 
         spdlog::info("Successfully created geometry from Python API");
         params.set_output<Geometry>("Geometry", std::move(geometry));

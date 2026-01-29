@@ -129,10 +129,8 @@ NODE_EXECUTION_FUNCTION(bss_deducer)
 
         // Initialize basis set
         python::send("model_name", model_path);
-        std::string init_result = python::call<std::string>(
-            "deducer.initialize_basis_set(model_name)");
+        python::call<void>("deducer.initialize_basis_set(model_name)");
         python::flush_python_output();
-        spdlog::info("Basis set initialization: {}", init_result);
 
         spdlog::info(
             "Running inference on {} vertices with shape_code={:.2f}",

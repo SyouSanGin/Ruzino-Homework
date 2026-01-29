@@ -27,12 +27,11 @@ def initialize_basis_set(model_name):
 
     # If already initialized with the same model, skip
     if _basis_set is not None and _current_model_name == model_name:
-        return f"Basis set already initialized with model: {model_name}"
+        return
 
     # If different model requested, force re-initialization
     if _basis_set is not None and _current_model_name != model_name:
         _basis_set = None
-        print(f"Switching from model '{_current_model_name}' to '{model_name}'")
 
     # Checkpoint path
     checkpoint_path = rf"C:\Users\Pengfei\WorkSpace\ShapeSpaceSpectra-reproduction\checkpoints\{model_name}"
@@ -61,8 +60,6 @@ def initialize_basis_set(model_name):
 
         _basis_set.load_weights(checkpoint_file, device=_device)
         _current_model_name = model_name
-
-        return f"Initialized basis set: {task_name}, model={model_name}, {_basis_set.num_fields} eigenfunctions, device={_device}"
     except Exception as e:
         import traceback
 
@@ -101,8 +98,6 @@ def generate_geometry_direct(shape_code_value=0.5):
                 [shape_code_value], device=_device, dtype=torch.float32
             )
 
-        print(f"[deducer] Generating geometry with shape_code={shape_code_value}")
-
         # Update shape code
         _basis_set._update_shape_code(shape_code)
 
@@ -115,8 +110,6 @@ def generate_geometry_direct(shape_code_value=0.5):
 
         num_vertices = vertices_torch.shape[0]
         num_faces = faces_torch.shape[0]
-
-        print(f"[deducer] Mesh info: {num_vertices} vertices, {num_faces} faces")
 
         # Create empty geometry
         geometry = geometry_py.CreateMesh()
@@ -131,7 +124,6 @@ def generate_geometry_direct(shape_code_value=0.5):
 
         # Build face topology (assuming triangular faces)
         if faces_torch.shape[1] == 3:
-            print(f"[deducer] Setting triangular face topology using CUDA tensors")
             # All triangles
             face_vertex_counts = torch.full(
                 (num_faces,), 3, dtype=torch.int32, device=_device
@@ -149,7 +141,6 @@ def generate_geometry_direct(shape_code_value=0.5):
                 cuda_view.set_face_vertex_indices(face_vertex_indices.cuda())
         else:
             # Mixed face sizes - need to convert to CPU
-            print(f"[deducer] Setting mixed face topology, transferring to CPU")
             faces_cpu = faces_torch.cpu().numpy()
             face_vertex_counts = [len(face) for face in faces_cpu]
             face_vertex_indices = []
@@ -159,14 +150,10 @@ def generate_geometry_direct(shape_code_value=0.5):
             mesh.set_face_vertex_counts(np.array(face_vertex_counts, dtype=np.int32))
             mesh.set_face_vertex_indices(np.array(face_vertex_indices, dtype=np.int32))
 
-        print(f"[deducer] Successfully created geometry_py object using CUDA view")
-
         return geometry
 
     except Exception as e:
-        print(f"[deducer] Error generating geometry: {str(e)}")
         import traceback
-
         traceback.print_exc()
         return None
 
@@ -231,9 +218,7 @@ def detect_boundary_from_geometry(
         return
 
     except Exception as e:
-        print(f"[deducer] Error in detect_boundary_from_geometry: {str(e)}")
         import traceback
-
         traceback.print_exc()
         return np.array([])
 
@@ -297,8 +282,6 @@ def run_inference_from_geometry(geometry, eigenfunction_idx=0, shape_code_value=
         return output_cpu
 
     except Exception as e:
-        print(f"[deducer] Error in run_inference_from_geometry: {str(e)}")
         import traceback
-
         traceback.print_exc()
         return np.array([])
