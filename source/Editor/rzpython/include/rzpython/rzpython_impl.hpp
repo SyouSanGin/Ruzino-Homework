@@ -11,7 +11,6 @@
 
 #include "api.h"
 
-
 RUZINO_NAMESPACE_OPEN_SCOPE
 
 namespace python {
@@ -142,6 +141,70 @@ void send(const std::string& name, const T& value)
     }
 }
 
+template<typename T>
+void send_ref(const std::string& name, T& obj)
+{
+    if (!initialized) {
+        throw std::runtime_error("Python interpreter not initialized");
+    }
+
+    try {
+        // Create nanobind object from the C++ object with reference policy
+        // Use reference_internal for non-pointer objects
+        nb::object py_obj = nb::cast(&obj, nb::rv_policy::reference);
+
+        // Store in our map to keep it alive
+        bound_objects[name] = py_obj;
+
+        // Add to Python's main dict
+        PyDict_SetItemString(main_dict, name.c_str(), py_obj.ptr());
+    }
+    catch (const nb::cast_error& e) {
+        throw std::runtime_error(
+            "Failed to send reference to Python variable '" + name +
+            "': " + e.what());
+    }
+    catch (const std::exception& e) {
+        throw std::runtime_error(
+            "Failed to send reference to Python variable '" + name +
+            "': " + e.what());
+    }
+}
+
+template<typename T>
+T get(const std::string& name)
+{
+    if (!initialized) {
+        throw std::runtime_error("Python interpreter not initialized");
+    }
+
+    try {
+        // Get object from Python's main dict
+        PyObject* py_obj = PyDict_GetItemString(main_dict, name.c_str());
+
+        if (!py_obj) {
+            throw std::runtime_error(
+                "Python variable '" + name + "' not found");
+        }
+
+        if (py_obj == Py_None) {
+            throw std::runtime_error("Python variable '" + name + "' is None");
+        }
+
+        // Convert to C++ type using nanobind
+        return nb::cast<T>(nb::handle(py_obj));
+    }
+    catch (const nb::cast_error& e) {
+        throw std::runtime_error(
+            "Failed to convert Python variable '" + name +
+            "' to C++ type: " + e.what());
+    }
+    catch (const std::exception& e) {
+        throw std::runtime_error(
+            "Failed to get Python variable '" + name + "': " + e.what());
+    }
+}
+
 // Specialized send for CudaArrayView - zero-copy transfer to Python
 template<typename T>
 void send(const std::string& name, const CudaArrayView<T>& cuda_view)
@@ -153,7 +216,7 @@ void send(const std::string& name, const CudaArrayView<T>& cuda_view)
     try {
         // Create nanobind ndarray from CUDA pointer without copying
         size_t ndim = cuda_view.shape.size();
-        
+
         // Create ndarray with external ownership
         nb::ndarray<nb::pytorch, T, nb::device::cuda> array(
             cuda_view.data,
@@ -161,12 +224,12 @@ void send(const std::string& name, const CudaArrayView<T>& cuda_view)
             cuda_view.shape.data(),
             nb::handle()  // No owner - we don't manage the memory
         );
-        
+
         nb::object py_obj = nb::cast(array);
-        
+
         // Store in our map to keep it alive
         bound_objects[name] = py_obj;
-        
+
         // Add to Python's main dict
         PyDict_SetItemString(main_dict, name.c_str(), py_obj.ptr());
     }

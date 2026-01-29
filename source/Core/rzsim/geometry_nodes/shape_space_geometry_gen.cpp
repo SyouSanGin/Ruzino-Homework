@@ -22,8 +22,6 @@ NODE_DECLARATION_FUNCTION(shape_space_geometry_gen)
     b.add_input<float>("Shape Code 2").default_val(0.0f).min(0.0f).max(1.0f);
     b.add_input<std::string>("Model Path")
         .default_val("mesh_deform_dirichlet_20260120_113410");
-    b.add_input<std::string>("Output Filename")
-        .default_val("generated_shape.obj");
     b.add_output<Geometry>("Geometry");
 }
 
@@ -35,12 +33,11 @@ NODE_EXECUTION_FUNCTION(shape_space_geometry_gen)
     bool has_shape_code_2 = params.get_input<bool>("Has Shape Code 2");
     float shape_code_2 = params.get_input<float>("Shape Code 2");
     std::string model_path = params.get_input<std::string>("Model Path");
-    std::string output_filename =
-        params.get_input<std::string>("Output Filename");
 
     try {
-        // Import deducer module
+        // Import required modules
         python::call<void>("import torch");
+        python::call<void>("import geometry_py");
         python::call<void>(
             "import sys\n"
             "sys.path.insert(0, "
@@ -55,15 +52,13 @@ NODE_EXECUTION_FUNCTION(shape_space_geometry_gen)
             "deducer.initialize_basis_set(model_name)");
         spdlog::info("Basis set initialization: {}", init_result);
 
-        // Generate OBJ file
-        std::string test_result;
+        // Generate geometry directly through Python API
         if (has_shape_code_2) {
             python::send(
                 "shape_codes", std::vector<float>{ shape_code, shape_code_2 });
-            python::send("filename", output_filename);
-            test_result = python::call<std::string>(
-                "deducer.test_save_obj(shape_code_value=shape_codes, "
-                "output_filename=filename)");
+            python::call<void>(
+                "_generated_geom = "
+                "deducer.generate_geometry_direct(shape_codes)");
             spdlog::info(
                 "Generated geometry with dual shape codes [{:.2f}, {:.2f}]",
                 shape_code,
@@ -71,37 +66,17 @@ NODE_EXECUTION_FUNCTION(shape_space_geometry_gen)
         }
         else {
             python::send("shape_code", shape_code);
-            python::send("filename", output_filename);
-            test_result = python::call<std::string>(
-                "deducer.test_save_obj(shape_code_value=shape_code, "
-                "output_filename=filename)");
+            python::call<void>(
+                "_generated_geom = "
+                "deducer.generate_geometry_direct(shape_code)");
             spdlog::info(
                 "Generated geometry with shape code {:.2f}", shape_code);
         }
 
-        spdlog::info("OBJ generation result: {}", test_result);
+        // Get the generated geometry from Python
+        Geometry geometry = python::get<Geometry>("_generated_geom");
 
-        // Load the generated OBJ file
-        std::filesystem::path executable_path;
-#ifdef _WIN32
-        char p[MAX_PATH];
-        GetModuleFileNameA(NULL, p, MAX_PATH);
-        executable_path = std::filesystem::path(p).parent_path();
-#endif
-
-        std::filesystem::path obj_path = executable_path / output_filename;
-
-        if (!std::filesystem::exists(obj_path)) {
-            spdlog::error(
-                "Generated OBJ file does not exist: {}", obj_path.string());
-            params.set_output<Geometry>("Geometry", Geometry());
-            return false;
-        }
-
-        // Read the OBJ file back
-        Geometry geometry = read_obj_geometry(obj_path.string());
-        spdlog::info("Loaded geometry from {}", obj_path.string());
-
+        spdlog::info("Successfully created geometry from Python API");
         params.set_output<Geometry>("Geometry", std::move(geometry));
         return true;
     }

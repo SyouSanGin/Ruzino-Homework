@@ -91,6 +91,14 @@ void reference(const std::string& name, T* obj);
 template<typename T>
 void send(const std::string& name, const T& value);
 
+// Send C++ object to Python variable (by reference, zero-copy)
+template<typename T>
+void send_ref(const std::string& name, T& obj);
+
+// Get Python variable as C++ type
+template<typename T>
+T get(const std::string& name);
+
 // Flush Python's stdout/stderr and print to C++ console
 RZPYTHON_API void flush_python_output();
 

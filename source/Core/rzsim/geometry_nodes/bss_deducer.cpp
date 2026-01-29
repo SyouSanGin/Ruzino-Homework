@@ -2,7 +2,6 @@
 
 #include "GCore/Components/MeshComponent.h"
 #include "GCore/geom_payload.hpp"
-#include "RHI/cuda.hpp"
 #include "nodes/core/def/node_def.hpp"
 #include "rzpython/rzpython.hpp"
 #include "rzsim/reduced_order_basis.h"
@@ -11,12 +10,8 @@ using namespace Ruzino;
 
 NODE_DEF_OPEN_SCOPE
 
-// Storage for caching GPU buffers and inference results
+// Storage for caching inference results
 struct BssDeducerStorage {
-    cuda::CUDALinearBufferHandle vertices_buffer;
-    bool initialized = false;
-    int num_vertices = 0;
-
     // Cache for inference results
     std::shared_ptr<ReducedOrderedBasis> cached_reduced_basis;
     std::vector<glm::vec3> cached_vertices;
@@ -121,9 +116,10 @@ NODE_EXECUTION_FUNCTION(bss_deducer)
     auto reduced_basis = std::make_shared<ReducedOrderedBasis>();
 
     try {
-        // Import torch and deducer module
-        python::call<void>("import torch");
+        // Import modules once
         python::call<void>(
+            "import torch\n"
+            "import geometry_py\n"
             "import sys\n"
             "sys.path.insert(0, "
             "r'C:"
@@ -131,38 +127,23 @@ NODE_EXECUTION_FUNCTION(bss_deducer)
             "_nodes')\n"
             "import deducer");
 
-        // Initialize basis set (will load model on first call)
+        // Initialize basis set
         python::send("model_name", model_path);
         std::string init_result = python::call<std::string>(
             "deducer.initialize_basis_set(model_name)");
-        python::flush_python_output();  // Flush Python print output
+        python::flush_python_output();
         spdlog::info("Basis set initialization: {}", init_result);
-
-        // Create or update GPU buffer for vertices
-        if (!storage.initialized || storage.num_vertices != vertices.size()) {
-            storage.vertices_buffer = cuda::create_cuda_linear_buffer(vertices);
-            storage.num_vertices = vertices.size();
-            storage.initialized = true;
-        }
-        else {
-            // Update existing buffer
-            storage.vertices_buffer->assign_host_vector(vertices);
-        }
 
         spdlog::info(
             "Running inference on {} vertices with shape_code={:.2f}",
             vertices.size(),
             shape_code);
 
-        // Zero-copy send CUDA array to Python
-        float* gpu_ptr = storage.vertices_buffer->get_device_ptr<float>();
-        python::send(
-            "vertices_cuda",
-            python::CudaArrayView<float>{ gpu_ptr, { vertices.size(), 3 } });
+        // Send Geometry object directly to Python (zero-copy reference)
+        python::send_ref("_input_geom", input_geom);
 
-        // Send shape code to Python
+        // Prepare shape code
         if (has_shape_code_2) {
-            // Send two shape codes as a list
             std::vector<float> shape_codes = { shape_code, shape_code_2 };
             python::send("shape_code_values", shape_codes);
             spdlog::info(
@@ -171,62 +152,63 @@ NODE_EXECUTION_FUNCTION(bss_deducer)
                 shape_code_2);
         }
         else {
-            // Send single shape code
             python::send("shape_code_value", shape_code);
         }
 
-        // Inference eigenfunctions based on eigenfunction_count
+        // Inference eigenfunctions
         reduced_basis->basis.resize(eigenfunction_count);
         std::vector<float> selected_results;
 
         for (int i = 0; i < eigenfunction_count; i++) {
-            // Call Python inference function for each eigenfunction
+            python::send("eigenfunction_idx", i);
+
+            // Call Python inference with Geometry object
             std::string inference_code =
-                "import numpy as np\n"
-                "import torch\n";
+                has_shape_code_2 ? "deducer.run_inference_from_geometry(_input_"
+                                   "geom, eigenfunction_idx=eigenfunction_idx, "
+                                   "shape_code_value=shape_code_values)"
+                                 : "deducer.run_inference_from_geometry(_input_"
+                                   "geom, eigenfunction_idx=eigenfunction_idx, "
+                                   "shape_code_value=shape_code_value)";
 
-            if (has_shape_code_2) {
-                inference_code +=
-                    "inference_result_" + std::to_string(i) +
-                    " = deducer.run_inference_on_vertices("
-                    "vertices_cuda, eigenfunction_idx=" +
-                    std::to_string(i) +
-                    ", shape_code=torch.tensor(shape_code_values, "
-                    "device='cuda'))";
+            auto numpy_result =
+                python::call<python::numpy_array_f32>(inference_code);
+            python::flush_python_output();
+
+            if (numpy_result.ndim() != 1) {
+                spdlog::error(
+                    "Eigenfunction {} result has wrong dimensions (expected "
+                    "1D, got {}D)",
+                    i,
+                    numpy_result.ndim());
+                continue;
             }
-            else {
-                inference_code +=
-                    "inference_result_" + std::to_string(i) +
-                    " = deducer.run_inference_on_vertices("
-                    "vertices_cuda, eigenfunction_idx=" +
-                    std::to_string(i) +
-                    ", shape_code=torch.tensor([shape_code_value]))";
-            }
 
-            python::call<void>(inference_code);
-            python::flush_python_output();  // Flush Python print output
-
-            // Retrieve results as vector<float>
-            std::vector<float> results = python::call<std::vector<float>>(
-                "inference_result_" + std::to_string(i) + ".tolist()");
-
-            if (results.size() != vertices.size()) {
+            size_t result_size = numpy_result.shape(0);
+            if (result_size != vertices.size()) {
                 spdlog::error(
                     "Eigenfunction {} result size ({}) does not match vertex "
                     "count ({})",
                     i,
-                    results.size(),
+                    result_size,
                     vertices.size());
                 continue;
             }
 
-            // Store in reduced basis
-            reduced_basis->basis[i] =
-                Eigen::VectorXf::Map(results.data(), results.size());
+            // Fast memcpy from numpy array to Eigen vector
+            reduced_basis->basis[i].resize(result_size);
+            std::memcpy(
+                reduced_basis->basis[i].data(),
+                numpy_result.data(),
+                result_size * sizeof(float));
 
             // Keep the selected eigenfunction for quantity
             if (i == eigenfunction_idx) {
-                selected_results = results;
+                selected_results.resize(result_size);
+                std::memcpy(
+                    selected_results.data(),
+                    numpy_result.data(),
+                    result_size * sizeof(float));
             }
 
             spdlog::info("Computed eigenfunction {}", i);

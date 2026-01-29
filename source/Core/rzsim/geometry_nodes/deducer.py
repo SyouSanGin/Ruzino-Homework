@@ -87,6 +87,7 @@ def run_inference_on_vertices(vertices_cuda, eigenfunction_idx=0, shape_code=Non
     global _basis_set, _device
 
     if _basis_set is None:
+        print("Basis set not initialized, initializing with default model")
         init_result = initialize_basis_set()
         if "Error" in init_result:
             raise RuntimeError(init_result)
@@ -325,3 +326,244 @@ def detect_dirichlet_boundary(
     print(f"Found {num_boundary} / {num_vertices} vertices on Dirichlet boundary")
 
     return boundary_values
+
+
+def generate_geometry_direct(shape_code_value=0.5):
+    """
+    Generate geometry directly using geometry_py API without saving to disk
+
+    Args:
+        shape_code_value: Shape code value(s) - can be single float or list of floats
+
+    Returns:
+        geometry_py.Geometry object or None on error
+    """
+    global _basis_set, _device
+
+    if _basis_set is None:
+        return None
+
+    try:
+        # Import geometry_py
+        import geometry_py
+
+        # Create shape code tensor
+        if isinstance(shape_code_value, (list, tuple)):
+            shape_code = torch.tensor(
+                shape_code_value, device=_device, dtype=torch.float32
+            )
+        else:
+            shape_code = torch.tensor(
+                [shape_code_value], device=_device, dtype=torch.float32
+            )
+
+        print(f"[deducer] Generating geometry with shape_code={shape_code_value}")
+
+        # Update shape code
+        _basis_set._update_shape_code(shape_code)
+
+        # Get geometry from shape_space
+        geom = _basis_set.shape_space.geometry
+
+        # Get vertices and faces (keep on GPU)
+        vertices_torch = geom.vertices if hasattr(geom, "vertices") else geom.vertices
+        faces_torch = geom.faces if hasattr(geom, "faces") else geom.faces
+
+        num_vertices = vertices_torch.shape[0]
+        num_faces = faces_torch.shape[0]
+
+        print(f"[deducer] Mesh info: {num_vertices} vertices, {num_faces} faces")
+
+        # Create empty geometry
+        geometry = geometry_py.CreateMesh()
+        mesh = geometry.get_mesh_component()
+        cuda_view = mesh.get_cuda_view()
+
+        # Set vertices directly from CUDA tensor (zero-copy or GPU-to-GPU copy)
+        if vertices_torch.is_cuda:
+            cuda_view.set_vertices(vertices_torch)
+        else:
+            cuda_view.set_vertices(vertices_torch.cuda())
+
+        # Build face topology (assuming triangular faces)
+        if faces_torch.shape[1] == 3:
+            print(f"[deducer] Setting triangular face topology using CUDA tensors")
+            # All triangles
+            face_vertex_counts = torch.full(
+                (num_faces,), 3, dtype=torch.int32, device=_device
+            )
+            face_vertex_indices = faces_torch.flatten().to(torch.int32)
+
+            if face_vertex_counts.is_cuda:
+                cuda_view.set_face_vertex_counts(face_vertex_counts)
+            else:
+                cuda_view.set_face_vertex_counts(face_vertex_counts.cuda())
+
+            if face_vertex_indices.is_cuda:
+                cuda_view.set_face_vertex_indices(face_vertex_indices)
+            else:
+                cuda_view.set_face_vertex_indices(face_vertex_indices.cuda())
+        else:
+            # Mixed face sizes - need to convert to CPU
+            print(f"[deducer] Setting mixed face topology, transferring to CPU")
+            faces_cpu = faces_torch.cpu().numpy()
+            face_vertex_counts = [len(face) for face in faces_cpu]
+            face_vertex_indices = []
+            for face in faces_cpu:
+                face_vertex_indices.extend([int(idx) for idx in face])
+
+            mesh.set_face_vertex_counts(np.array(face_vertex_counts, dtype=np.int32))
+            mesh.set_face_vertex_indices(np.array(face_vertex_indices, dtype=np.int32))
+
+        print(f"[deducer] Successfully created geometry_py object using CUDA view")
+
+        return geometry
+
+    except Exception as e:
+        print(f"[deducer] Error generating geometry: {str(e)}")
+        import traceback
+
+        traceback.print_exc()
+        return None
+
+
+def detect_boundary_from_geometry(
+    geometry, shape_code_value=None, distance_threshold=1e-6
+):
+    """
+    Detect Dirichlet boundary directly from geometry_py.Geometry object
+
+    Args:
+        geometry: geometry_py.Geometry object
+        shape_code_value: Shape code value(s) - can be single float or list of floats
+        distance_threshold: Distance threshold for boundary detection
+
+    Returns:
+        NumPy array with boundary values (1.0 for boundary, 0.0 for interior)
+    """
+    global _basis_set, _device
+
+    if _basis_set is None:
+        raise RuntimeError(
+            "basis_set not initialized. Call initialize_basis_set first."
+        )
+
+    try:
+        # Get mesh component and CUDA view
+        mesh = geometry.get_mesh_component()
+        cuda_view = mesh.get_cuda_view()
+
+        # Get vertices as PyTorch CUDA tensor (zero-copy)
+        vertices_cuda = cuda_view.get_vertices()
+
+        # Ensure shape is (N, 3)
+        if vertices_cuda.ndim == 1:
+            vertices_cuda = vertices_cuda.reshape(-1, 3)
+
+        # Prepare shape code
+        if shape_code_value is None:
+            shape_code = torch.tensor([0.0], device=_device)
+        elif isinstance(shape_code_value, (list, tuple)):
+            shape_code = torch.tensor(shape_code_value, device=_device)
+        else:
+            shape_code = torch.tensor([float(shape_code_value)], device=_device)
+
+        # Call boundary detection
+        with torch.no_grad():
+            boundary_result = _basis_set.is_on_dirichlet_boundary(
+                shape_code=shape_code,
+                sample_points=vertices_cuda,
+                distance_threshold=distance_threshold,
+            )
+
+        # Convert to numpy
+        if boundary_result.dtype == torch.bool:
+            boundary_values = boundary_result.float()
+        else:
+            boundary_values = boundary_result
+
+        cuda_view.add_vertex_scalar_quantity("nn_dirichlet", boundary_values)
+
+        # # Ensure 1D
+        # if boundary_values.ndim > 1:
+        #     boundary_values = boundary_values.squeeze()
+        # if boundary_values.ndim == 0:
+        #     boundary_values = np.array([float(boundary_values)])
+
+        # num_boundary = int(np.sum(boundary_values > 0.5))
+        # print(f"[deducer] Found {num_boundary} / {num_vertices} vertices on boundary")
+
+        return  # boundary_values
+
+    except Exception as e:
+        print(f"[deducer] Error in detect_boundary_from_geometry: {str(e)}")
+        import traceback
+
+        traceback.print_exc()
+        return np.array([])
+
+
+def run_inference_from_geometry(geometry, eigenfunction_idx=0, shape_code_value=None):
+    """
+    Run inference directly from geometry_py.Geometry object
+
+    Args:
+        geometry: geometry_py.Geometry object
+        eigenfunction_idx: Index of eigenfunction to compute
+        shape_code_value: Shape code value(s) - can be single float or list of floats
+
+    Returns:
+        NumPy array with inference results
+    """
+    global _basis_set, _device
+
+    if _basis_set is None:
+        raise RuntimeError(
+            "basis_set not initialized. Call initialize_basis_set first."
+        )
+
+    try:
+        # Get mesh component and CUDA view
+        mesh = geometry.get_mesh_component()
+        cuda_view = mesh.get_cuda_view()
+
+        # Get vertices as PyTorch CUDA tensor (zero-copy)
+        vertices_cuda = cuda_view.get_vertices()
+
+        # Ensure shape is (N, 3)
+        if vertices_cuda.ndim == 1:
+            vertices_cuda = vertices_cuda.reshape(-1, 3)
+
+        num_vertices = vertices_cuda.shape[0]
+
+        # Prepare shape code
+        if shape_code_value is None:
+            shape_code = torch.tensor([0.0], device=_device)
+        elif isinstance(shape_code_value, (list, tuple)):
+            shape_code = torch.tensor(shape_code_value, device=_device)
+        else:
+            shape_code = torch.tensor([float(shape_code_value)], device=_device)
+
+        # Clamp eigenfunction index
+        eigenfunction_idx = max(0, min(eigenfunction_idx, _basis_set.num_fields - 1))
+
+        # Run inference
+        with torch.no_grad():
+            output = _basis_set.inference(
+                i=eigenfunction_idx,
+                shape_code=shape_code,
+                sample=vertices_cuda,
+                device=_device,
+            )
+
+        # Convert to numpy
+        output_cpu = output.squeeze().cpu().numpy()
+
+        return output_cpu
+
+    except Exception as e:
+        print(f"[deducer] Error in run_inference_from_geometry: {str(e)}")
+        import traceback
+
+        traceback.print_exc()
+        return np.array([])

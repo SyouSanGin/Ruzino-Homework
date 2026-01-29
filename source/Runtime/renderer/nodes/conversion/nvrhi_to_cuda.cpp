@@ -52,6 +52,7 @@ NODE_EXECUTION_FUNCTION(nvrhi_to_cuda)
         device, texture.Get(), element_size);
 
     params.set_output("Buffer", buffer);
+    return true;
 }
 
 NODE_DEF_CLOSE_SCOPE

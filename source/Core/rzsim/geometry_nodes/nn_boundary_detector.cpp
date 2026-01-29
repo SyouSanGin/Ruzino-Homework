@@ -2,7 +2,6 @@
 
 #include "GCore/Components/MeshComponent.h"
 #include "GCore/geom_payload.hpp"
-#include "RHI/cuda.hpp"
 #include "nodes/core/def/node_def.hpp"
 #include "rzpython/rzpython.hpp"
 
@@ -10,12 +9,8 @@ using namespace Ruzino;
 
 NODE_DEF_OPEN_SCOPE
 
-// Storage for caching GPU buffers and detection results
+// Storage for caching detection results
 struct NNBoundaryDetectorStorage {
-    cuda::CUDALinearBufferHandle vertices_buffer;
-    bool initialized = false;
-    int num_vertices = 0;
-
     // Cache for detection results
     std::vector<glm::vec3> cached_vertices;
     float cached_shape_code = -1.0f;
@@ -94,9 +89,10 @@ NODE_EXECUTION_FUNCTION(nn_boundary_detector)
     spdlog::info("[NNBoundaryDetector] Inputs changed, running detection...");
 
     try {
-        // Import torch and deducer module
-        python::call<void>("import torch");
+        // Import modules once
         python::call<void>(
+            "import torch\n"
+            "import geometry_py\n"
             "import sys\n"
             "sys.path.insert(0, "
             "r'C:"
@@ -108,19 +104,8 @@ NODE_EXECUTION_FUNCTION(nn_boundary_detector)
         python::send("model_name", model_path);
         std::string init_result = python::call<std::string>(
             "deducer.initialize_basis_set(model_name)");
-        python::flush_python_output();  // Flush Python print output
+        python::flush_python_output();
         spdlog::info("Basis set initialization: {}", init_result);
-
-        // Create or update GPU buffer for vertices
-        if (!storage.initialized || storage.num_vertices != vertices.size()) {
-            storage.vertices_buffer = cuda::create_cuda_linear_buffer(vertices);
-            storage.num_vertices = vertices.size();
-            storage.initialized = true;
-        }
-        else {
-            // Update existing buffer
-            storage.vertices_buffer->assign_host_vector(vertices);
-        }
 
         spdlog::info(
             "Detecting Dirichlet boundary on {} vertices with "
@@ -129,15 +114,11 @@ NODE_EXECUTION_FUNCTION(nn_boundary_detector)
             shape_code,
             distance_threshold);
 
-        // Zero-copy send CUDA array to Python
-        float* gpu_ptr = storage.vertices_buffer->get_device_ptr<float>();
-        python::send(
-            "vertices_cuda",
-            python::CudaArrayView<float>{ gpu_ptr, { vertices.size(), 3 } });
+        // Send Geometry object directly to Python (zero-copy reference)
+        python::send_ref("_input_geom", input_geom);
 
-        // Send shape code and threshold to Python
+        // Prepare shape code
         if (has_shape_code_2) {
-            // Send two shape codes as a list
             std::vector<float> shape_codes = { shape_code, shape_code_2 };
             python::send("shape_code_values", shape_codes);
             spdlog::info(
@@ -146,40 +127,27 @@ NODE_EXECUTION_FUNCTION(nn_boundary_detector)
                 shape_code_2);
         }
         else {
-            // Send single shape code
             python::send("shape_code_value", shape_code);
         }
 
         python::send("distance_threshold", distance_threshold);
 
-        // Call Python detection function
+        // Call Python detection function with Geometry object
         std::string detection_code =
-            "import numpy as np\n"
-            "import torch\n";
-
-        if (has_shape_code_2) {
-            detection_code +=
-                "boundary_result = "
-                "deducer.detect_dirichlet_boundary("
-                "vertices_cuda, "
-                "shape_code_value=shape_code_values, "
-                "distance_threshold=distance_threshold)";
-        }
-        else {
-            detection_code +=
-                "boundary_result = "
-                "deducer.detect_dirichlet_boundary("
-                "vertices_cuda, "
-                "shape_code_value=shape_code_value, "
-                "distance_threshold=distance_threshold)";
-        }
+            has_shape_code_2 ? "deducer.detect_boundary_from_geometry(_input_"
+                               "geom, shape_code_value=shape_code_values, "
+                               "distance_threshold=distance_threshold)"
+                             : "deducer.detect_boundary_from_geometry(_input_"
+                               "geom, shape_code_value=shape_code_value, "
+                               "distance_threshold=distance_threshold)";
 
         python::call<void>(detection_code);
-        python::flush_python_output();  // Flush Python print output
+        python::flush_python_output();
 
-        // Retrieve results as vector<float>
+        // Retrieve results
         std::vector<float> boundary_values =
-            python::call<std::vector<float>>("boundary_result.tolist()");
+            input_geom.get_component<MeshComponent>()
+                ->get_vertex_scalar_quantity("nn_dirichlet");
 
         if (boundary_values.size() != vertices.size()) {
             spdlog::error(
@@ -190,17 +158,6 @@ NODE_EXECUTION_FUNCTION(nn_boundary_detector)
             params.set_output<Geometry>("Geometry", std::move(input_geom));
             return true;
         }
-
-        // Count boundary vertices
-        int boundary_count = std::count_if(
-            boundary_values.begin(), boundary_values.end(), [](float v) {
-                return v > 0.5f;
-            });
-
-        spdlog::info(
-            "Detected {} / {} vertices on Dirichlet boundary",
-            boundary_count,
-            vertices.size());
 
         // Update cache
         storage.cached_vertices = vertices;
@@ -213,11 +170,6 @@ NODE_EXECUTION_FUNCTION(nn_boundary_detector)
         storage.cache_valid = true;
         spdlog::info(
             "[NNBoundaryDetector] Cache updated (model={})", model_path);
-
-        // Add boundary detection as vertex scalar quantity
-        mesh_component->add_vertex_scalar_quantity(
-            "nn_dirichlet", boundary_values);
-        spdlog::info("Added 'nn_dirichlet' vertex attribute");
     }
     catch (const std::exception& e) {
         spdlog::error("Python call failed: {}", e.what());
