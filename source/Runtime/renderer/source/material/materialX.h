@@ -1,4 +1,5 @@
 #pragma once
+#include "MaterialXCore/Document.h"
 #include "MaterialXGenShader/Library.h"
 #include "material.h"
 
@@ -46,14 +47,18 @@ class HD_RUZINO_API Hd_RUZINO_MaterialX : public Hd_RUZINO_Material {
 
    private:
     void MtlxGenerateShader(
-        MaterialX::DocumentPtr mtlx_document,
+        MaterialX::ElementPtr mtlx_element,
         HdMaterialNetwork2Interface netInterface,
         HdMtlxTexturePrimvarData& hdMtlxData);
 
     static MaterialX::GenContextPtr shader_gen_context_;
     static MaterialX::DocumentPtr libraries;
+    static MaterialX::DocumentPtr
+        shared_document;  // Shared document for all materials (avoids
+                          // copy/import)
     static std::once_flag shader_gen_initialized_;
     static std::mutex shadergen_mutex;
+    static std::mutex document_mutex;  // Protects shared_document
 };
 
 RUZINO_NAMESPACE_CLOSE_SCOPE

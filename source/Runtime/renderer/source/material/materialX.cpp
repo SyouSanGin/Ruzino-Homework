@@ -23,8 +23,10 @@ namespace mx = MaterialX;
 MaterialX::GenContextPtr Hd_RUZINO_MaterialX::shader_gen_context_ =
     std::make_shared<mx::GenContext>(mx::SlangShaderGenerator::create());
 MaterialX::DocumentPtr Hd_RUZINO_MaterialX::libraries = mx::createDocument();
+MaterialX::DocumentPtr Hd_RUZINO_MaterialX::shared_document = nullptr;
 
 std::mutex Hd_RUZINO_MaterialX::shadergen_mutex;
+std::mutex Hd_RUZINO_MaterialX::document_mutex;
 std::once_flag Hd_RUZINO_MaterialX::shader_gen_initialized_;
 
 Hd_RUZINO_MaterialX::Hd_RUZINO_MaterialX(SdfPath const& id)
@@ -46,6 +48,14 @@ Hd_RUZINO_MaterialX::Hd_RUZINO_MaterialX(SdfPath const& id)
 
         shader_gen_context_->pushUserData(
             mx::HW::USER_DATA_BINDING_CONTEXT, BindlessContext::create());
+
+        // Create shared document with libraries pre-imported (all materials use
+        // this)
+        shared_document = mx::createDocument();
+        shared_document->importLibrary(libraries);
+        spdlog::info(
+            "MaterialX: Shared document created - all materials will be added "
+            "to this document");
     });
 }
 
@@ -134,27 +144,29 @@ void Hd_RUZINO_MaterialX::Sync(
 
     HdMtlxTexturePrimvarData hdMtlxData;
 
-    DocumentPtr mtlx_document = HdMtlxCreateMtlxDocumentFromHdNetworkFast(
-        hdNetwork,
-        *surfTerminal,
-        surfTerminalPath,
-        materialPath,
-        libraries,
-        &hdMtlxData);
+    MaterialX::ElementPtr mtlx_element =
+        HdMtlxCreateMtlxDocumentFromHdNetworkFast(
+            hdNetwork,
+            *surfTerminal,
+            surfTerminalPath,
+            materialPath,
+            shared_document,
+            document_mutex,
+            &hdMtlxData);
 
-    if (!mtlx_document) {
+    if (!mtlx_element) {
         spdlog::error(
-            "MaterialX: Failed to create MaterialX document for '{}'",
+            "MaterialX: Failed to add material to shared document for '{}'",
             GetId().GetText());
         *dirtyBits = HdChangeTracker::Clean;
         return;
     }
 
-    spdlog::info("MaterialX: Created MaterialX document successfully");
+    spdlog::info("MaterialX: Added material to shared document successfully");
 
     CollectTextures(netInterface, hdMtlxData);
 
-    MtlxGenerateShader(mtlx_document, netInterface, hdMtlxData);
+    MtlxGenerateShader(mtlx_element, netInterface, hdMtlxData);
 
     BuildGPUTextures(param);
 
@@ -541,8 +553,7 @@ void Hd_RUZINO_MaterialX::BuildGPUTextures(Hd_RUZINO_RenderParam* render_param)
         // Create a thread for asynchronous processing
         std::thread texture_thread([&texture_resource,
                                     this,
-                                    descriptor_table,
-                                    render_param]() {
+                                    descriptor_table]() {
             auto device = RHI::get_device();
 
             auto image = texture_resource.second.image;
@@ -744,83 +755,132 @@ HdMaterialNetwork2Interface Hd_RUZINO_MaterialX::FetchMaterialNetwork(
 }
 
 void Hd_RUZINO_MaterialX::MtlxGenerateShader(
-    MaterialX::DocumentPtr mtlx_document,
+    MaterialX::ElementPtr mtlx_element,
     HdMaterialNetwork2Interface netInterface,
     HdMtlxTexturePrimvarData& hdMtlxData)
 {
-    _UpdateTextureNodes(
-        &netInterface, hdMtlxData.hdTextureNodes, mtlx_document);
-
-    auto renderable = findRenderableElements(mtlx_document);
-
-    if (renderable.empty()) {
-        TF_RUNTIME_ERROR("MaterialX: No renderable elements found in document");
+    if (!mtlx_element) {
+        TF_RUNTIME_ERROR(
+            "MaterialX: Null element passed to MtlxGenerateShader");
         return;
     }
 
-    _FixOmittedConnections(mtlx_document, renderable);
+    mx::DocumentPtr mtlx_document = mtlx_element->getDocument();
 
-    // Fix geompropvalue nodes that don't have 'geomprop' input
-    for (auto nodeGraph : mtlx_document->getNodeGraphs()) {
-        for (auto node : nodeGraph->getNodes("geompropvalue")) {
-            auto geompropInput = node->getInput("geomprop");
+    // Lock when modifying shared document (for all document modifications)
+    {
+        std::lock_guard<std::mutex> lock(document_mutex);
 
-            if (geompropInput) {
-                std::string interfaceName = geompropInput->getInterfaceName();
+        _UpdateTextureNodes(
+            &netInterface, hdMtlxData.hdTextureNodes, mtlx_document);
 
-                if (!interfaceName.empty()) {
-                    // geomprop has an interfacename reference - resolve it
-                    spdlog::info(
-                        "geompropvalue node '{}' has interfaceName='{}', "
-                        "resolving...",
-                        node->getName(),
-                        interfaceName);
+        // The element passed in is already the material element, get its shader
+        // node
+        mx::NodePtr mxMaterialNode = mtlx_element->asA<mx::Node>();
+        if (!mxMaterialNode) {
+            TF_RUNTIME_ERROR("MaterialX: Element is not a material node");
+            return;
+        }
 
-                    auto ngInput = nodeGraph->getInput(interfaceName);
-                    if (ngInput && ngInput->hasValueString()) {
-                        std::string resolvedValue = ngInput->getValueString();
-                        spdlog::info("Resolved to value '{}'", resolvedValue);
+        // Get the shader node connected to this material
+        mx::NodePtr mxShaderNode = nullptr;
+        for (auto input : mxMaterialNode->getInputs()) {
+            if (input->hasNodeName()) {
+                mxShaderNode = input->getConnectedNode();
+                break;
+            }
+        }
 
-                        // Replace the interfacename reference with the actual
-                        // value
-                        geompropInput->setInterfaceName("");
-                        geompropInput->setValue(resolvedValue, "string");
+        if (!mxShaderNode) {
+            TF_RUNTIME_ERROR("MaterialX: No shader node found for material");
+            return;
+        }
+
+        // Use a vector with single element for compatibility with
+        // _FixOmittedConnections
+        std::vector<mx::TypedElementPtr> renderable = { mxShaderNode };
+
+        _FixOmittedConnections(mtlx_document, renderable);
+
+        // Fix geompropvalue nodes that don't have 'geomprop' input
+        for (auto nodeGraph : mtlx_document->getNodeGraphs()) {
+            for (auto node : nodeGraph->getNodes("geompropvalue")) {
+                auto geompropInput = node->getInput("geomprop");
+
+                if (geompropInput) {
+                    std::string interfaceName =
+                        geompropInput->getInterfaceName();
+
+                    if (!interfaceName.empty()) {
+                        // geomprop has an interfacename reference - resolve it
+                        spdlog::info(
+                            "geompropvalue node '{}' has interfaceName='{}', "
+                            "resolving...",
+                            node->getName(),
+                            interfaceName);
+
+                        auto ngInput = nodeGraph->getInput(interfaceName);
+                        if (ngInput && ngInput->hasValueString()) {
+                            std::string resolvedValue =
+                                ngInput->getValueString();
+                            spdlog::info(
+                                "Resolved to value '{}'", resolvedValue);
+
+                            // Replace the interfacename reference with the
+                            // actual value
+                            geompropInput->setInterfaceName("");
+                            geompropInput->setValue(resolvedValue, "string");
+                        }
+                        else {
+                            // Interface exists but no value, use default 'st'
+                            geompropInput->setInterfaceName("");
+                            geompropInput->setValue("st", "string");
+                        }
+                    }
+                    else if (geompropInput->hasValueString()) {
+                        // Already has a direct value, all good
+                        spdlog::info(
+                            "geompropvalue node '{}' already has geomprop = "
+                            "'{}'",
+                            node->getName(),
+                            geompropInput->getValueString());
                     }
                     else {
-                        // Interface exists but no value, use default 'st'
-                        geompropInput->setInterfaceName("");
+                        // No interfacename and no value - use default
+                        spdlog::warn(
+                            "geompropvalue node '{}' has geomprop but no "
+                            "value, "
+                            "using default 'st'",
+                            node->getName());
                         geompropInput->setValue("st", "string");
                     }
                 }
-                else if (geompropInput->hasValueString()) {
-                    // Already has a direct value, all good
-                    spdlog::info(
-                        "geompropvalue node '{}' already has geomprop = '{}'",
-                        node->getName(),
-                        geompropInput->getValueString());
-                }
                 else {
-                    // No interfacename and no value - use default
-                    spdlog::warn(
-                        "geompropvalue node '{}' has geomprop but no value, "
-                        "using default 'st'",
+                    // No geomprop input at all - shouldn't happen after our
+                    // fixes
+                    spdlog::error(
+                        "geompropvalue node '{}' has no geomprop input!",
                         node->getName());
-                    geompropInput->setValue("st", "string");
+                    node->setInputValue("geomprop", "st", "string");
                 }
-            }
-            else {
-                // No geomprop input at all - shouldn't happen after our fixes
-                spdlog::error(
-                    "geompropvalue node '{}' has no geomprop input!",
-                    node->getName());
-                node->setInputValue("geomprop", "st", "string");
             }
         }
-    }
+    }  // Release lock after all document modifications
 
     using namespace mx;
 
-    auto element = renderable[0];
+    // Get shader node again (outside lock for shader generation)
+    mx::NodePtr mxMaterialNode = mtlx_element->asA<mx::Node>();
+    mx::NodePtr mxShaderNode = nullptr;
+    for (auto input : mxMaterialNode->getInputs()) {
+        if (input->hasNodeName()) {
+            mxShaderNode = input->getConnectedNode();
+            break;
+        }
+    }
+
+    // Use the shader node directly (not from renderable array)
+    TypedElementPtr element = mxShaderNode;
 
     std::string elementName(element->getNamePath());
 

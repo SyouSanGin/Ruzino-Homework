@@ -11,8 +11,8 @@
 #include <MaterialXFormat/Environ.h>
 #include <MaterialXFormat/Util.h>
 #include <MaterialXFormat/XmlIo.h>
-
 #include <spdlog/spdlog.h>
+
 #include "pxr/base/arch/fileSystem.h"
 #include "pxr/base/gf/matrix3d.h"
 #include "pxr/base/gf/matrix4d.h"
@@ -202,13 +202,13 @@ static mx::NodePtr _AddMaterialXNode(
 
     if (mxNode->getNodeDefString().empty()) {
         mxNode->setNodeDefString(hdNodeType.GetText());
-     }
+    }
 
     // For each of the HdNode parameters add the corresponding parameter/input
     // to the mxNode
     TfTokenVector hdNodeParamNames =
         netInterface->GetAuthoredNodeParameterNames(hdNodeName);
-    
+
     // Debug for geompropvalue nodes
     if (mxNodeCategory == _tokens->geompropvalue) {
         spdlog::info(
@@ -216,14 +216,15 @@ static mx::NodePtr _AddMaterialXNode(
             mxNodeName,
             hdNodeParamNames.size());
         for (const auto& pName : hdNodeParamNames) {
-            auto paramData = netInterface->GetNodeParameterData(hdNodeName, pName);
+            auto paramData =
+                netInterface->GetNodeParameterData(hdNodeName, pName);
             spdlog::info(
                 "  Param '{}': value = '{}'",
                 pName.GetText(),
                 HdMtlxConvertToString(paramData.value));
         }
     }
-    
+
     for (TfToken const& paramName : hdNodeParamNames) {
         // Get the MaterialX Parameter info
         std::string mxInputName = paramName.GetString();
@@ -247,8 +248,10 @@ static mx::NodePtr _AddMaterialXNode(
             continue;
         }
 
-        // For UsdPrimvarReader nodes (geompropvalue), map 'varname' to 'geomprop'
-        if (mxNodeCategory == _tokens->geompropvalue && mxInputName == "varname") {
+        // For UsdPrimvarReader nodes (geompropvalue), map 'varname' to
+        // 'geomprop'
+        if (mxNodeCategory == _tokens->geompropvalue &&
+            mxInputName == "varname") {
             spdlog::info(
                 "Mapping varname='{}' to geomprop for node '{}'",
                 mxInputValue,
@@ -284,7 +287,7 @@ static mx::NodePtr _AddMaterialXNode(
             // Save the path to have the primvarName declared in ShaderGen
             mxHdData->hdPrimvarNodes.insert(hdNodePath);
         }
-        
+
         // Debug: Check if geomprop input was set
         mx::InputPtr geompropInput = mxNode->getInput("geomprop");
         if (geompropInput) {
@@ -292,32 +295,38 @@ static mx::NodePtr _AddMaterialXNode(
                 "geompropvalue node '{}': geomprop = '{}'",
                 mxNodeName,
                 geompropInput->getValueString());
-        } else {
+        }
+        else {
             spdlog::warn(
                 "geompropvalue node '{}': No 'geomprop' input found! "
                 "Available inputs: {}",
                 mxNodeName,
                 mxNode->getInputCount());
             for (auto input : mxNode->getInputs()) {
-                spdlog::info("  Input: '{}' = '{}'", 
-                    input->getName(), 
-                    input->hasValueString() ? input->getValueString() : "(connected)");
+                spdlog::info(
+                    "  Input: '{}' = '{}'",
+                    input->getName(),
+                    input->hasValueString() ? input->getValueString()
+                                            : "(connected)");
             }
-            
+
             // If no geomprop input exists but varname exists, this is likely
             // an error in conversion. Try to fix it by using a default value.
             mx::InputPtr varnameInput = mxNode->getInput("varname");
             if (varnameInput) {
                 std::string varnameValue = varnameInput->getValueString();
                 spdlog::info(
-                    "Found 'varname' input with value '{}', creating 'geomprop' input",
+                    "Found 'varname' input with value '{}', creating "
+                    "'geomprop' input",
                     varnameValue);
                 mxNode->removeInput("varname");
                 mxNode->setInputValue("geomprop", varnameValue, "string");
-            } else {
+            }
+            else {
                 // As a last resort, use "st" as default texture coordinate
                 spdlog::warn(
-                    "No varname or geomprop found, using default 'st' for texture coordinates");
+                    "No varname or geomprop found, using default 'st' for "
+                    "texture coordinates");
                 mxNode->setInputValue("geomprop", "st", "string");
             }
         }
@@ -348,7 +357,7 @@ static void _AddInput(
         inputName.GetText(),
         mxCurrNode->getName(),
         mxCurrNode->getCategory());
-    
+
     // If the currNode is connected to a multi-output node, the input on the
     // currNode needs to get the output type and indicate the output name.
     if (mxNextNode->isMultiOutputType()) {
@@ -408,7 +417,8 @@ static void _GatherUpstreamNodes(
     mx::StringSet* addedNodeNames,
     mx::NodePtr* mxUpstreamNode,
     std::string const& connectionName,
-    HdMtlxTexturePrimvarData* mxHdData)
+    HdMtlxTexturePrimvarData* mxHdData,
+    std::string const& materialPathStr = "")
 {
     TfToken const& hdNodeName = hdConnection.upstreamNodeName;
     if (netInterface->GetNodeType(hdNodeName).IsEmpty()) {
@@ -420,8 +430,13 @@ static void _GatherUpstreamNodes(
 
     // Initilize the mxNodeGraph if needed
     if (!(*mxNodeGraph)) {
-        const std::string nodeGraphName = mxDoc->createValidChildName(
-            SdfPath(hdNodeName).GetParentPath().GetName());
+        // Use material path to ensure unique NodeGraph names in shared document
+        std::string baseNodeGraphName =
+            !materialPathStr.empty()
+                ? materialPathStr + "_NG"
+                : SdfPath(hdNodeName).GetParentPath().GetName();
+        const std::string nodeGraphName =
+            mxDoc->createValidChildName(baseNodeGraphName);
         *mxNodeGraph = mxDoc->addNodeGraph(nodeGraphName);
     }
 
@@ -456,7 +471,8 @@ static void _GatherUpstreamNodes(
                 addedNodeNames,
                 mxUpstreamNode,
                 connName.GetString(),
-                mxHdData);
+                mxHdData,
+                materialPathStr);
 
             // Connect mxCurrNode to the mxUpstreamNode
             mx::NodePtr mxNextNode = *mxUpstreamNode;
@@ -464,9 +480,10 @@ static void _GatherUpstreamNodes(
                 continue;
             }
 
-            // For UsdPrimvarReader nodes (geompropvalue), map 'varname' input to 'geomprop'
+            // For UsdPrimvarReader nodes (geompropvalue), map 'varname' input
+            // to 'geomprop'
             TfToken mxConnName = connName;
-            if (mxCurrNode->getCategory() == _tokens->geompropvalue && 
+            if (mxCurrNode->getCategory() == _tokens->geompropvalue &&
                 connName == "varname") {
                 mxConnName = TfToken("geomprop");
             }
@@ -490,13 +507,14 @@ static void _GatherUpstreamNodes(
     *mxUpstreamNode = mxCurrNode;
 }
 
-// Create a MaterialX Document from the given HdMaterialNetwork2
-mx::DocumentPtr HdMtlxCreateMtlxDocumentFromHdNetworkFast(
+// Create/update MaterialX shared document from the given HdMaterialNetwork2
+mx::ElementPtr HdMtlxCreateMtlxDocumentFromHdNetworkFast(
     HdMaterialNetwork2 const& hdNetwork,
     HdMaterialNode2 const& hdMaterialXNode,
     SdfPath const& hdMaterialXNodePath,
     SdfPath const& materialPath,
-    mx::DocumentPtr const& libraries,
+    mx::DocumentPtr const& sharedDocument,
+    std::mutex& documentMutex,
     HdMtlxTexturePrimvarData* mxHdData)
 {
     // XXX Unfortunate but necessary to cast away constness even though
@@ -510,7 +528,8 @@ mx::DocumentPtr HdMtlxCreateMtlxDocumentFromHdNetworkFast(
         &netInterface,
         terminalNodeName,
         netInterface.GetNodeInputConnectionNames(terminalNodeName),
-        libraries,
+        sharedDocument,
+        documentMutex,
         mxHdData);
 }
 
@@ -573,6 +592,16 @@ static void _CreateMtlxNodeGraphFromTerminalNodeConnections(
 {
     mx::NodeGraphPtr mxNodeGraph;
     mx::StringSet addedNodeNames;  // Set of NodeNames in the mxNodeGraph
+
+    // Get material path for unique naming
+    SdfPath materialPath = netInterface->GetMaterialPrimPath();
+    std::string materialPathStr = materialPath.GetString();
+    // Replace '/' with '_' to make it a valid name
+    std::replace(materialPathStr.begin(), materialPathStr.end(), '/', '_');
+    if (!materialPathStr.empty() && materialPathStr[0] == '_') {
+        materialPathStr = materialPathStr.substr(1);
+    }
+
     for (TfToken const& cName : terminalNodeConnectionNames) {
         const std::string& mxNodeGraphOutput = cName.GetString();
         const auto inputConnections =
@@ -589,7 +618,8 @@ static void _CreateMtlxNodeGraphFromTerminalNodeConnections(
                 &addedNodeNames,
                 &mxUpstreamNode,
                 mxNodeGraphOutput,
-                mxHdData);
+                mxHdData,
+                materialPathStr);
 
             if (!mxUpstreamNode) {
                 continue;
@@ -625,22 +655,25 @@ static void _CreateMtlxNodeGraphFromTerminalNodeConnections(
     }
 }
 
-MaterialX::DocumentPtr
+MaterialX::ElementPtr
 HdMtlxCreateMtlxDocumentFromHdMaterialNetworkInterfaceFast(
     HdMaterialNetworkInterface* netInterface,
     TfToken const& terminalNodeName,
     TfTokenVector const& terminalNodeConnectionNames,
-    MaterialX::DocumentPtr const& libraries,
+    MaterialX::DocumentPtr const& sharedDocument,
+    std::mutex& documentMutex,
     HdMtlxTexturePrimvarData* mxHdData)
 {
-    TRACE_FUNCTION_SCOPE("Create Mtlx Document from HdMaterialNetwork")
-    if (!netInterface) {
+    TRACE_FUNCTION_SCOPE("Add Material to Shared Mtlx Document")
+    if (!netInterface || !sharedDocument) {
         return nullptr;
     }
 
-    // Initialize a MaterialX Document
-    mx::DocumentPtr mxDoc = mx::createDocument();
-    mxDoc->importLibrary(libraries);
+    // Lock the shared document for thread-safe access
+    std::lock_guard<std::mutex> lock(documentMutex);
+
+    // Use the shared document (no copy, no import - much faster!)
+    mx::DocumentPtr mxDoc = sharedDocument;
 
     // Get the version of the MaterialX document if specified, otherwise
     // default to v1.38.
@@ -669,10 +702,16 @@ HdMtlxCreateMtlxDocumentFromHdMaterialNetworkInterfaceFast(
     const std::string& materialName = materialPath.GetName();
     TfToken mxType =
         _GetMxNodeType(mxDoc, netInterface->GetNodeType(terminalNodeName));
+
+    // Use unique names for all nodes since we're using a shared document
+    std::string uniqueShaderName =
+        mxDoc->createValidChildName(materialName + "_Surface");
+    std::string uniqueMaterialName = mxDoc->createValidChildName(materialName);
+
     mx::NodePtr mxShaderNode =
-        mxDoc->addNode(mxType.GetString(), "Surface", "surfaceshader");
-    mx::NodePtr mxMaterial = mxDoc->addMaterialNode(
-        mxDoc->createValidChildName(materialName), mxShaderNode);
+        mxDoc->addNode(mxType.GetString(), uniqueShaderName, "surfaceshader");
+    mx::NodePtr mxMaterial =
+        mxDoc->addMaterialNode(uniqueMaterialName, mxShaderNode);
 
     _CreateMtlxNodeGraphFromTerminalNodeConnections(
         netInterface,
@@ -697,7 +736,7 @@ HdMtlxCreateMtlxDocumentFromHdMaterialNetworkInterfaceFast(
 
     // Potentially upgrade the MaterialX document to the "current" version,
     // using the MaterialX upgrade mechanism.
-    mxDoc->upgradeVersion();
+    // mxDoc->upgradeVersion();
 
     if (TfDebug::IsEnabled(HDMTLX_VERSION_UPGRADE)) {
         const std::string filename = mxMaterial->getName() + "_after.mtlx";
@@ -718,7 +757,8 @@ HdMtlxCreateMtlxDocumentFromHdMaterialNetworkInterfaceFast(
         mx::writeToXmlFile(mxDoc, mx::FilePath(filename));
     }
 
-    return mxDoc;
+    // Return the material element (for shader generation)
+    return mxMaterial;
 }
 
 RUZINO_NAMESPACE_CLOSE_SCOPE

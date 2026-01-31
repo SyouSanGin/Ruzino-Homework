@@ -608,9 +608,14 @@ void _FixOmittedConnections(
                         continue;
                     }
 
-                    // Create conversion node
-                    auto conversionNode = graphParent->addNode(
-                        nodeName, upstream->getName() + "_conversion");
+                    // Create conversion node with unique name for shared
+                    // document
+                    std::string baseConversionName =
+                        upstream->getName() + "_conversion";
+                    std::string uniqueConversionName =
+                        graphParent->createValidChildName(baseConversionName);
+                    auto conversionNode =
+                        graphParent->addNode(nodeName, uniqueConversionName);
                     conversionNode->setNodeDefString(nodeDefString);
                     conversionNode->addInputsFromNodeDef();
 
