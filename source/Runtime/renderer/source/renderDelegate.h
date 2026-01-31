@@ -24,7 +24,6 @@
 #ifndef Hd_RUZINO_RENDER_DELEGATE_H
 #define Hd_RUZINO_RENDER_DELEGATE_H
 
-#include "../nodes/shaders/shaders/Scene/SceneTypes.slang"
 #include "api.h"
 #include "nodes/system/node_system.hpp"
 #include "nvrhi/nvrhi.h"
