@@ -4,7 +4,7 @@
 ![alt text](images/image-1.png)
 ```
 python .\configure.py --all --build_variant Debug --extract-sdk .\SDK.zip
-```
+``` 
 
 ```
 mkdir build
