@@ -1,4 +1,11 @@
-# USTC_CG_2025
+# Building
+
+1. Download SDK
+![alt text](images/image-1.png)
+
+2. 
+
+USTC_CG_2025
 The 3D assignments for the computer graphics course for 2025，Spring.
 
 # 常见问题 [点击跳转->](./doc/FAQ.md)
