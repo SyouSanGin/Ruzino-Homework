@@ -2,7 +2,6 @@
 #include "GPUContext/compute_context.hpp"
 #include "hd_RUZINO/render_node_base.h"
 #include "nodes/core/def/node_def.hpp"
-#include "spdlog/spdlog.h"
 #include "utils/cam_to_view_contants.h"
 #include "utils/view_cb.h"
 

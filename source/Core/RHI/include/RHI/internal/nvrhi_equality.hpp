@@ -1,8 +1,7 @@
 #pragma once
-#include "RHI/api.h"
 #include "nvrhi/nvrhi.h"
 #include "nvrhi_patch.hpp"
-#include "resources.hpp"
+
 namespace nvrhi {
 
 inline bool operator==(

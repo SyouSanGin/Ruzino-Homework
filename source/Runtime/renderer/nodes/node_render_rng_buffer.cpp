@@ -2,7 +2,6 @@
 #include "hd_RUZINO/render_node_base.h"
 #include "nodes/core/def/node_def.hpp"
 #include "nvrhi/utils.h"
-#include "spdlog/spdlog.h"
 #include "utils/math.h"
 NODE_DEF_OPEN_SCOPE
 struct RNGBufferStorage {

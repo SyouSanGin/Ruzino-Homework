@@ -152,15 +152,16 @@ HD_RUZINO_API TextureHandle create_empty_texture(
 
 HD_RUZINO_API pxr::GfVec2i get_size(ExeParams& params);
 
-#define CHECK_PROGRAM_ERROR(program)              \
-    if (!program->get_error_string().empty()) {   \
-        spdlog::error(                            \
-            "Failed to create shader {}: {}",     \
-            #program,                             \
-            program->get_error_string().c_str()); \
-        resource_allocator.destroy(program);      \
-        (program) = nullptr;                      \
-        return false;                             \
+HD_RUZINO_API void shader_error(
+    const char* program_name,
+    const char* error_message);
+
+#define CHECK_PROGRAM_ERROR(program)                                 \
+    if (!program->get_error_string().empty()) {                      \
+        shader_error(#program, program->get_error_string().c_str()); \
+        resource_allocator.destroy(program);                         \
+        (program) = nullptr;                                         \
+        return false;                                                \
     }
 
 #ifdef _DEBUG

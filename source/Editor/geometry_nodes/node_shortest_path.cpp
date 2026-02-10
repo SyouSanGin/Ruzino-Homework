@@ -1,5 +1,4 @@
 #include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
-#include <cstddef>
 #include <queue>
 #include <string>
 

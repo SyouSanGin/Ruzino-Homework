@@ -3,7 +3,6 @@
 #include "hd_RUZINO/render_node_base.h"
 #include "nodes/core/def/node_def.hpp"
 #include "pxr/base/gf/vec2i.h"
-#include "spdlog/spdlog.h"
 
 NODE_DEF_OPEN_SCOPE
 NODE_DECLARATION_FUNCTION(automatic_tonemapper)

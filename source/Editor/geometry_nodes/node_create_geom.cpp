@@ -1,7 +1,6 @@
 // #define __GNUC__
 #include "GCore/create_geom.h"
 #include "geom_node_base.h"
-#include "nodes/core/socket.hpp"
 
 NODE_DEF_OPEN_SCOPE
 NODE_DECLARATION_FUNCTION(create_grid)

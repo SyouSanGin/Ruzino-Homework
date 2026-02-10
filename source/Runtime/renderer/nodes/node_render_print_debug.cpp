@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include "camera.h"
 #include "hd_RUZINO/render_node_base.h"
 #include "light.h"

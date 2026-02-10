@@ -1,7 +1,5 @@
 #pragma once
-#include <algorithm>
 #include <stdexcept>
-#include <utility>
 #include <vector>
 
 template<typename Key, typename Value>

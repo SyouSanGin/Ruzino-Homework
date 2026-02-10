@@ -2,14 +2,14 @@
 
 #include <RHI/internal/map.h>
 
-#include <cassert>
-#include <iostream>
 #include <iterator>
 #include <unordered_map>
 
 #ifndef RESOURCE_ALLOCATOR_STATIC_ONLY
 #include "nodes/core/api.hpp"
 #endif
+#include <algorithm>
+
 #include "RHI/api.h"
 
 #ifdef RUZINO_BACKEND_NVRHI
@@ -326,7 +326,7 @@ class ResourceAllocator {
     {
 #ifdef RUZINO_BACKEND_NVRHI
         if ((cacheSize >= CACHE_CAPACITY)) {
-            std::cout << "GC called!" << std::endl;
+            printf("GC called!\n");
             using ContainerType = std::remove_cvref_t<decltype(cache_in)>;
             using Vector = std::vector<std::pair<
                 typename ContainerType::key_type,

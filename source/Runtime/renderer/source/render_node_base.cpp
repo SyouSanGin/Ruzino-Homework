@@ -8,6 +8,7 @@
 #include "hd_RUZINO/render_global_payload.hpp"
 #include "light.h"
 #include "nodes/core/node_exec.hpp"
+#include "spdlog/spdlog.h"
 #include "utils/cam_to_view_contants.h"
 #include "utils/view_cb.h"
 
@@ -173,5 +174,11 @@ GfVec2i get_size(ExeParams& params)
     auto camera = get_free_camera(params);
     auto size = camera->dataWindow.GetSize();
     return size;
+}
+
+void shader_error(const char* program_name, const char* error_message)
+{
+    spdlog::error(
+        "Failed to create shader {}: {}", program_name, error_message);
 }
 }  // namespace Ruzino

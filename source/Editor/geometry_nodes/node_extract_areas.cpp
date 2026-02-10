@@ -1,10 +1,11 @@
+#include <spdlog/spdlog.h>
+
+#include <Eigen/Dense>
+#include <Eigen/Sparse>
+
 #include "GCore/Components/MeshComponent.h"
 #include "GCore/util_openmesh_bind.h"
 #include "geom_node_base.h"
-#include <cmath>
-#include <Eigen/Dense>
-#include <Eigen/Sparse>
-#include <spdlog/spdlog.h>
 
 NODE_DEF_OPEN_SCOPE
 NODE_DECLARATION_FUNCTION(extract_areas)
@@ -31,7 +32,6 @@ NODE_EXECUTION_FUNCTION(extract_areas)
     auto halfedge_mesh = operand_to_openmesh(&input);
     int n_faces = halfedge_mesh->n_faces();
     int n_vertices = halfedge_mesh->n_vertices();
-
 
     // Construct a set of new triangles
     Eigen::VectorXd area(n_faces);
@@ -60,7 +60,7 @@ NODE_EXECUTION_FUNCTION(extract_areas)
             area(face_idx) *= tmp - edge_length[i];
         area(face_idx) = sqrt(area(face_idx));
     }
-    
+
     params.set_output("Output", area);
     return true;
 }

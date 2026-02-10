@@ -1,5 +1,3 @@
-#include <fstream>
-
 #include "geom_node_base.h"
 #include "macro_map.h"
 #include "spdlog/spdlog.h"

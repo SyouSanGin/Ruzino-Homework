@@ -2,7 +2,6 @@
 #include "GPUContext/compute_context.hpp"
 #include "hd_RUZINO/render_node_base.h"
 #include "nodes/core/def/node_def.hpp"
-#include "spdlog/spdlog.h"
 
 NODE_DEF_OPEN_SCOPE
 NODE_DECLARATION_FUNCTION(tone_mapping)

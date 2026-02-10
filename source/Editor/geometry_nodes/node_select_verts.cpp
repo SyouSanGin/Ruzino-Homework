@@ -1,7 +1,3 @@
-#include <algorithm>
-#include <cmath>
-#include <glm/glm.hpp>
-
 #include "GCore/Components/MeshComponent.h"
 #include "GCore/GOP.h"
 #include "nodes/core/def/node_def.hpp"
@@ -35,7 +31,8 @@ NODE_EXECUTION_FUNCTION(select_verts)
     }
 
     // 获取标量数据
-    std::vector<float> scalar_data = mesh_component->get_vertex_scalar_quantity(scalar_name);
+    std::vector<float> scalar_data =
+        mesh_component->get_vertex_scalar_quantity(scalar_name);
     if (scalar_data.empty()) {
         return false;
     }
@@ -43,7 +40,7 @@ NODE_EXECUTION_FUNCTION(select_verts)
     // 创建mask
     std::vector<float> mask;
     mask.reserve(scalar_data.size());
-    
+
     for (float value : scalar_data) {
         mask.push_back(value > threshold ? 1.0f : 0.0f);
     }

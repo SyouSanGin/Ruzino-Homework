@@ -1,8 +1,6 @@
 #include <pxr/base/gf/vec2f.h>
 #include <pxr/base/gf/vec3f.h>
 
-#include "spdlog/spdlog.h"
-
 // Use the actual OpenUSD internal namespace
 using namespace pxr;
 

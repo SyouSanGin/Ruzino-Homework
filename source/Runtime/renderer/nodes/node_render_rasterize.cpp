@@ -7,7 +7,6 @@
 #include "pxr/imaging/hd/tokens.h"
 #include "pxr/imaging/hgiGL/computeCmds.h"
 #include "renderTLAS.h"
-#include "spdlog/spdlog.h"
 
 NODE_DEF_OPEN_SCOPE
 NODE_DECLARATION_FUNCTION(rasterize)

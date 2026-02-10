@@ -1,17 +1,17 @@
 #include "shaderCompiler.h"
 
+#include <stdexcept>
+
 #include "RHI/api.h"
 
 #ifdef _WIN32
 #include <codecvt>
 #endif
-#include <spdlog/spdlog.h>
 
 #include <filesystem>
 #include <fstream>
 
 #include "slang.h"
-
 
 RUZINO_NAMESPACE_OPEN_SCOPE
 
@@ -29,7 +29,7 @@ std::filesystem::path SlangShaderCompiler::find_root(
             current = current.parent_path();
         }
         else {
-            spdlog::error("CUDA Prelude not found.");
+            throw std::runtime_error("CUDA Prelude not found.");
             return "";
         }
     }
