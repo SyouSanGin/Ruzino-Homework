@@ -1,6 +1,5 @@
 #pragma once
 
-#include <memory>
 #include <pxr/usd/sdf/path.h>
 #include <pxr/usd/usd/prim.h>
 
