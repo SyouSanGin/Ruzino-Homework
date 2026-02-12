@@ -104,5 +104,8 @@ class USDVIEW_WIDGET_API UsdviewEngine final : public IWidget {
     void subscribe_to_selection_events();
     void on_prim_selected(const pxr::SdfPath& path);
     pxr::SdfPath current_selected_path_;  // Track current selection
+
+    // Cached frustum for raycast during camera switching
+    pxr::GfFrustum cached_frustum_;
 };
 RUZINO_NAMESPACE_CLOSE_SCOPE

@@ -33,6 +33,25 @@
 RUZINO_NAMESPACE_OPEN_SCOPE
 class NodeTree;
 
+// Helper function to initialize all required USD camera attributes
+static void InitializeCameraAttributes(BaseCamera* camera)
+{
+    using namespace pxr;
+    if (!camera)
+        return;
+
+    // Set all required camera attributes to avoid warnings
+    camera->CreateFocalLengthAttr().Set(50.0f);
+    camera->CreateHorizontalApertureAttr().Set(20.955f);  // Default 35mm equiv
+    camera->CreateVerticalApertureAttr().Set(15.2908f);
+    camera->CreateHorizontalApertureOffsetAttr().Set(0.0f);
+    camera->CreateVerticalApertureOffsetAttr().Set(0.0f);
+    camera->CreateClippingRangeAttr().Set(GfVec2f(1.0f, 2000.0f));
+    camera->CreateClippingPlanesAttr().Set(VtArray<GfVec4f>());
+    camera->CreateFStopAttr().Set(0.0f);
+    camera->CreateFocusDistanceAttr().Set(10.0f);
+}
+
 struct UsdviewEnginePrivateData {
     nvrhi::TextureHandle nvrhi_texture = nullptr;
     nvrhi::StagingTextureHandle staging = nullptr;
@@ -62,21 +81,26 @@ UsdviewEngine::UsdviewEngine(Stage* stage) : stage_(stage)
     auto prim = pxr::UsdGeomCamera::Get(
         stage_->get_usd_stage(), pxr::SdfPath("/FreeCamera"));
     if (prim) {
-        *free_camera_ = prim;
+        // Load existing camera
+        static_cast<pxr::UsdGeomCamera&>(*free_camera_) = prim;
+        // Load third person camera state
+        auto* third_camera =
+            static_cast<ThirdPersonCamera*>(free_camera_.get());
+        third_camera->LoadState();
     }
     else {
+        // Create new camera with all required attributes
         static_cast<pxr::UsdGeomCamera&>(*free_camera_) =
             pxr::UsdGeomCamera::Define(
                 stage_->get_usd_stage(), pxr::SdfPath("/FreeCamera"));
 
-        free_camera_->CreateFocusDistanceAttr().Set(10.0f);
-        free_camera_->CreateClippingRangeAttr(
-            pxr::VtValue(pxr::GfVec2f{ 1.f, 2000.f }));
+        InitializeCameraAttributes(free_camera_.get());
 
         // Initialize third person camera to look at origin
         auto* third_camera =
             static_cast<ThirdPersonCamera*>(free_camera_.get());
         third_camera->LookAt(pxr::GfVec3d{ 5, 5, 5 }, pxr::GfVec3d{ 0, 0, 0 });
+        third_camera->SaveState();
     }
     auto plugins = renderer_->GetRendererPlugins();
 
@@ -125,7 +149,33 @@ void UsdviewEngine::DrawMenuBar()
                     0,
                     this->engine_status.cam_type == CamType::First)) {
                 if (engine_status.cam_type != CamType::First) {
+                    // Save third person state before switching
+                    if (engine_status.cam_type == CamType::Third) {
+                        auto* third_camera =
+                            static_cast<ThirdPersonCamera*>(free_camera_.get());
+                        third_camera->SaveState();
+                    }
+
+                    // Get current camera state
+                    auto cam_prim = free_camera_->GetPrim();
+                    auto current_pos = free_camera_->GetPosition();
+                    auto current_dir = free_camera_->GetDir();
+                    auto current_up = free_camera_->GetUp();
+                    double current_speed = 1.0;
+                    cam_prim.GetAttribute(pxr::TfToken("move_speed"))
+                        .Get(&current_speed);
+
+                    // Switch to first person
                     free_camera_ = std::make_unique<FirstPersonCamera>();
+                    static_cast<pxr::UsdGeomCamera&>(*free_camera_) =
+                        pxr::UsdGeomCamera(cam_prim);
+
+                    // Preserve position, orientation and speed
+                    auto* first_camera =
+                        static_cast<FirstPersonCamera*>(free_camera_.get());
+                    first_camera->LookTo(current_pos, current_dir, current_up);
+                    first_camera->SetMoveSpeed(current_speed);
+
                     engine_status.cam_type = CamType::First;
                 }
             }
@@ -134,7 +184,106 @@ void UsdviewEngine::DrawMenuBar()
                     0,
                     this->engine_status.cam_type == CamType::Third)) {
                 if (engine_status.cam_type != CamType::Third) {
+                    // Get current camera state
+                    auto cam_prim = free_camera_->GetPrim();
+                    auto current_pos = free_camera_->GetPosition();
+                    auto current_dir = free_camera_->GetDir();
+                    auto current_up = free_camera_->GetUp();
+                    double current_speed = 1.0;
+                    cam_prim.GetAttribute(pxr::TfToken("move_speed"))
+                        .Get(&current_speed);
+
+                    // Try to find a smart target position by raycasting from
+                    // screen center
+                    using namespace pxr;
+                    pxr::GfVec3d target;
+                    double distance = 10.0;
+
+                    spdlog::info("Attempting raycast from screen center...");
+
+                    // Raycast from screen center
+                    GfVec3d hit_point;
+                    GfVec3d hit_normal;
+                    SdfPath hit_path;
+                    SdfPath instancer;
+                    int hit_instance_index;
+                    HdInstancerContext instancer_context;
+
+                    // Create narrowed frustum around screen center (NDC 0,0)
+                    auto narrowed = cached_frustum_.ComputeNarrowedFrustum(
+                        GfVec2d(0.0, 0.0),
+                        GfVec2d(
+                            1.0 / render_buffer_size_[0],
+                            1.0 / render_buffer_size_[1]));
+
+                    UsdPrim root = stage_->get_usd_stage()->GetPseudoRoot();
+                    if (renderer_->TestIntersection(
+                            narrowed.ComputeViewMatrix(),
+                            narrowed.ComputeProjectionMatrix(),
+                            root,
+                            _renderParams,
+                            &hit_point,
+                            &hit_normal,
+                            &hit_path,
+                            &instancer,
+                            &hit_instance_index,
+                            &instancer_context)) {
+                        // Hit something! Use the hit point as target
+                        target = hit_point;
+                        distance = (hit_point - current_pos).GetLength();
+
+                        spdlog::warn(
+                            "Camera switch: HIT object at path: {}",
+                            hit_path.GetAsString());
+                        spdlog::warn(
+                            "  Hit point: ({:.2f}, {:.2f}, {:.2f})",
+                            hit_point[0],
+                            hit_point[1],
+                            hit_point[2]);
+                        spdlog::warn(
+                            "  Camera pos: ({:.2f}, {:.2f}, {:.2f})",
+                            current_pos[0],
+                            current_pos[1],
+                            current_pos[2]);
+                        spdlog::warn("  Distance: {:.2f}", distance);
+                    }
+                    else {
+                        // No hit, use default: 10 units in front
+                        target = current_pos + current_dir * 10.0;
+                        spdlog::warn(
+                            "Camera switch: NO HIT, using default target 10 "
+                            "units ahead");
+                        spdlog::warn(
+                            "  Target: ({:.2f}, {:.2f}, {:.2f})",
+                            target[0],
+                            target[1],
+                            target[2]);
+                    }
+
+                    // Switch to third person
                     free_camera_ = std::make_unique<ThirdPersonCamera>();
+                    static_cast<pxr::UsdGeomCamera&>(*free_camera_) =
+                        pxr::UsdGeomCamera(cam_prim);
+
+                    auto* third_camera =
+                        static_cast<ThirdPersonCamera*>(free_camera_.get());
+
+                    // Set target and distance based on raycast result
+                    third_camera->SetTargetPosition(target);
+                    third_camera->SetDistance(distance);
+
+                    // Calculate yaw and pitch from current direction
+                    double azimuth, elevation, length;
+                    third_camera->CartesianToSpherical(
+                        -current_dir, azimuth, elevation, length);
+                    third_camera->SetRotation(azimuth, elevation);
+
+                    // Preserve move speed
+                    third_camera->SetMoveSpeed(current_speed);
+
+                    // Save this new state
+                    third_camera->SaveState();
+
                     engine_status.cam_type = CamType::Third;
                 }
             }
@@ -243,6 +392,9 @@ void UsdviewEngine::OnFrame(float delta_time)
 
     GfMatrix4d projectionMatrix = frustum.ComputeProjectionMatrix();
     GfMatrix4d viewMatrix = frustum.ComputeViewMatrix();
+
+    // Cache frustum for raycast during camera switching
+    cached_frustum_ = frustum;
 
     renderer_->SetCameraState(viewMatrix, projectionMatrix);
 
@@ -518,6 +670,18 @@ bool UsdviewEngine::MouseButtonUpdate(int button, int action, int mods)
 void UsdviewEngine::Animate(float elapsed_time_seconds)
 {
     free_camera_->Animate(elapsed_time_seconds);
+
+    // Save third person camera state after animation
+    if (engine_status.cam_type == CamType::Third) {
+        static int frame_counter = 0;
+        // Save every 60 frames to avoid excessive I/O
+        if (++frame_counter % 60 == 0) {
+            auto* third_camera =
+                static_cast<ThirdPersonCamera*>(free_camera_.get());
+            third_camera->SaveState();
+        }
+    }
+
     IWidget::Animate(elapsed_time_seconds);
 }
 
@@ -543,6 +707,13 @@ void UsdviewEngine::CreateGLContext()
 
 UsdviewEngine::~UsdviewEngine()
 {
+    // Save camera state before destruction
+    if (engine_status.cam_type == CamType::Third && free_camera_) {
+        auto* third_camera =
+            static_cast<ThirdPersonCamera*>(free_camera_.get());
+        third_camera->SaveState();
+    }
+
     command_list_ = nullptr;
     data_.reset();
     assert(RHI::get_device());

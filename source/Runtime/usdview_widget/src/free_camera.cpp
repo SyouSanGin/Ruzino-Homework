@@ -58,7 +58,11 @@ BaseCamera::BaseCamera(const pxr::UsdGeomCamera& camera)
             pxr::GfVec3d(1.0, 0.0, 0.0));
         m_MatWorldToView = transform_mat.GetInverse();
     }
-    GetPrim().GetAttribute(pxr::TfToken("move_speed")).Get(&m_MoveSpeed);
+
+    // Load move speed or use default
+    if (!GetPrim().GetAttribute(pxr::TfToken("move_speed")).Get(&m_MoveSpeed)) {
+        m_MoveSpeed = 1.0;
+    }
 }
 
 void BaseCamera::BaseLookAt(
@@ -219,10 +223,8 @@ void FirstPersonCamera::Animate(double deltaT)
     bool cameraDirty = false;
     pxr::GfRotation cameraRotation = pxr::GfRotation().SetIdentity();
 
-    // handle mouse rotation first
-    // this will affect the movement vectors in the world matrix, which we use
-    // below
-    if (mouseButtonState[MouseButtons::Left] &&
+    // Use middle button for rotation (Blender-style)
+    if (mouseButtonState[MouseButtons::Middle] &&
         (mouseMove[0] != 0 || mouseMove[1] != 0)) {
         double yaw = m_RotateSpeed * mouseMove[0];
         double pitch = m_RotateSpeed * mouseMove[1];
@@ -255,7 +257,7 @@ void FirstPersonCamera::AnimateSmooth(double deltaT)
     double dampenWeight = exp(-c_DampeningRate * deltaT);
 
     pxr::GfVec2d mouseMove(0.0, 0.0);
-    if (mouseButtonState[MouseButtons::Left]) {
+    if (mouseButtonState[MouseButtons::Middle]) {
         if (!isMoving) {
             isMoving = true;
             mousePosPrev = mousePos;
@@ -553,6 +555,55 @@ void ThirdPersonCamera::CartesianToSpherical(
     // Z-up coordinate system
     elevation = std::asin(cartesian[2] / length);
     azimuth = std::atan2(cartesian[1], cartesian[0]);
+}
+
+void ThirdPersonCamera::SaveState()
+{
+    using namespace pxr;
+    auto prim = GetPrim();
+    if (!prim)
+        return;
+
+    prim.CreateAttribute(
+            TfToken("third_person:target"), SdfValueTypeNames->Double3)
+        .Set(m_TargetPos);
+    prim.CreateAttribute(
+            TfToken("third_person:distance"), SdfValueTypeNames->Double)
+        .Set(m_Distance);
+    prim.CreateAttribute(TfToken("third_person:yaw"), SdfValueTypeNames->Double)
+        .Set(m_Yaw);
+    prim.CreateAttribute(
+            TfToken("third_person:pitch"), SdfValueTypeNames->Double)
+        .Set(m_Pitch);
+}
+
+void ThirdPersonCamera::LoadState()
+{
+    using namespace pxr;
+    auto prim = GetPrim();
+    if (!prim)
+        return;
+
+    auto targetAttr = prim.GetAttribute(TfToken("third_person:target"));
+    auto distanceAttr = prim.GetAttribute(TfToken("third_person:distance"));
+    auto yawAttr = prim.GetAttribute(TfToken("third_person:yaw"));
+    auto pitchAttr = prim.GetAttribute(TfToken("third_person:pitch"));
+
+    if (targetAttr && distanceAttr && yawAttr && pitchAttr) {
+        targetAttr.Get(&m_TargetPos);
+        distanceAttr.Get(&m_Distance);
+        yawAttr.Get(&m_Yaw);
+        pitchAttr.Get(&m_Pitch);
+
+        // Ensure distance is valid
+        if (m_Distance < 0.1) {
+            m_Distance = 10.0;
+        }
+    }
+    else {
+        // No saved state - set invalid distance to signal this
+        m_Distance = 0.0;
+    }
 }
 
 RUZINO_NAMESPACE_CLOSE_SCOPE

@@ -249,6 +249,10 @@ class ThirdPersonCamera : public BaseCamera {
         double& elevation,
         double& length);
 
+    // Save/load third person camera state to USD attributes
+    void SaveState();
+    void LoadState();
+
    private:
     void AnimateOrbit(double deltaT);
     void AnimateTranslation(const pxr::GfMatrix3d& viewMatrix);
