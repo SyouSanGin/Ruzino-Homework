@@ -15,14 +15,14 @@ NODE_DECLARATION_FUNCTION(shadow_mapping)
     b.add_input<int>("resolution").default_val(1024).min(256).max(4096);
     b.add_input<std::string>("Shader").default_val("shaders/shadow_mapping.fs");
 
-    b.add_output<TextureHandle>("Shadow Maps");
+    b.add_output<GLTextureHandle>("Shadow Maps");
 }
 
 NODE_EXECUTION_FUNCTION(shadow_mapping)
 {
     auto resolution = params.get_input<int>("resolution");
 
-    TextureDesc texture_desc;
+    GLTextureDesc texture_desc;
     texture_desc.array_size = lights.size();
     // texture_desc.array_size = 1;
     texture_desc.size = GfVec2i(resolution);
@@ -31,7 +31,7 @@ NODE_EXECUTION_FUNCTION(shadow_mapping)
 
     auto shaderPath = params.get_input<std::string>("Shader");
 
-    ShaderDesc shader_desc;
+    GLShaderDesc shader_desc;
     shader_desc.set_vertex_path(
         std::filesystem::path(RENDER_NODES_FILES_DIR) /
         std::filesystem::path("shaders/shadow_mapping.vs"));
@@ -44,7 +44,7 @@ NODE_EXECUTION_FUNCTION(shadow_mapping)
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
 
-    std::vector<TextureHandle> depth_textures;
+    std::vector<GLTextureHandle> depth_textures;
     GLuint framebuffer;
     glGenFramebuffers(1, &framebuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
@@ -69,7 +69,6 @@ NODE_EXECUTION_FUNCTION(shadow_mapping)
             bool has_light = false;
             if (lights[light_id]->GetLightType() ==
                 HdPrimTypeTokens->sphereLight) {
-
                 GfFrustum frustum;
                 GfVec3f light_position = { light_params.GetPosition()[0],
                                            light_params.GetPosition()[1],

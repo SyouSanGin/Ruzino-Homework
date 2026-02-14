@@ -4,6 +4,9 @@ target_include_directories(shaders_interface INTERFACE ${CMAKE_CURRENT_SOURCE_DI
 target_include_directories(shaders_interface INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/nodes/)
 target_compile_definitions(shaders_interface INTERFACE RENDERER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/nodes/shaders/" NOMINMAX)
 
+# Skip hd_RUZINO (NVRHI backend) compilation in homework mode to avoid conflicts with GL backend
+if(NOT USTC_HOMEWORK_PLUGINS)
+
 RUZINO_ADD_LIB(
 	hd_RUZINO
 	SHARED
@@ -37,3 +40,5 @@ add_nodes(
 
 add_subdirectory(nodes/lpm)
 target_link_libraries(node_lpm PUBLIC ffx_lpm)
+
+endif() # NOT USTC_HOMEWORK_PLUGINS

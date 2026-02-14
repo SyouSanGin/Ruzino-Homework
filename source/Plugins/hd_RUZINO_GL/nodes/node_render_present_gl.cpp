@@ -3,7 +3,7 @@
 NODE_DEF_OPEN_SCOPE
 NODE_DECLARATION_FUNCTION(present_color)
 {
-    b.add_input<TextureHandle>("Present");
+    b.add_input<GLTextureHandle>("Present");
 }
 
 NODE_EXECUTION_FUNCTION(present_color)

@@ -12,17 +12,17 @@
 NODE_DEF_OPEN_SCOPE
 NODE_DECLARATION_FUNCTION(environment_pass)
 {
-    b.add_input<TextureHandle>("Color");
-    b.add_input<TextureHandle>("Depth");
+    b.add_input<GLTextureHandle>("Color");
+    b.add_input<GLTextureHandle>("Depth");
 
     b.add_input<std::string>("Shader").default_val(
         "shaders/environment_map.fs");
-    b.add_output<TextureHandle>("Color");
+    b.add_output<GLTextureHandle>("Color");
 }
 
 NODE_EXECUTION_FUNCTION(environment_pass)
 {
-    auto color = params.get_input<TextureHandle>("Color");
+    auto color = params.get_input<GLTextureHandle>("Color");
 
     Hd_RUZINO_Dome_Light* dome_light = nullptr;
     Hd_RUZINO_Camera* free_camera = get_free_camera(params);
@@ -49,7 +49,7 @@ NODE_EXECUTION_FUNCTION(environment_pass)
         }
     }
 
-    auto depth = params.get_input<TextureHandle>("Depth");
+    auto depth = params.get_input<GLTextureHandle>("Depth");
 
     auto size = color->desc.size;
 
@@ -57,14 +57,14 @@ NODE_EXECUTION_FUNCTION(environment_pass)
 
     CreateFullScreenVAO(VAO, VBO);
 
-    TextureDesc texture_desc;
+    GLTextureDesc texture_desc;
     texture_desc.size = size;
     texture_desc.format = HdFormatFloat32Vec4;
     auto color_texture = resource_allocator.create(texture_desc);
 
     auto shaderPath = params.get_input<std::string>("Shader");
 
-    ShaderDesc shader_desc;
+    GLShaderDesc shader_desc;
     shader_desc.set_vertex_path(
         std::filesystem::path(RENDER_NODES_FILES_DIR) /
         std::filesystem::path("shaders/fullscreen.vs"));

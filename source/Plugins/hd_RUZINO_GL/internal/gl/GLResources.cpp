@@ -265,19 +265,19 @@ GLenum GetGLType(HioFormat hd_format)
 
 namespace fs = std::filesystem;
 
-void ShaderDesc::set_vertex_path(const std::filesystem::path& vertex_path)
+void GLShaderDesc::set_vertex_path(const std::filesystem::path& vertex_path)
 {
     vertexPath = vertex_path;
     update_last_write_time(vertexPath);
 }
 
-void ShaderDesc::set_fragment_path(const std::filesystem::path& fragment_path)
+void GLShaderDesc::set_fragment_path(const std::filesystem::path& fragment_path)
 {
     fragmentPath = fragment_path;
     update_last_write_time(fragmentPath);
 }
 
-void ShaderDesc::update_last_write_time(const std::filesystem::path& path)
+void GLShaderDesc::update_last_write_time(const std::filesystem::path& path)
 {
     try {
         auto possibly_newer_lastWriteTime = fs::last_write_time(path);
@@ -290,17 +290,17 @@ void ShaderDesc::update_last_write_time(const std::filesystem::path& path)
     }
 }
 
-ShaderHandle createShader(const ShaderDesc& desc)
+GLShaderHandle createGLShader(const GLShaderDesc& desc)
 {
-    ShaderHandle ret = std::make_shared<ShaderResource>(
+    GLShaderHandle ret = std::make_shared<GLShaderResource>(
         desc.vertexPath.string().c_str(), desc.fragmentPath.string().c_str());
     ret->desc = desc;
     return ret;
 }
 
-TextureHandle createTexture(const TextureDesc& desc)
+GLTextureHandle createGLTexture(const GLTextureDesc& desc)
 {
-    TextureHandle ret = std::make_shared<TextureResource>();
+    GLTextureHandle ret = std::make_shared<GLTextureResource>();
     ret->desc = desc;
     auto _format = desc.format;
     if (desc.array_size == 1) {

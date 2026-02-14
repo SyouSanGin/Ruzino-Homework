@@ -13,15 +13,15 @@ NODE_DEF_OPEN_SCOPE
 
 NODE_DECLARATION_FUNCTION(deferred_lighting)
 {
-    b.add_input<TextureHandle>("Position");
-    b.add_input<TextureHandle>("diffuseColor");
-    b.add_input<TextureHandle>("MetallicRoughness");
-    b.add_input<TextureHandle>("Normal");
-    b.add_input<TextureHandle>("Shadow Maps");
+    b.add_input<GLTextureHandle>("Position");
+    b.add_input<GLTextureHandle>("diffuseColor");
+    b.add_input<GLTextureHandle>("MetallicRoughness");
+    b.add_input<GLTextureHandle>("Normal");
+    b.add_input<GLTextureHandle>("Shadow Maps");
 
     b.add_input<std::string>("Lighting Shader")
         .default_val("shaders/blinn_phong.fs");
-    b.add_output<TextureHandle>("Color");
+    b.add_output<GLTextureHandle>("Color");
 }
 
 struct LightInfo {
@@ -37,19 +37,20 @@ NODE_EXECUTION_FUNCTION(deferred_lighting)
 {
     // Fetch all the information
 
-    auto position_texture = params.get_input<TextureHandle>("Position");
-    auto diffuseColor_texture = params.get_input<TextureHandle>("diffuseColor");
+    auto position_texture = params.get_input<GLTextureHandle>("Position");
+    auto diffuseColor_texture =
+        params.get_input<GLTextureHandle>("diffuseColor");
 
     auto metallic_roughness =
-        params.get_input<TextureHandle>("MetallicRoughness");
-    auto normal_texture = params.get_input<TextureHandle>("Normal");
+        params.get_input<GLTextureHandle>("MetallicRoughness");
+    auto normal_texture = params.get_input<GLTextureHandle>("Normal");
 
-    auto shadow_maps = params.get_input<TextureHandle>("Shadow Maps");
+    auto shadow_maps = params.get_input<GLTextureHandle>("Shadow Maps");
 
     Hd_RUZINO_Camera* free_camera = get_free_camera(params);
     // Creating output textures.
     auto size = position_texture->desc.size;
-    TextureDesc color_output_desc;
+    GLTextureDesc color_output_desc;
     color_output_desc.format = HdFormatFloat32Vec4;
     color_output_desc.size = size;
     auto color_texture = resource_allocator.create(color_output_desc);
@@ -59,7 +60,7 @@ NODE_EXECUTION_FUNCTION(deferred_lighting)
 
     auto shaderPath = params.get_input<std::string>("Lighting Shader");
 
-    ShaderDesc shader_desc;
+    GLShaderDesc shader_desc;
     shader_desc.set_vertex_path(
         std::filesystem::path(RENDER_NODES_FILES_DIR) /
         std::filesystem::path("shaders/fullscreen.vs"));

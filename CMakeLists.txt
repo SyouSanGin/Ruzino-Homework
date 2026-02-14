@@ -165,8 +165,26 @@ find_package(Slang REQUIRED COMPONENTS slang slang-rt gfx)
 
 set(AgilitySDK_ROOT_DIR SDK/d3d12)
 find_package(AgilitySDK REQUIRED)
+
+# Find Embree from SDK
+set(embree_DIR ${CMAKE_CURRENT_SOURCE_DIR}/SDK/embree/lib/cmake/embree-4.4.0)
+find_package(embree QUIET)
+if(embree_FOUND)
+  message(STATUS "Found Embree ${embree_VERSION}")
+else()
+  message(STATUS "Embree not found in SDK, will skip Embree-based renderer")
+endif()
+
 add_subdirectory(external)
 
+option(USTC_HOMEWORK_PLUGINS "Enable USTC Homework Plugins" ON)
+if(USTC_HOMEWORK_PLUGINS)
+  set(ENABLE_GL_BASED_RENDERER ON)
+  set(ENABLE_EMBREE_BASED_RENDERER ON)
+else()
+  set(ENABLE_GL_BASED_RENDERER OFF)
+  set(ENABLE_EMBREE_BASED_RENDERER OFF)
+endif()
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/source/Core)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/source/Editor)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/source/Runtime)

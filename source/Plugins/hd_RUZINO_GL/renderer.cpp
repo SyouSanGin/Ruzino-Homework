@@ -1,8 +1,8 @@
 #include "renderer.h"
 
+#include "GL/GLResources.hpp"
 #include "camera.h"
 #include "global_payload_gl.hpp"
-#include "GL/GLResources.hpp"
 #include "pxr/imaging/hd/renderBuffer.h"
 #include "pxr/imaging/hd/tokens.h"
 #include "renderBuffer.h"
@@ -47,7 +47,7 @@ void Hd_RUZINO_Renderer::Render(HdRenderThread* renderThread)
 
     for (size_t i = 0; i < _aovBindings.size(); ++i) {
         std::string present_name;
-        TextureHandle texture = nullptr;
+        GLTextureHandle texture = nullptr;
 
         if (_aovBindings[i].aovName == HdAovTokens->depth) {
             present_name = "present_depth";

@@ -1,3 +1,6 @@
+# light_field depends on hd_RUZINO, skip in homework mode
+if(NOT USTC_HOMEWORK_PLUGINS)
+
 RUZINO_ADD_LIB(
 	light_field
 	SHARED
@@ -7,3 +10,5 @@ RUZINO_ADD_LIB(
 
 add_subdirectory(nodes)
 add_subdirectory(renderer_nodes)
+
+endif() # NOT USTC_HOMEWORK_PLUGINS

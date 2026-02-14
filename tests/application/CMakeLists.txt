@@ -7,15 +7,17 @@ foreach(source ${test_sources})
     )
 endforeach()
 
+# Only add hd_RUZINO dependencies when not in homework mode
+if(NOT USTC_HOMEWORK_PLUGINS)
 add_dependencies(headless_render hd_RUZINO)
 add_dependencies(headless_render render_nodes)
+endif()
 
 add_dependencies(Ruzino geometry_nodes)
 add_dependencies(Ruzino basic_nodes)
 # add_dependencies(Ruzino optimization)
 # add back the renderer
-add_dependencies(Ruzino hd_RUZINO)
-add_dependencies(Ruzino render_nodes)
+
 # add_dependencies(Ruzino gl_based_render_nodes)
 add_dependencies(Ruzino RZFemBemNodes)
 target_link_libraries(Ruzino PUBLIC rzpython)

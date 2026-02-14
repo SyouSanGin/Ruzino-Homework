@@ -5,6 +5,11 @@
 #include <iterator>
 #include <unordered_map>
 
+#ifdef RUZINO_BACKEND_GL
+#include "GL/GLresources.hpp"
+#undef RUZINO_BACKEND_NVRHI
+#endif
+
 #ifndef RESOURCE_ALLOCATOR_STATIC_ONLY
 #include "nodes/core/api.hpp"
 #endif
@@ -22,15 +27,9 @@
 
 #endif
 
-#ifdef RUZINO_BACKEND_GL
-#include "GL/GLresources.hpp"
-#include "GL/resources.hpp"
-#endif
-
 RUZINO_NAMESPACE_OPEN_SCOPE
 
 #ifdef RUZINO_BACKEND_NVRHI
-
 MACRO_MAP(DESC_HANDLE_TRAIT, RESOURCE_LIST)
 MACRO_MAP(HANDLE_DESC_TRAIT, RESOURCE_LIST)
 #endif

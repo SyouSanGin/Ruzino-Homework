@@ -648,9 +648,9 @@ int main(int argc, char* argv[])
                         }
 
                         system->set_global_params(geom_global_params);
-                        if (geom_global_params.pick) {
-                            system->execute();
-                        }
+                        // if (geom_global_params.pick) {
+                        //     system->execute();
+                        // }
                     });
 
                 window->register_widget(std::move(node_widget));

@@ -24,9 +24,12 @@
 
 #include "renderDelegate.h"
 
-#include <iostream>
-
 #include <spdlog/spdlog.h>
+
+#include <filesystem>
+#include <iostream>
+#include <regex>
+
 #include "camera.h"
 #include "config.h"
 #include "geometries/mesh.h"
@@ -40,8 +43,6 @@
 #include "renderBuffer.h"
 #include "renderPass.h"
 #include "renderer.h"
-#include <regex>
-#include <filesystem>
 RUZINO_NAMESPACE_OPEN_SCOPE
 using namespace pxr;
 TF_DEFINE_PUBLIC_TOKENS(
@@ -103,14 +104,16 @@ void Hd_RUZINO_RenderDelegate::_Initialize()
     _settingDescriptors[2] = {
         "Ambient Occlusion Samples",
         HdEmbreeRenderSettingsTokens->ambientOcclusionSamples,
-        VtValue(static_cast<int>(
-            HdEmbreeConfig::GetInstance().ambientOcclusionSamples))
+        VtValue(
+            static_cast<int>(
+                HdEmbreeConfig::GetInstance().ambientOcclusionSamples))
     };
     _settingDescriptors[3] = {
         "Samples To Convergence",
         HdRenderSettingsTokens->convergedSamplesPerPixel,
-        VtValue(static_cast<int>(
-            HdEmbreeConfig::GetInstance().samplesToConvergence))
+        VtValue(
+            static_cast<int>(
+                HdEmbreeConfig::GetInstance().samplesToConvergence))
     };
 
     _settingDescriptors[4] = { "Render Mode",
@@ -127,17 +130,15 @@ void Hd_RUZINO_RenderDelegate::_Initialize()
     node_system = create_dynamic_loading_system();
     node_system->load_configuration("gl_based_render_nodes.json");
 
-
-            namespace fs = std::filesystem;
-            std::regex submission_suffix(R"(.*_nodes_hw_submissions_render\.json)");
-            spdlog::info("LOADING SUBMISSIONS [Render]");
-            for (auto &itr: fs::directory_iterator(".")){
-                if (std::regex_match(itr.path().string(), submission_suffix)){
-                    spdlog::info("Found: %s", itr.path().string().c_str());
-                    node_system->load_configuration(itr.path());
-                }
-            }
-
+    namespace fs = std::filesystem;
+    std::regex submission_suffix(R"(.*_nodes_hw_submissions_render\.json)");
+    spdlog::info("LOADING SUBMISSIONS [Render]");
+    for (auto& itr : fs::directory_iterator(".")) {
+        if (std::regex_match(itr.path().string(), submission_suffix)) {
+            spdlog::info("Found: %s", itr.path().string().c_str());
+            node_system->load_configuration(itr.path().string());
+        }
+    }
 
     node_system->set_node_tree_executor(std::move(render_executor));
     node_system->allow_ui_execution = false;
@@ -337,7 +338,6 @@ HdSprim* Hd_RUZINO_RenderDelegate::CreateFallbackSprim(const TfToken& typeId)
 
 void Hd_RUZINO_RenderDelegate::DestroySprim(HdSprim* sPrim)
 {
-    spdlog::info(sPrim->GetId().GetAsString() + " destroyed");
     lights.erase(
         std::remove(lights.begin(), lights.end(), sPrim), lights.end());
     cameras.erase(

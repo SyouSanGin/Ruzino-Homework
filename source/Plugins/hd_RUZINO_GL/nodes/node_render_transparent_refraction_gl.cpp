@@ -12,20 +12,20 @@
 NODE_DEF_OPEN_SCOPE
 NODE_DECLARATION_FUNCTION(transparent_refraction)
 {
-    b.add_input<TextureHandle>("Position");
-    b.add_input<TextureHandle>("diffuseColor");
-    b.add_input<TextureHandle>("Normal");
-    b.add_input<TextureHandle>("Depth");
+    b.add_input<GLTextureHandle>("Position");
+    b.add_input<GLTextureHandle>("diffuseColor");
+    b.add_input<GLTextureHandle>("Normal");
+    b.add_input<GLTextureHandle>("Depth");
 
     b.add_input<std::string>("Shader").default_val(
         "shaders/transparent_refraction.fs");
-    b.add_output<TextureHandle>("Color");
+    b.add_output<GLTextureHandle>("Color");
 }
 
 NODE_EXECUTION_FUNCTION(transparent_refraction)
 {
-    auto baseColor = params.get_input<TextureHandle>("diffuseColor");
-    auto normal_texture = params.get_input<TextureHandle>("Normal");
+    auto baseColor = params.get_input<GLTextureHandle>("diffuseColor");
+    auto normal_texture = params.get_input<GLTextureHandle>("Normal");
 
     Hd_RUZINO_Dome_Light* dome_light = nullptr;
     Hd_RUZINO_Camera* free_camera = get_free_camera(params);
@@ -52,7 +52,7 @@ NODE_EXECUTION_FUNCTION(transparent_refraction)
         }
     }
 
-    auto depth = params.get_input<TextureHandle>("Depth");
+    auto depth = params.get_input<GLTextureHandle>("Depth");
 
     auto size = baseColor->desc.size;
 
@@ -60,14 +60,14 @@ NODE_EXECUTION_FUNCTION(transparent_refraction)
 
     CreateFullScreenVAO(VAO, VBO);
 
-    TextureDesc texture_desc;
+    GLTextureDesc texture_desc;
     texture_desc.size = size;
     texture_desc.format = HdFormatFloat32Vec4;
     auto color_texture = resource_allocator.create(texture_desc);
 
     auto shaderPath = params.get_input<std::string>("Shader");
 
-    ShaderDesc shader_desc;
+    GLShaderDesc shader_desc;
     shader_desc.set_vertex_path(
         std::filesystem::path(RENDER_NODES_FILES_DIR) /
         std::filesystem::path("shaders/fullscreen.vs"));
@@ -116,7 +116,7 @@ NODE_EXECUTION_FUNCTION(transparent_refraction)
     glBindTexture(GL_TEXTURE_2D, normal_texture->texture_id);
     id++;
 
-    auto position_texture = params.get_input<TextureHandle>("Position");
+    auto position_texture = params.get_input<GLTextureHandle>("Position");
 
     shader_handle->shader.setInt("position", id);
     glActiveTexture(GL_TEXTURE0 + id);
